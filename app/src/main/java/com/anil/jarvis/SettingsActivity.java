@@ -613,6 +613,14 @@ public class SettingsActivity extends Activity {
         rmOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         rmOpen.setOnClickListener(v -> { autosave(); RoomMeasureActivity.open(this, null); });
         box.addView(rmOpen);
+        // 📚 the book library: free books and his own, read aloud; Telugu by the phone (₹0) or this same AI in this same limit (20 Nov)
+        note("📚 పుస్తకాల లైబ్రరీ: చెక్క రాక్‌లలో ఉచిత పుస్తకాలు (Project Gutenberg, తెలుగు వికీసోర్స్), మీ PDF / EPUB / TXT / పేజీల ఫోటోలు. "
+                + "చదివి వినిపించడం, ఫోన్ తెలుగు అనువాదం (ఒకసారి 30 MB ప్యాక్) ₹0. ✨ AI తెలుగు, తెలుగు పేజీల ఫోటోలు చదవడం: ఇదే AI, ఇదే నెల హద్దు; "
+                + "ఖర్చు ముందే చూపిస్తుంది, మీరు నొక్కితేనే. కాపీరైట్ ఉన్న పుస్తకాలకి వివరాలు మాత్రమే.");
+        TextView lbOpen = Ui.text(this, "📚 లైబ్రరీ తెరువు →", 15, accent);
+        lbOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        lbOpen.setOnClickListener(v -> { autosave(); LibraryActivity.open(this, null, null); });
+        box.addView(lbOpen);
         }
 
         // ---- voice

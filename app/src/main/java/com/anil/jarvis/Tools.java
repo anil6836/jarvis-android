@@ -427,6 +427,18 @@ final class Tools {
                         + "plan = the last room's plan, paint and tiles; saved = his kept rooms and lengths. Use for measuring with the camera, "
                         + "'will the bed fit', paint / tile estimates for a room.",
                 schema(new String[][]{{"action", "string", "open | room | fit | plan | saved"}}, "action")));
+        DEFS.add(new Def("library",
+                "📚 Jarvis గ్రంథాలయం (phone only): his books on wooden racks — free classics (Project Gutenberg in English; Telugu Wikisource: "
+                        + "శతకాలు, కన్యాశుల్కం, భాగవతం…), free books he finds, and his own PDF / EPUB / TXT / page photos. open = the racks (view sec = by "
+                        + "subject, era = by time); search = any book in the world: free ones can go on the rack, copyrighted ones show details only (never a "
+                        + "pirate copy); read = read a book aloud from where he stopped (name; lang en = as written, te = in Telugu by the phone's own "
+                        + "translation, free; ai = the AI Telugu he already paid for in the library); sleep = stop reading after N minutes (0 = off); "
+                        + "books = the books on his phone; add = put his own book on the rack. AI Telugu costs money: it is started only by his tap in the "
+                        + "library after the cost is shown, never by voice.",
+                schema(new String[][]{{"action", "string", "open | search | read | sleep | books | add"},
+                        {"name", "string", "search / read: the book or author as he said it (English or Telugu)"},
+                        {"lang", "string", "read: en | te | ai"}, {"minutes", "integer", "sleep: minutes (0 = off)"}, {"view", "string", "open: sec | era"}},
+                        "action")));
         DEFS.add(new Def("publish_website", "Put the last website online (GitHub Pages in his account) and give the link.", schema(new String[][]{})));
         DEFS.add(new Def("write_code",
                 "Write a code file in any language (Python, Java, Kotlin, C, JavaScript, HTML...), save it in Downloads/Jarvis/code and show it.",
@@ -1184,6 +1196,7 @@ final class Tools {
             case "game_studio": return "గేమ్ స్టూడియో తెరుస్తున్నాను…";
             case "circuit_lab": return "సర్క్యూట్ ల్యాబ్ తెరుస్తున్నాను…";
             case "room_measure": return "ఇంటి కొలతలు తెరుస్తున్నాను…";
+            case "library": return "📚 లైబ్రరీ చూస్తున్నాను…";
             case "publish_website": return "ఆన్‌లైన్‌లో పెడుతున్నాను…";
             case "write_code": return "కోడ్ రాస్తున్నాను…";
             case "make_app": return "యాప్ తయారు చేస్తున్నాను…";
@@ -1406,6 +1419,7 @@ final class Tools {
                 case "game_studio": return gameStudio(a.optString("action", "build"), a.optString("what", ""));
                 case "circuit_lab": return circuitLab(a.optString("action", "open"), a.optString("what", ""));
                 case "room_measure": return roomMeasure(a.optString("action", "open"));
+                case "library": return library(a);
                 case "write_code": return writeCode(a.optString("filename", ""), a.optString("description", ""));
                 case "make_app":
                     if ("tell".equalsIgnoreCase(a.optString("action", "").trim())) return tellApp(a.optString("app", a.optString("name", "")), a.optString("command", ""), a.opt("data"));
@@ -1817,6 +1831,107 @@ final class Tools {
         startIn(new Intent(c, RoomMeasureActivity.class).putExtra(RoomMeasureActivity.EXTRA_TAB, tab)
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
         return ok().put("next", "Say in one short Telugu line what is on the screen now and what to do (free, nothing sent anywhere).").toString();
+    }
+
+    /** 📚 The library: open the racks, search any book, read one aloud (as written / Telugu), the sleep timer, his books. */
+    private String library(JSONObject a) throws Exception {
+        android.content.Context c = act();
+        if (!Workshop.here(c)) return err("phone_only", "The library is on his phone only (not the home tablet or the car box). Say so in one line.");
+        String action = a.optString("action", "open").trim().toLowerCase(java.util.Locale.ROOT);
+        String name = a.optString("name", "").trim();
+        switch (action) {
+            case "search": {
+                if (name.isEmpty()) { LibraryActivity.open(c, null, ""); return ok().put("next", "The search screen is open: ask which book.").toString(); }
+                JSONObject r = Library.search(c, name);
+                LibraryActivity.open(c, null, name);
+                JSONArray res = r.optJSONArray("results"), out = new JSONArray();
+                for (int i = 0; res != null && i < res.length() && i < 6; i++) {
+                    JSONObject o = res.getJSONObject(i);
+                    out.put(new JSONObject().put("title", o.optString("t")).put("author", o.optString("a")).put("year", o.opt("y"))
+                            .put("can_read", o.optBoolean("free") || o.optBoolean("have")).put("on_his_phone", o.optBoolean("have"))
+                            .put("only_details", !(o.optBoolean("free") || o.optBoolean("have"))).put("mark", o.optString("mark", "")));
+                }
+                return ok().put("results", out).put("problems", r.optJSONArray("problems"))
+                        .put("next", "In short Telugu: which ones are free (he can put them on the rack and have them read, also in Telugu) and which have only "
+                                + "details (copyright: buy or a library; never a pirate copy). The library screen shows them.").toString();
+            }
+            case "read": return libraryRead(c, name, a.optString("lang", "en").trim().toLowerCase(java.util.Locale.ROOT));
+            case "sleep": {
+                int m = Math.max(0, Math.min(180, a.optInt("minutes", 0)));
+                ReaderService.sleepIn(m);
+                return ok().put("sleep_minutes", m).put("reading_now", !ReaderService.reading.isEmpty()).toString();
+            }
+            case "books": return ok().put("on_his_phone", Library.names(c)).put("free_on_the_racks", Library.starter(c).length())
+                    .put("next", "Name a few; say any rack book can be read for free (it is fetched once).").toString();
+            case "add": {
+                Intent i = new Intent(c, LibraryActivity.class).putExtra(LibraryActivity.EXTRA_VIEW, "add").addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                startIn(i);
+                return ok().put("next", "Say in one line: choose 📄 a file or 📸 page photos on the screen.").toString();
+            }
+            default: {
+                Intent i = new Intent(c, LibraryActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                String v = a.optString("view", "");
+                if (v.equals("era") || v.equals("sec")) i.putExtra(LibraryActivity.EXTRA_VIEW, v);
+                startIn(i);
+                return ok().put("next", "Say in one short Telugu line: tap a book to take it off the rack; 🔍 finds any book; free, nothing sent anywhere.").toString();
+            }
+        }
+    }
+
+    private String libraryRead(android.content.Context c, String name, String lang) throws Exception {
+        String l = "te".equals(lang) || "ai".equals(lang) ? lang : "en";
+        if (name.isEmpty()) return err("which_book", "Ask which book.");
+        JSONObject f = Library.find(c, name);
+        JSONObject entry = f == null ? null : f.getJSONObject("entry");
+        if (entry == null) { // not on the racks: a free copy anywhere?
+            JSONObject g = Library.bestGutendex(name, name, "");
+            if (g == null) return err("not_free", "'" + name + "' is not on his racks and no free (copyright-free) copy was found. Say: if it is a newer book it has "
+                    + "copyright — the library's 🔍 shows its details (buy / a library), or he can put his own copy with ➕. Never suggest pirate sites.");
+            entry = g;
+        }
+        if ("te".equals(entry.optString("lang"))) l = "en"; // (a Telugu book is read as it is)
+        if ("ai".equals(l) && f != null && f.optBoolean("have")) {
+            int[] at = Library.posOf(c, entry.optString("id"));
+            if (at[0] >= entry.optInt("n", 0)) at = new int[]{0, 0};
+            int parts = ReaderService.split(Library.chapter(c, entry.optString("id"), at[0])).size();
+            if (Library.kept(c, entry.optString("id"), "ai", at[0], parts) == null) {
+                LibraryActivity.open(c, entry.optString("id"), null);
+                return err("needs_his_ok", "AI Telugu for this chapter isn't made yet and it costs money: it is never started by voice. The library is open on the book: "
+                        + "tell him to tap ✨ AI తెలుగు to see the cost; or say 'తెలుగులో చదువు' for the phone's free Telugu.");
+            }
+        }
+        if ("te".equals(l) && !OfflineRead.ready(c)) {
+            LibraryActivity.open(c, entry.optString("id"), null);
+            return err("needs_pack", "Telugu by the phone needs Google's free Telugu pack once (about 30 MB, needs internet). The library is open: tap 🔊 తెలుగులో and then ⬇️ దించు.");
+        }
+        final String lg = l;
+        final JSONObject e = entry;
+        if (f != null && f.optBoolean("have")) {
+            int[] at = Library.posOf(c, e.optString("id"));
+            if (at[0] >= e.optInt("n", 0)) at = new int[]{0, 0};
+            ReaderService.startLib(c, e.optString("id"), e.optString("t"), lg, at[0], at[1]);
+            return ok().put("reading", e.optString("t")).put("from", at[0] == 0 && at[1] == 0 ? "the start" : "chapter " + (at[0] + 1) + " where he stopped")
+                    .put("lang", lg).put("next", "Say in one line that you are starting; 'Jarvis, ఆపు' pauses and remembers the place.").toString();
+        }
+        android.content.Context app = c.getApplicationContext();
+        if ("ai".equals(lg)) { // (paid Telugu is never started by voice: fetched, then the library shows ✨ and its cost)
+            new Thread(() -> {
+                try { JSONObject b = Library.download(app, e, s -> {}); LibraryActivity.open(app, b.optString("id"), null); }
+                catch (Exception x) { Announcer.say(app, "\"" + e.optString("t") + "\" దించలేకపోయాను Sir: " + (x.getMessage() == null ? "ఇంటర్నెట్ చూడండి" : x.getMessage())); }
+            }, "jarvis-library-get").start();
+            return ok().put("fetching", e.optString("t")).put("next", "Say: it is a free book, fetching it now; AI Telugu costs money, so when the library opens on it "
+                    + "he taps ✨ to see the cost first (or says 'తెలుగులో చదువు' for the phone's free Telugu).").toString();
+        }
+        new Thread(() -> {
+            try {
+                JSONObject b = Library.download(app, e, s -> {});
+                ReaderService.startLib(app, b.optString("id"), b.optString("t"), lg, 0, 0);
+            } catch (Exception x) {
+                Announcer.say(app, "\"" + e.optString("t") + "\" దించలేకపోయాను Sir: " + (x.getMessage() == null ? "ఇంటర్నెట్ చూడండి" : x.getMessage()));
+            }
+        }, "jarvis-library-get").start();
+        return ok().put("fetching", e.optString("t")).put("free", true)
+                .put("next", "Say in one line: it is a free book; fetching it once now (a few seconds), then reading starts by itself.").toString();
     }
 
     /** When a job last opened a screen (an app, a page, the dialer): the panel then isn't "left" by him. */

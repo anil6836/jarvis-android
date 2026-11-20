@@ -109,10 +109,11 @@ final class SpeedGroups {
                 new String[]{"cricket_watch", "new_movies", "air_quality", "local_news", "group_summary", "parcels"},
                 new String[]{"క్రికెట్", "స్కోర్", "మ్యాచ్", "సినిమా", "కాలుష్య", "గాలి", "గ్రూప్", "పార్సిల్", "డెలివరీ", "వార్తలు", "cricket",
                         "score", "match", "movie", "movies", "ott", "pollution", "air", "aqi", "group", "parcel", "delivery", "news"});
-        group("docs", "his documents and books (ask, read aloud), scanning papers, visiting cards to contacts, shopping and searching inside apps, "
+        group("docs", "his documents and books (ask, read aloud), 📚 the book library (racks, search any book, read aloud / in Telugu), scanning papers, visiting cards to contacts, shopping and searching inside apps, "
                         + "notes apps, screen time and app limits",
-                new String[]{"ask_document", "scan_document", "save_contact", "app_search", "note_in_app", "screen_time", "app_limit"},
-                new String[]{"డాక్యుమెంట్", "పేపర్", "పాలసీ", "సర్టిఫికెట్", "పుస్తకం", "చదివి వినిపించు", "కార్డ్", "కాంటాక్ట్", "షాపింగ్",
+                new String[]{"ask_document", "scan_document", "save_contact", "app_search", "note_in_app", "screen_time", "app_limit", "library"},
+                new String[]{"డాక్యుమెంట్", "పేపర్", "పాలసీ", "సర్టిఫికెట్", "పుస్తకం", "పుస్తకాలు", "లైబ్రరీ", "గ్రంథాలయం", "శతకం", "నవల", "చదివి వినిపించు",
+                        "చదువు", "library", "novel", "కార్డ్", "కాంటాక్ట్", "షాపింగ్",
                         "నోట్", "స్క్రీన్ టైమ్", "వాడకం", "లిమిట్", "కళ్ల", "ఇన్సూరెన్స్", "ఫైల్", "document", "paper", "policy", "certificate",
                         "pdf", "book", "contact", "notes", "screen time", "usage", "limit", "amazon", "flipkart", "file"});
         group("camera", "Jarvis camera and what it sees: live camera, case board, map board, hazards ahead, forecast, review, tutorial",

@@ -503,6 +503,16 @@
             android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustResize|stateHidden"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
+        <!-- 📚 The book library: the wooden racks and the reading screen in a sealed WebView (no network inside it); the phone side
+             fetches free books on his taps. Kept across rotation. -->
+        <activity
+            android:name=".LibraryActivity"
+            android:exported="false"
+            android:label="Jarvis గ్రంథాలయం"
+            android:launchMode="singleTop"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize|stateHidden"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
         <activity
             android:name=".CircuitLabActivity"
             android:exported="false"

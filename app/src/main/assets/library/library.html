@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="te">
+<head>
+<meta charset="utf-8">
+<!-- 📚 Jarvis గ్రంథాలయం. Only the library's own scripts run here; book text and search results are data, shown with textContent only.
+     No network in this page: the phone fetches free books on his taps and sends them in. -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; frame-src 'none'; worker-src 'none'; media-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<style>
+  :root { --bg: #120c08; --panel: #1d140d; --card: #241a12; --line: #4a3622; --text: #f3e6d0; --muted: #c2a888; --faint: #8a7058;
+          --gold: #e8c26a; --gold2: #a8822e; --green: #8fd6a0; --red: #ff8a7a; --blue: #9cc8ff; --paper: #f5ecd8; --ink: #2a1d12; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: "Noto Sans Telugu", system-ui, "Noto Color Emoji", sans-serif;
+               font-size: 15px; overflow: hidden; -webkit-user-select: none; user-select: none; }
+  button { font: inherit; color: inherit; background: rgba(255,255,255,.06); border: 1px solid var(--line); border-radius: 999px; padding: 7px 12px; }
+  button:active { transform: scale(.97); }
+  button.gold { background: var(--gold); color: #2a1a06; border-color: var(--gold); font-weight: 600; }
+  button.wide { width: 100%; border-radius: 14px; padding: 11px 12px; text-align: left; margin: 4px 0; }
+  #cv { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+  #top { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 6px; padding: 8px 8px 4px;
+         background: linear-gradient(180deg, rgba(18,12,8,.95), rgba(18,12,8,.0)); z-index: 3; }
+  #ttl { flex: 1; font-size: 17px; font-weight: 700; color: var(--gold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #top button { padding: 6px 11px; background: rgba(36,26,18,.9); }
+  #chips { position: absolute; top: 46px; left: 0; right: 0; display: flex; gap: 6px; padding: 4px 8px; overflow-x: auto; z-index: 3; scrollbar-width: none; }
+  #chips::-webkit-scrollbar { display: none; }
+  .chip { flex: none; padding: 6px 11px; border-radius: 999px; border: 1px solid var(--line); background: rgba(36,26,18,.88); font-size: 13.5px; white-space: nowrap; }
+  .chip.on { background: var(--gold); color: #2a1a06; border-color: var(--gold); font-weight: 600; }
+  #hint { position: absolute; bottom: 10px; left: 0; right: 0; text-align: center; color: var(--muted); font-size: 12.5px; pointer-events: none; z-index: 2;
+          text-shadow: 0 1px 3px #000; }
+  #nowbar { position: absolute; left: 8px; right: 8px; bottom: 34px; display: flex; align-items: center; gap: 6px; padding: 7px 9px; border-radius: 16px;
+            background: rgba(29,20,13,.95); border: 1px solid var(--gold2); z-index: 4; }
+  #nowbar .t { flex: 1; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #nowbar button { padding: 5px 10px; }
+  .sheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: 62%; overflow-y: auto; background: var(--panel); border-top: 2px solid var(--gold2);
+           border-radius: 18px 18px 0 0; padding: 14px 14px 22px; z-index: 10; box-shadow: 0 -8px 30px rgba(0,0,0,.6); -webkit-overflow-scrolling: touch; }
+  .sheet h2 { margin: 0 0 2px; font-size: 19px; color: var(--gold); line-height: 1.35; }
+  .sheet .sub { color: var(--muted); font-size: 14px; margin-bottom: 6px; }
+  .sheet p { margin: 6px 0; line-height: 1.55; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .pill { display: inline-block; font-size: 12.5px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .pill.ok { border-color: #3f7a52; color: var(--green); }
+  .pill.lock { border-color: #7a3f3f; color: var(--red); }
+  .pill.web { border-color: #3f5a7a; color: var(--blue); }
+  .x { position: absolute; top: 10px; right: 12px; padding: 4px 10px; }
+  .panel { position: absolute; inset: 0; background: var(--bg); z-index: 8; display: flex; flex-direction: column; }
+  .panel header { display: flex; align-items: center; gap: 6px; padding: 8px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .panel header .h { flex: 1; font-weight: 700; color: var(--gold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .panel .body { flex: 1; overflow-y: auto; padding: 10px 12px 90px; -webkit-overflow-scrolling: touch; }
+  #q { flex: 1; font: inherit; font-size: 16px; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 9px 11px; }
+  .res { display: flex; gap: 10px; padding: 10px; margin: 8px 0; background: var(--card); border: 1px solid var(--line); border-radius: 14px; }
+  .res .cv { flex: none; width: 54px; height: 80px; border-radius: 4px; background: #3a2a1c; overflow: hidden; display: flex; align-items: center; justify-content: center;
+             font-size: 22px; }
+  .res .cv img { width: 100%; height: 100%; object-fit: cover; }
+  .res .i { flex: 1; min-width: 0; }
+  .res .t1 { font-weight: 700; line-height: 1.35; }
+  .res .t2 { color: var(--muted); font-size: 13.5px; margin: 2px 0 4px; }
+  .muted { color: var(--muted); font-size: 13.5px; }
+  .prog { color: var(--gold); font-size: 13.5px; margin: 6px 0; }
+  /* reading screen */
+  #reader { background: #f3ead6; color: var(--ink); }
+  #reader.night { background: #15110c; color: #e9dcc4; }
+  #reader header { background: #e6d8b8; border-color: #cbb68c; color: var(--ink); }
+  #reader.night header { background: #221a12; border-color: #4a3622; color: #e9dcc4; }
+  #reader header button, #reader footer button { color: inherit; background: rgba(0,0,0,.06); border-color: rgba(0,0,0,.15); }
+  #reader.night header button, #reader.night footer button { background: rgba(255,255,255,.06); border-color: #4a3622; }
+  #reader .h { color: #6a3f12; }
+  #reader.night .h { color: var(--gold); }
+  #chap { font: inherit; font-size: 14px; max-width: 46vw; color: inherit; background: transparent; border: 1px solid rgba(0,0,0,.2); border-radius: 10px; padding: 5px; }
+  #modes { display: flex; gap: 6px; padding: 6px 8px; overflow-x: auto; background: inherit; border-bottom: 1px solid rgba(0,0,0,.12); scrollbar-width: none; }
+  #modes .chip { background: rgba(0,0,0,.06); border-color: rgba(0,0,0,.18); color: inherit; }
+  #reader.night #modes .chip { background: rgba(255,255,255,.06); border-color: #4a3622; }
+  #modes .chip.on { background: #8a5a1c; color: #fff8ea; border-color: #8a5a1c; }
+  #text { font-family: "Noto Serif Telugu", "Noto Sans Telugu", Georgia, serif; line-height: 1.7; -webkit-user-select: text; user-select: text; }
+  #text .p { padding: 6px 8px; margin: 2px -8px; border-radius: 8px; }
+  #text .p.now { background: rgba(232,194,106,.45); }
+  #reader.night #text .p.now { background: rgba(168,130,46,.35); }
+  #text .te { color: #5a3a12; display: block; margin-top: 3px; }
+  #reader.night #text .te { color: #e8c26a; }
+  #text .wait { opacity: .45; }
+  #reader footer { position: absolute; left: 0; right: 0; bottom: 0; display: flex; gap: 6px; align-items: center; justify-content: space-between; padding: 8px;
+                   background: inherit; border-top: 1px solid rgba(0,0,0,.15); }
+  #bubble { position: absolute; z-index: 11; background: #2a1d12; color: #f6e9cf; padding: 8px 11px; border-radius: 12px; font-size: 14px; max-width: 80vw;
+            box-shadow: 0 6px 18px rgba(0,0,0,.4); }
+  #toast { position: absolute; left: 12px; right: 12px; top: 92px; z-index: 12; text-align: center; pointer-events: none; }
+  #toast span { display: inline-block; background: rgba(29,20,13,.96); border: 1px solid var(--gold2); border-radius: 14px; padding: 9px 13px; font-size: 14px;
+                line-height: 1.45; box-shadow: 0 6px 20px rgba(0,0,0,.5); }
+  input.f, select.f { width: 100%; font: inherit; font-size: 15px; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+                      padding: 8px 10px; margin: 3px 0 8px; }
+  label.l { color: var(--muted); font-size: 13px; }
+  .radio { display: block; padding: 8px 10px; margin: 4px 0; border: 1px solid var(--line); border-radius: 12px; }
+  .radio.on { border-color: var(--gold); background: rgba(232,194,106,.12); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="top">
+  <button id="bClose" aria-label="మూసేయి">✕</button>
+  <div id="ttl">📚 Jarvis గ్రంథాలయం</div>
+  <button id="bView">🕰️ కాలం</button>
+  <button id="bSearch" aria-label="వెతుకు">🔍</button>
+  <button id="bAdd" aria-label="పుస్తకం పెట్టు">➕</button>
+</div>
+<div id="chips"></div>
+<div id="hint">పుస్తకం మీద నొక్కండి · వేలితో జరపండి · రెండు వేళ్ళతో దగ్గరగా / దూరంగా</div>
+<div id="nowbar" hidden><span>🔊</span><span class="t" id="nowT"></span><button id="nowP">⏸</button><button id="nowR">📖</button><button id="nowS">🌙</button></div>
+
+<div id="card" class="sheet" hidden></div>
+<div id="add" class="sheet" hidden></div>
+<div id="quote" class="sheet" hidden></div>
+
+<div id="search" class="panel" hidden>
+  <header><button id="sBack">←</button><input id="q" type="search" placeholder="పుస్తకం / రచయిత పేరు (తెలుగు లేదా English)" enterkeyhint="search"><button id="sGo" class="gold">🔍</button></header>
+  <div class="body" id="sBody"><p class="muted">ప్రపంచంలోని ఏ పుస్తకం అయినా వెతకండి. ఉచితంగా దొరికేవి (✅) రాక్‌లోకి దించుకోవచ్చు; కాపీరైట్ ఉన్నవాటికి వివరాలు మాత్రమే.</p></div>
+</div>
+
+<div id="reader" class="panel" hidden>
+  <header><button id="rBack">←</button><span class="h" id="rTitle"></span><select id="chap"></select><button id="rSmall">A−</button><button id="rBig">A+</button><button id="rNight">🌙</button></header>
+  <div id="modes"></div>
+  <div class="body" id="rBody"><div id="text"></div></div>
+  <footer><button id="rPrev">◀</button><button id="rPlay">▶ చదువు</button><button id="rSleep">🌙 టైమర్</button><button id="rRate">వేగం 1×</button><button id="rNext">▶▶</button></footer>
+</div>
+<div id="bubble" hidden></div>
+<div id="toast"></div>
+
+<script src="libkit.js"></script>
+<script type="module" src="library.js"></script>
+</body>
+</html>

@@ -42,12 +42,22 @@ import java.util.zip.ZipInputStream;
  * A book read aloud like an audiobook: .txt and .epub straight away, PDF pages read by the AI he chose (page by page,
  * kept on the phone so a page is never read twice). It remembers where it stopped and goes on from there.
  * Pauses while Jarvis speaks or listens, and for calls; continues after.
+ * 📚 (20 Nov) Also the library's books ("lib:<id>"), and any book read out in Telugu: "te" = the phone's own translation
+ * (₹0, kept), "ai" = the AI Telugu he paid for in the library (never started from here). A sleep timer, his own reading
+ * speed, and each line told to the library's page so the line being read is lit.
  */
 public class ReaderService extends Service {
     static final String ACTION_START = "com.anil.jarvis.READ_START", ACTION_TOGGLE = "com.anil.jarvis.READ_TOGGLE", ACTION_STOP = "com.anil.jarvis.READ_STOP";
     private static final int NOTE = 191;
     static volatile String reading = "";
     static volatile boolean paused;
+
+    /** 📚 The library's page: told the line being read (unit, part) and when reading stops. */
+    interface Watch { void at(String uri, int unit, int part, String lang); void stopped(String uri); }
+
+    static volatile Watch watch;
+    /** 🌙 elapsedRealtime when reading pauses by itself (0 = no sleep timer). */
+    static volatile long sleepAt;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private TextToSpeech tts;
@@ -91,11 +101,25 @@ public class ReaderService extends Service {
     static void start(Context c, String name, String uri, String kind, boolean fromStart, String onDone) {
         SharedPreferences m = mark(c);
         if (fromStart || !uri.equals(m.getString("uri", ""))) m.edit().putString("uri", uri).putString("name", name).putString("kind", kind)
-                .putInt("unit", 0).putInt("chunk", 0).putString("on_done", onDone == null ? "" : onDone).apply();
+                .putInt("unit", 0).putInt("chunk", 0).putString("on_done", onDone == null ? "" : onDone).putString("lang", "en").apply();
         else if (onDone != null) m.edit().putString("on_done", onDone).apply();
         Intent i = new Intent(c, ReaderService.class).setAction(ACTION_START);
         if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i); else c.startService(i);
     }
+
+    /** 📚 A library book from where he stopped (or unit / part given): lang "en", "te" (phone, ₹0) or "ai" (already paid). */
+    static void startLib(Context c, String id, String title, String lang, int unit, int part) {
+        mark(c).edit().putString("uri", "lib:" + id).putString("name", title).putString("kind", "lib").putInt("unit", Math.max(0, unit))
+                .putInt("chunk", Math.max(0, part)).putString("on_done", "").putString("lang", lang == null ? "en" : lang).apply();
+        Intent i = new Intent(c, ReaderService.class).setAction(ACTION_START);
+        if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i); else c.startService(i);
+    }
+
+    /** 🌙 Pause by itself after that many minutes (0 = off). */
+    static void sleepIn(int minutes) { sleepAt = minutes <= 0 ? 0 : android.os.SystemClock.elapsedRealtime() + minutes * 60_000L; }
+
+    /** "en", "te" or "ai" for the book being read. */
+    static String lang(Context c) { String l = mark(c).getString("lang", "en"); return "te".equals(l) || "ai".equals(l) ? l : "en"; }
 
     static void control(Context c, String action) {
         if (reading.isEmpty()) return;
@@ -116,7 +140,7 @@ public class ReaderService extends Service {
         } else if (ACTION_TOGGLE.equals(a)) {
             if (reading.isEmpty()) { stopSelf(id); return START_NOT_STICKY; } // nothing open (an old notification)
             paused = !paused;
-            if (paused) halt(); else go();
+            if (paused) { halt(); Watch w = watch; if (w != null) w.stopped(m.getString("uri", "")); } else go();
             note("📖 " + m.getString("name", ""), paused ? "⏸ ఆగింది" : "చదువుతున్నాను");
         } else {
             stopFlag = true;
@@ -170,7 +194,9 @@ public class ReaderService extends Service {
     private void readLoop() {
         Thread me = Thread.currentThread();
         SharedPreferences m = mark(this);
-        String uri = m.getString("uri", ""), kind = m.getString("kind", "txt");
+        String uri = m.getString("uri", ""), kind = m.getString("kind", "txt"), lang = lang(this);
+        String libId = kind.equals("lib") && uri.startsWith("lib:") ? uri.substring(4) : null;
+        String trKey = libId != null ? libId : "u" + Integer.toHexString(uri.hashCode()); // (where its Telugu is kept)
         try {
             Prefs p = new Prefs(this);
             int unit = m.getInt("unit", 0), chunk = m.getInt("chunk", 0);
@@ -182,15 +208,33 @@ public class ReaderService extends Service {
                 if (worker != me) return;
                 List<String> parts = split(text);
                 if (kind.equals("pdf") && unit > 0) parts.add(0, "పేజీ " + (unit + 1) + "."); // always, so the bookmark counts the same
+                String[] ai = null;
+                if (lang.equals("ai")) {
+                    ai = Library.kept(this, trKey, "ai", unit, parts.size());
+                    if (ai == null) { finishWith("అధ్యాయం " + (unit + 1) + " కి AI తెలుగు ఇంకా చేయలేదు Sir. లైబ్రరీలో ✨ నొక్కి చేయించండి; లేదా \"ఫోన్ తెలుగులో చదువు\" అంటే ఉచితంగా చదువుతాను."); return; }
+                }
                 for (int k = chunk; k < parts.size(); k++) {
                     if (worker != me) return;
+                    if (sleepAt > 0 && android.os.SystemClock.elapsedRealtime() >= sleepAt) { sleepNow(); return; }
                     m.edit().putInt("unit", unit).putInt("chunk", k).apply();
-                    if (!say(parts.get(k), p)) return; // stopped / paused: this sentence is said again next time
+                    if (libId != null) Library.savePos(this, libId, unit, k);
+                    Watch w = watch;
+                    if (w != null) w.at(uri, unit, k, lang);
+                    String line = parts.get(k);
+                    if (lang.equals("te")) {
+                        String te = Library.tePart(this, trKey, unit, parts, k);
+                        if (te == null) { finishWith(OfflineRead.ready(this) ? "ఫోన్ తెలుగు అనువాదం ఇప్పుడు రాలేదు Sir. మళ్ళీ ప్రయత్నించండి." : "ఫోన్‌లో ఇంగ్లీష్ → తెలుగు అనువాదం ప్యాక్ లేదు Sir. లైబ్రరీలో \"⬇️ తెలుగు ప్యాక్\" ఒకసారి నొక్కండి (సుమారు 30 MB)."); return; }
+                        line = te;
+                    } else if (ai != null && ai[k] != null) line = ai[k];
+                    if (worker != me) return;
+                    if (!say(line, p)) return; // stopped / paused: this sentence is said again next time
                 }
                 m.edit().putInt("unit", unit + 1).putInt("chunk", 0).apply();
+                if (libId != null) Library.savePos(this, libId, unit + 1, 0);
             }
             String done = m.getString("on_done", "");
             m.edit().remove("uri").remove("on_done").apply();
+            if (libId != null) Library.finished(this, libId);
             if (done.startsWith("bible_plan:")) {
                 try { Faith.planMark(this, Integer.parseInt(done.substring(11))); } catch (Exception ignored) {}
                 finishWith("ఈరోజు బైబిల్ ప్లాన్ పూర్తయింది. దేవుడు మిమ్మల్ని దీవించును గాక.");
@@ -202,7 +246,21 @@ public class ReaderService extends Service {
         }
     }
 
+    /** 🌙 The sleep timer ran out: quietly paused (the place kept). */
+    private void sleepNow() {
+        sleepAt = 0;
+        main.post(() -> {
+            paused = true;
+            halt();
+            note("📖 " + mark(this).getString("name", ""), "🌙 నిద్ర టైమర్: ఆపాను (చోటు గుర్తుంది)");
+            Watch w = watch;
+            if (w != null) w.stopped(mark(this).getString("uri", ""));
+        });
+    }
+
     private void finishWith(String line) {
+        Watch w = watch;
+        if (w != null) w.stopped(mark(this).getString("uri", ""));
         main.post(() -> {
             Announcer.say(this, line);
             worker = null;
@@ -215,7 +273,8 @@ public class ReaderService extends Service {
         CountDownLatch l = new CountDownLatch(1);
         spoken = l;
         try { tts.setLanguage(Lang.of(s)); } catch (Exception ignored) {}
-        tts.setSpeechRate(p.speechRate());
+        float own = mark(this).getFloat("rate", 0f); // (📚 his reading speed for books; else Jarvis's own)
+        tts.setSpeechRate(own > 0.3f ? own : p.speechRate());
         String said = Spoken.say(s);
         int max = TextToSpeech.getMaxSpeechInputLength() - 10;
         if (said.length() > max) said = said.substring(0, max); // a page of digits as words can pass the engine's limit
@@ -245,6 +304,7 @@ public class ReaderService extends Service {
     // ---------------------------------------------------------------- the text of a book
 
     private int count(String uri, String kind) throws Exception {
+        if (kind.equals("lib")) return Library.count(this, uri.substring(4));
         if (kind.equals("pdf")) {
             try (android.os.ParcelFileDescriptor fd = getContentResolver().openFileDescriptor(Uri.parse(uri), "r");
                  android.graphics.pdf.PdfRenderer r = new android.graphics.pdf.PdfRenderer(fd)) { return r.getPageCount(); }
@@ -274,6 +334,7 @@ public class ReaderService extends Service {
     }
 
     private String unitText(Prefs p, String uri, String kind, int unit) throws Exception {
+        if (kind.equals("lib")) return Library.chapter(this, uri.substring(4), unit);
         if (kind.equals("txt")) {
             int[] r = txtParts(uri).get(unit);
             return readAll(uri).substring(r[0], r[1]);
@@ -445,6 +506,9 @@ public class ReaderService extends Service {
     @Override public void onDestroy() {
         stopFlag = true;
         halt();
+        Watch w = watch;
+        if (w != null) w.stopped(mark(this).getString("uri", ""));
+        if (LibraryActivity.open == 0) Library.closeTranslator();
         reading = "";
         paused = false;
         try { if (tts != null) tts.shutdown(); } catch (Exception ignored) {}
@@ -457,7 +521,8 @@ public class ReaderService extends Service {
         SharedPreferences m = mark(c);
         if (m.getString("uri", "").isEmpty()) return null;
         return new JSONObject().put("name", m.getString("name", "")).put("kind", m.getString("kind", ""))
-                .put(m.getString("kind", "").equals("pdf") ? "page" : m.getString("kind", "").equals("epub") ? "chapter" : "part", m.getInt("unit", 0) + 1);
+                .put(m.getString("kind", "").equals("pdf") ? "page" : m.getString("kind", "").equals("epub") || m.getString("kind", "").equals("lib") ? "chapter" : "part", m.getInt("unit", 0) + 1)
+                .put("lang", lang(c));
     }
 
     static JSONArray names(List<String[]> books) {

@@ -1,0 +1,908 @@
+package com.anil.jarvis;
+
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.net.Uri;
+import android.os.ParcelFileDescriptor;
+import android.graphics.pdf.PdfRenderer;
+
+import com.google.android.gms.tasks.Tasks;
+import com.google.mlkit.nl.translate.Translator;
+import com.google.mlkit.vision.text.TextRecognizer;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+
+/**
+ * 📚 Jarvis గ్రంథాలయం (stage 1, 20 Nov): his books on wooden racks (LibraryActivity draws them). Here: the shelf on the phone
+ * (files/library), the free books that can be fetched legally — Project Gutenberg (through Gutendex's search), Standard
+ * Ebooks, Telugu Wikisource — and the details of any book from Open Library; books he adds from the phone (TXT / EPUB /
+ * PDF / page photos: English read by the phone itself, Telugu print by his AI only after the cost is shown); English read
+ * out in Telugu by the phone's own translation (₹0) or by his AI (cost said first, chapter by chapter, kept so it is never
+ * paid twice). No piracy sites, ever; books with copyright show their details only. Phone only.
+ */
+final class Library {
+    private Library() {}
+
+    static final String DIR = "library";
+    static final String UA = "JarvisLibrary/1.0 (a personal reading app on Android)";
+    private static final int MAX_BOOK = 14_000_000, MAX_COVER = 1_500_000;
+
+    // ================================================================ where things are
+
+    static File root(Context c) { File f = new File(c.getFilesDir(), DIR); f.mkdirs(); return f; }
+
+    static File bookDir(Context c, String id) { return new File(root(c), "b-" + id); }
+
+    static File coverFile(Context c, String id) { File d = new File(root(c), "covers"); d.mkdirs(); return new File(d, id + ".jpg"); }
+
+    // ================================================================ the shelf: his books (shelf.json)
+
+    private static JSONArray shelfCache;
+
+    static synchronized JSONArray shelf(Context c) {
+        if (shelfCache != null) return shelfCache;
+        JSONArray a = new JSONArray();
+        try {
+            File f = new File(root(c), "shelf.json");
+            if (f.exists()) a = new JSONObject(new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8)).optJSONArray("books");
+        } catch (Exception ignored) {}
+        shelfCache = a == null ? new JSONArray() : a;
+        return shelfCache;
+    }
+
+    private static synchronized void saveShelf(Context c, JSONArray a) {
+        shelfCache = a;
+        try {
+            File f = new File(root(c), "shelf.json"), t = new File(root(c), "shelf.json.tmp");
+            Files.write(t.toPath(), new JSONObject().put("v", 1).put("books", a).toString().getBytes(StandardCharsets.UTF_8));
+            if (!t.renameTo(f)) { Files.write(f.toPath(), Files.readAllBytes(t.toPath())); t.delete(); }
+        } catch (Exception ignored) {}
+    }
+
+    static synchronized JSONObject book(Context c, String id) {
+        JSONArray a = shelf(c);
+        for (int i = 0; i < a.length(); i++) { JSONObject b = a.optJSONObject(i); if (b != null && id.equals(b.optString("id"))) return b; }
+        return null;
+    }
+
+    static synchronized void put(Context c, JSONObject b) {
+        JSONArray a = shelf(c), out = new JSONArray();
+        String id = b.optString("id");
+        boolean done = false;
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject x = a.optJSONObject(i);
+            if (x == null) continue;
+            if (id.equals(x.optString("id"))) { if (!done) out.put(b); done = true; } else out.put(x);
+        }
+        if (!done) out.put(b);
+        saveShelf(c, out);
+    }
+
+    /** Takes a book off the phone (its text, translations, cover); a starter book's spine stays on its rack, not downloaded. */
+    static synchronized void remove(Context c, String id) {
+        if (!LibText.goodId(id)) return;
+        JSONArray a = shelf(c), out = new JSONArray();
+        for (int i = 0; i < a.length(); i++) { JSONObject x = a.optJSONObject(i); if (x != null && !id.equals(x.optString("id"))) out.put(x); }
+        saveShelf(c, out);
+        wipe(bookDir(c, id));
+        coverFile(c, id).delete();
+        pos(c).edit().remove(id).apply();
+    }
+
+    private static void wipe(File f) {
+        File[] k = f.listFiles();
+        if (k != null) for (File x : k) wipe(x);
+        f.delete();
+    }
+
+    static synchronized void flag(Context c, String id, String key, boolean on) {
+        JSONObject b = book(c, id);
+        if (b == null) {
+            JSONObject s = starterEntry(c, id);
+            if (s == null) return;
+            try { b = new JSONObject(s.toString()).put("state", "none"); } catch (Exception e) { return; }
+        }
+        try { b.put(key, on); } catch (Exception ignored) {}
+        put(c, b);
+    }
+
+    /** A book from a search kept on the 🔖 wishes shelf: its details only (no text). */
+    static void wish(Context c, JSONObject item) throws Exception {
+        String id = item.optString("id");
+        if (!LibText.goodId(id) || book(c, id) != null) return;
+        JSONObject b = new JSONObject();
+        for (String k : new String[]{"id", "t", "a", "y", "lang", "sec", "era", "ol", "mark", "cover_url", "src", "src_id", "summary", "free"})
+            if (item.has(k)) b.put(k, item.get(k));
+        b.put("t", LibText.cut(b.optString("t"), 160)).put("a", LibText.cut(b.optString("a"), 100)).put("wish", true).put("state", "none").put("at", System.currentTimeMillis());
+        put(c, b);
+    }
+
+    // ================================================================ the starter racks (inside the app)
+
+    private static JSONArray starterCache;
+
+    static synchronized JSONArray starter(Context c) {
+        if (starterCache != null) return starterCache;
+        try (InputStream in = c.getAssets().open("library/starter.json")) {
+            starterCache = new JSONObject(new String(readAll(in, 2_000_000), StandardCharsets.UTF_8)).getJSONArray("books");
+        } catch (Exception e) { starterCache = new JSONArray(); }
+        return starterCache;
+    }
+
+    static JSONObject starterEntry(Context c, String id) {
+        JSONArray a = starter(c);
+        for (int i = 0; i < a.length(); i++) { JSONObject b = a.optJSONObject(i); if (b != null && id.equals(b.optString("id"))) return b; }
+        return null;
+    }
+
+    // ================================================================ a book's chapters
+
+    static int count(Context c, String id) { JSONObject b = book(c, id); return b == null ? 0 : b.optInt("n", 0); }
+
+    static String chapter(Context c, String id, int unit) throws IOException {
+        File f = new File(bookDir(c, id), String.format(Locale.ENGLISH, "c%03d.txt", unit));
+        return new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8);
+    }
+
+    static JSONArray titles(Context c, String id) {
+        try { return new JSONArray(new String(Files.readAllBytes(new File(bookDir(c, id), "titles.json").toPath()), StandardCharsets.UTF_8)); }
+        catch (Exception e) { return new JSONArray(); }
+    }
+
+    /** Writes the chapters; returns {chapters, letters}. */
+    static long[] saveChapters(Context c, String id, List<String[]> ch) throws IOException {
+        File d = bookDir(c, id);
+        wipe(d);
+        d.mkdirs();
+        JSONArray t = new JSONArray();
+        long chars = 0;
+        for (int i = 0; i < ch.size(); i++) {
+            Files.write(new File(d, String.format(Locale.ENGLISH, "c%03d.txt", i)).toPath(), ch.get(i)[1].getBytes(StandardCharsets.UTF_8));
+            t.put(LibText.cut(ch.get(i)[0], 90));
+            chars += ch.get(i)[1].length();
+        }
+        Files.write(new File(d, "titles.json").toPath(), t.toString().getBytes(StandardCharsets.UTF_8));
+        return new long[]{ch.size(), chars};
+    }
+
+    // ================================================================ where he stopped in each book
+
+    static SharedPreferences pos(Context c) { return c.getSharedPreferences("jarvis_library_pos", Context.MODE_PRIVATE); }
+
+    static void savePos(Context c, String id, int unit, int chunk) {
+        pos(c).edit().putString(id, unit + ":" + chunk + ":" + System.currentTimeMillis()).apply();
+    }
+
+    /** {unit, chunk} where he stopped (0, 0 when never). */
+    static int[] posOf(Context c, String id) {
+        String s = pos(c).getString(id, "");
+        try { String[] p = s.split(":"); return new int[]{Integer.parseInt(p[0]), Integer.parseInt(p[1])}; } catch (Exception e) { return new int[]{0, 0}; }
+    }
+
+    static JSONObject positions(Context c) {
+        JSONObject o = new JSONObject();
+        for (Map.Entry<String, ?> e : pos(c).getAll().entrySet()) {
+            try { String[] p = String.valueOf(e.getValue()).split(":"); o.put(e.getKey(), new JSONArray().put(Integer.parseInt(p[0])).put(Integer.parseInt(p[1])).put(Long.parseLong(p[2]))); }
+            catch (Exception ignored) {}
+        }
+        return o;
+    }
+
+    /** Read to the end: on the "పూర్తయినవి" shelf. */
+    static void finished(Context c, String id) {
+        JSONObject b = book(c, id);
+        if (b == null) return;
+        try { b.put("done", true); } catch (Exception ignored) {}
+        put(c, b);
+        pos(c).edit().remove(id).apply();
+    }
+
+    // ================================================================ the internet (only these free, keyless sites; nothing of his is sent)
+
+    static byte[] get(String url, int max) throws IOException {
+        String u = url;
+        for (int hop = 0; hop < 6; hop++) {
+            if (!u.startsWith("https://")) throw new IOException("https కాని లింక్");
+            HttpURLConnection c = (HttpURLConnection) new URL(u).openConnection();
+            try {
+                c.setInstanceFollowRedirects(false);
+                c.setConnectTimeout(15000);
+                c.setReadTimeout(30000);
+                c.setRequestProperty("User-Agent", UA);
+                c.setRequestProperty("Accept-Encoding", "identity");
+                int s = c.getResponseCode();
+                if (s >= 300 && s < 400) {
+                    String loc = c.getHeaderField("Location");
+                    if (loc == null) throw new IOException("HTTP " + s);
+                    u = new URL(new URL(u), loc).toString();
+                    continue;
+                }
+                if (s == 429) throw new IOException("సైట్ కొంచెం ఆగమంది (చాలా అడిగాం). కాసేపాగి మళ్ళీ ప్రయత్నించండి");
+                if (s >= 400) throw new IOException("HTTP " + s);
+                try (InputStream in = c.getInputStream()) { return readAll(in, max); }
+            } finally { c.disconnect(); }
+        }
+        throw new IOException("చాలా redirects");
+    }
+
+    static JSONObject getJson(String url) throws Exception {
+        return new JSONObject(new String(get(url, 4_000_000), StandardCharsets.UTF_8));
+    }
+
+    static byte[] readAll(InputStream in, int max) throws IOException {
+        ByteArrayOutputStream b = new ByteArrayOutputStream();
+        byte[] buf = new byte[16384];
+        for (int r; (r = in.read(buf)) > 0; ) { b.write(buf, 0, r); if (b.size() > max) throw new IOException("ఫైల్ చాలా పెద్దది"); }
+        return b.toByteArray();
+    }
+
+    private static String enc(String s) { try { return URLEncoder.encode(s, "UTF-8"); } catch (Exception e) { return ""; } }
+
+    private static boolean telugu(String s) { return s != null && s.matches("(?s).*[\\u0C00-\\u0C7F].*"); }
+
+    // ================================================================ 🔍 search: the racks, the free sites, the world's catalogue
+
+    /** {results: [...], problems: [...]} — starter rack matches first, then free books, then details-only books. */
+    static JSONObject search(Context c, String q) {
+        JSONObject out = new JSONObject();
+        JSONArray res = new JSONArray(), probs = new JSONArray();
+        Map<String, JSONObject> seen = new LinkedHashMap<>();
+        String query = q == null ? "" : q.trim();
+        try {
+            if (query.isEmpty()) return out.put("results", res);
+            // 1. on our racks already
+            JSONArray st = starter(c);
+            for (int i = 0; i < st.length(); i++) {
+                JSONObject b = st.optJSONObject(i);
+                if (b == null) continue;
+                double s = Math.max(LibText.score(query, b.optString("t") + " " + b.optString("tt"), b.optString("a")), LibText.score(query, b.optString("tt"), ""));
+                if (s >= 0.6) seen.put(b.optString("id"), new JSONObject(b.toString()).put("rack", true).put("free", true));
+            }
+            // 2. Telugu Wikisource (Telugu words)
+            if (telugu(query)) {
+                try {
+                    JSONObject w = getJson("https://te.wikisource.org/w/api.php?action=query&list=search&srnamespace=0&srlimit=6&format=json&formatversion=2&srsearch=" + enc(query));
+                    JSONArray hits = w.optJSONObject("query") == null ? null : w.getJSONObject("query").optJSONArray("search");
+                    for (int i = 0; hits != null && i < hits.length(); i++) {
+                        String title = hits.getJSONObject(i).optString("title", "");
+                        if (title.isEmpty()) continue;
+                        String base = title.contains("/") ? title.substring(0, title.indexOf('/')) : title;
+                        String id = LibText.idFrom("ws", base);
+                        if (seen.containsKey(id)) continue;
+                        seen.put(id, new JSONObject().put("id", id).put("t", base).put("a", "").put("src", "ws").put("src_id", base)
+                                .put("lang", "te").put("sec", "telugu").put("era", "modern").put("free", true));
+                    }
+                } catch (Exception e) { probs.put("తెలుగు వికీసోర్స్ చేరలేదు"); }
+            }
+            // 3. Project Gutenberg's free books (through Gutendex)
+            Map<String, JSONObject> pgById = new HashMap<>();
+            List<JSONObject> pgHits = new ArrayList<>();
+            try {
+                JSONArray r = getJson("https://gutendex.com/books?search=" + enc(query)).optJSONArray("results");
+                for (int i = 0; r != null && i < r.length() && i < 10; i++) pgHits.add(LibText.fromGutendex(r.getJSONObject(i)));
+            } catch (Exception e) {
+                try { pgHits = LibText.fromOpds(new String(get("https://www.gutenberg.org/ebooks/search.opds/?query=" + enc(query), 3_000_000), StandardCharsets.UTF_8)); }
+                catch (Exception x) { probs.put("Project Gutenberg చేరలేదు"); }
+            }
+            for (int i = 0; i < pgHits.size() && i < 10; i++) {
+                JSONObject g = pgHits.get(i);
+                pgById.put(g.optString("src_id"), g);
+                if (!seen.containsKey(g.optString("id"))) seen.put(g.optString("id"), g);
+            }
+            // 4. every other book: its details (Open Library)
+            try {
+                JSONArray docs = getJson("https://openlibrary.org/search.json?limit=12&fields=key,title,author_name,first_publish_year,cover_i,ebook_access,"
+                        + "id_project_gutenberg,id_standard_ebooks,language,subject&q=" + enc(query)).optJSONArray("docs");
+                for (int i = 0; docs != null && i < docs.length(); i++) {
+                    JSONObject o = LibText.fromOpenLibrary(docs.getJSONObject(i));
+                    if ("pg".equals(o.optString("src"))) {
+                        JSONObject g = pgById.get(o.optString("src_id"));
+                        if (g != null) { if (!g.has("cover_url") && o.has("cover_url")) g.put("cover_url", o.get("cover_url")); if (o.has("y")) g.put("y", o.get("y")); continue; }
+                        o.put("id", "g" + o.optString("src_id"));
+                    } else if ("se".equals(o.optString("src"))) o.put("id", LibText.idFrom("se", o.optString("src_id")));
+                    if (!seen.containsKey(o.optString("id"))) seen.put(o.optString("id"), o);
+                }
+            } catch (Exception e) { probs.put("Open Library చేరలేదు"); }
+            // (already on his phone: say so)
+            for (JSONObject o : seen.values()) {
+                JSONObject b = book(c, o.optString("id"));
+                if (b != null && "ready".equals(b.optString("state"))) o.put("have", true);
+                res.put(o);
+                if (res.length() >= 30) break;
+            }
+            return out.put("results", res).put("problems", probs).put("q", query);
+        } catch (Exception e) {
+            try { return out.put("results", res).put("problems", probs.put(String.valueOf(e.getMessage()))); } catch (Exception x) { return out; }
+        }
+    }
+
+    // ================================================================ ⬇️ a free book onto the phone
+
+    interface Progress { void at(String what); }
+
+    /** Fetches a free book (a starter / search entry), cuts it into chapters, keeps it; returns its shelf entry. */
+    static JSONObject download(Context c, JSONObject entry, Progress p) throws Exception {
+        String src = entry.optString("src", "pg");
+        String id = entry.optString("id");
+        if (!LibText.goodId(id)) throw new IOException("పుస్తకం గుర్తు సరిగా లేదు");
+        JSONObject b = new JSONObject(entry.toString());
+        b.remove("rack");
+        b.remove("have");
+        List<String[]> ch;
+        String coverUrl = entry.optString("cover_url", "");
+        if ("pg".equals(src)) {
+            JSONObject g = entry.has("txt") || entry.has("epub") ? entry : null;
+            String pid = entry.optString("src_id", "");
+            if (g == null && pid.matches("\\d{1,6}")) // (its number known: Project Gutenberg's own standard links)
+                g = new JSONObject().put("src_id", pid).put("txt", "https://www.gutenberg.org/ebooks/" + pid + ".txt.utf-8")
+                        .put("epub", "https://www.gutenberg.org/ebooks/" + pid + ".epub3.images")
+                        .put("cover_url", "https://www.gutenberg.org/cache/epub/" + pid + "/pg" + pid + ".cover.medium.jpg");
+            if (g == null) {
+                p.at("Project Gutenberg లో వెతుకుతున్నాను…");
+                g = bestGutendex(entry.optString("q", entry.optString("t")), entry.optString("t"), entry.optString("a"));
+                if (g == null) throw new IOException("ఈ పుస్తకం Project Gutenberg లో ఇప్పుడు దొరకలేదు");
+            }
+            b.put("src_id", g.optString("src_id"));
+            if (coverUrl.isEmpty()) coverUrl = g.optString("cover_url", "");
+            if (!b.has("summary") && g.has("summary")) b.put("summary", g.optString("summary"));
+            ch = null;
+            if (!g.optString("txt").isEmpty()) {
+                p.at("⬇️ దించుతున్నాను…");
+                String text = new String(get(g.optString("txt"), MAX_BOOK), StandardCharsets.UTF_8);
+                ch = LibText.chapters(LibText.stripGutenberg(text));
+            }
+            if ((ch == null || ch.isEmpty()) && !g.optString("epub").isEmpty()) {
+                p.at("⬇️ దించుతున్నాను (EPUB)…");
+                ch = epubChapters(get(g.optString("epub"), MAX_BOOK), null);
+            }
+            b.put("credit", "Project Gutenberg (ఉచితం, కాపీరైట్ లేదు)");
+        } else if ("se".equals(src)) {
+            String sid = entry.optString("src_id", "");
+            if (!sid.matches("[a-z0-9\\-]+/[a-z0-9\\-/]+")) throw new IOException("Standard Ebooks గుర్తు సరిగా లేదు");
+            p.at("⬇️ దించుతున్నాను (Standard Ebooks)…");
+            ch = epubChapters(get("https://standardebooks.org/ebooks/" + sid + "/downloads/" + sid.replace('/', '_') + ".epub", MAX_BOOK), null);
+            b.put("credit", "Standard Ebooks (ఉచితం, కాపీరైట్ లేదు)");
+        } else if ("ws".equals(src)) {
+            String title = entry.optString("src_id", "");
+            if (title.isEmpty()) {
+                p.at("తెలుగు వికీసోర్స్‌లో వెతుకుతున్నాను…");
+                title = bestWikisource(entry.optString("q", entry.optString("t")));
+                if (title == null) throw new IOException("ఈ పుస్తకం తెలుగు వికీసోర్స్‌లో ఇప్పుడు దొరకలేదు");
+            }
+            b.put("src_id", title);
+            ch = wikisource(title, p);
+            b.put("credit", "తెలుగు వికీసోర్స్ (ఉచితం)");
+        } else throw new IOException("ఈ పుస్తకం ఉచితంగా దించుకునేది కాదు");
+        if (ch == null || ch.isEmpty()) throw new IOException("పుస్తకంలో చదవగలిగే అక్షరాలు దొరకలేదు");
+        p.at("రాక్‌లో పెడుతున్నాను…");
+        long[] n = saveChapters(c, id, ch);
+        b.put("n", (int) n[0]).put("chars", n[1]).put("state", "ready").put("wish", false).put("at", System.currentTimeMillis());
+        if (!coverUrl.isEmpty() && coverUrl.startsWith("https://")) {
+            try { byte[] img = get(coverUrl, MAX_COVER); if (img.length > 500) { Files.write(coverFile(c, id).toPath(), img); b.put("cover", true); } } catch (Exception ignored) {}
+        }
+        put(c, b);
+        return b;
+    }
+
+    /** The Gutendex hit that is this book (title words, then the author), or null; Project Gutenberg's own search when Gutendex is down. */
+    static JSONObject bestGutendex(String q, String title, String author) throws Exception {
+        List<JSONObject> hits = new ArrayList<>();
+        try {
+            JSONArray r = getJson("https://gutendex.com/books?search=" + enc(q)).optJSONArray("results");
+            for (int i = 0; r != null && i < r.length(); i++) hits.add(LibText.fromGutendex(r.getJSONObject(i)));
+        } catch (Exception e) {
+            hits = LibText.fromOpds(new String(get("https://www.gutenberg.org/ebooks/search.opds/?query=" + enc(q), 3_000_000), StandardCharsets.UTF_8));
+            if (hits.isEmpty()) throw e;
+        }
+        JSONObject best = null;
+        double bestScore = 0;
+        for (JSONObject g : hits) {
+            double s = LibText.score(title, g.optString("t"), "") + 0.3 * LibText.score(author == null ? "" : author, g.optString("a"), "")
+                    + ("en".equals(g.optString("lang")) ? 0.05 : 0) + Math.min(0.05, g.optInt("downloads") / 400000.0);
+            if (s > bestScore) { bestScore = s; best = g; }
+        }
+        return bestScore >= 0.6 ? best : null;
+    }
+
+    static String bestWikisource(String q) throws Exception {
+        JSONObject w = getJson("https://te.wikisource.org/w/api.php?action=query&list=search&srnamespace=0&srlimit=8&format=json&formatversion=2&srsearch=" + enc(q));
+        JSONArray hits = w.optJSONObject("query") == null ? null : w.getJSONObject("query").optJSONArray("search");
+        String best = null;
+        double bs = 0;
+        for (int i = 0; hits != null && i < hits.length(); i++) {
+            String t = hits.getJSONObject(i).optString("title", "");
+            String base = t.contains("/") ? t.substring(0, t.indexOf('/')) : t;
+            double s = LibText.score(q, base, "") - (t.contains("/") ? 0.05 : 0);
+            if (s > bs) { bs = s; best = base; }
+        }
+        return bs >= 0.6 ? best : null;
+    }
+
+    /** A Telugu Wikisource book: its own page, and its sub-pages in the order the page lists them (≤ 150). */
+    static List<String[]> wikisource(String title, Progress p) throws Exception {
+        p.at("⬇️ తెలుగు వికీసోర్స్ నుంచి దించుతున్నాను…");
+        String html = wsPage(title);
+        List<String> subs = LibText.subpages(html, title);
+        String prefix = title.replace(' ', '_') + "/";
+        List<String[]> out = new ArrayList<>();
+        String own = LibText.htmlToText(html);
+        if (subs.size() >= 2) {
+            if (own.length() > 1500) out.add(new String[]{title, own});
+            for (int i = 0; i < subs.size(); i++) {
+                p.at("⬇️ " + (i + 1) + " / " + subs.size() + " భాగాలు…");
+                try {
+                    String t = LibText.htmlToText(wsPage(subs.get(i)));
+                    if (t.length() > 100) out.add(new String[]{subs.get(i).substring(prefix.length()).replace('_', ' '), t});
+                } catch (Exception ignored) {}
+                Thread.sleep(250); // (gently: one page at a time)
+            }
+            return LibText.bound(out);
+        }
+        return LibText.bound(LibText.parts(own, ""));
+    }
+
+    private static String wsPage(String title) throws Exception {
+        JSONObject j = getJson("https://te.wikisource.org/w/api.php?action=parse&prop=text&redirects=1&format=json&formatversion=2&page=" + enc(title));
+        JSONObject p = j.optJSONObject("parse");
+        if (p == null) throw new IOException("వికీసోర్స్ పేజీ దొరకలేదు");
+        Object t = p.opt("text");
+        return t instanceof JSONObject ? ((JSONObject) t).optString("*", "") : String.valueOf(t);
+    }
+
+    /** An EPUB's chapters in reading order ({heading, text}); its title / author into meta when given. */
+    static List<String[]> epubChapters(byte[] epub, JSONObject meta) throws Exception {
+        Map<String, String> files = new HashMap<>();
+        try (ZipInputStream z = new ZipInputStream(new ByteArrayInputStream(epub))) {
+            for (ZipEntry e; (e = z.getNextEntry()) != null; ) {
+                String n = e.getName(), low = n.toLowerCase(Locale.ROOT);
+                if (!(low.endsWith(".opf") || low.endsWith(".xhtml") || low.endsWith(".html") || low.endsWith(".htm"))) continue;
+                files.put(n, new String(readAll(z, 8_000_000), StandardCharsets.UTF_8));
+            }
+        }
+        String opfPath = "";
+        for (String n : files.keySet()) if (n.toLowerCase(Locale.ROOT).endsWith(".opf")) { opfPath = n; break; }
+        List<String> order = new ArrayList<>();
+        if (!opfPath.isEmpty()) {
+            String opf = files.get(opfPath), base = opfPath.contains("/") ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : "";
+            if (meta != null) {
+                java.util.regex.Matcher t = java.util.regex.Pattern.compile("(?is)<dc:title[^>]*>(.*?)</dc:title>").matcher(opf);
+                if (t.find()) meta.put("t", LibText.entities(t.group(1)).trim());
+                java.util.regex.Matcher a = java.util.regex.Pattern.compile("(?is)<dc:creator[^>]*>(.*?)</dc:creator>").matcher(opf);
+                if (a.find()) meta.put("a", LibText.entities(a.group(1)).trim());
+            }
+            Map<String, String> href = new HashMap<>();
+            java.util.regex.Matcher im = java.util.regex.Pattern.compile("<item\\b[^>]*>").matcher(opf);
+            while (im.find()) {
+                String tag = im.group();
+                String id = attr(tag, "id"), h = attr(tag, "href");
+                if (!id.isEmpty() && !h.isEmpty()) href.put(id, base + LibText.pct(h));
+            }
+            java.util.regex.Matcher sm = java.util.regex.Pattern.compile("<itemref\\b[^>]*idref=\"([^\"]+)\"").matcher(opf);
+            while (sm.find()) { String h = href.get(sm.group(1)); if (h != null && files.containsKey(h)) order.add(h); }
+        }
+        if (order.isEmpty()) { order.addAll(files.keySet()); order.removeIf(n -> !n.toLowerCase(Locale.ROOT).matches(".*\\.(x?html?)$")); java.util.Collections.sort(order); }
+        List<String[]> out = new ArrayList<>();
+        StringBuilder carry = new StringBuilder();
+        for (String n : order) {
+            String low = n.toLowerCase(Locale.ROOT);
+            if (low.matches(".*(imprint|colophon|uncopyright|titlepage|halftitle|toc|nav|loi|endnotes)\\.x?html?$")) continue;
+            String html = files.get(n), text = LibText.htmlToText(html);
+            if (text.length() < 300) { if (!text.isEmpty()) carry.append(text).append('\n'); continue; }
+            out.add(new String[]{LibText.firstHeading(html), carry + text});
+            carry.setLength(0);
+        }
+        if (out.isEmpty() && carry.length() > 0) out.add(new String[]{"", carry.toString()});
+        return LibText.bound(out);
+    }
+
+    private static String attr(String tag, String name) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\b" + name + "=\"([^\"]*)\"").matcher(tag);
+        return m.find() ? m.group(1) : "";
+    }
+
+    // ================================================================ ➕ his own books from the phone
+
+    /** What he picked: {kind: txt|epub|pdf, pages, t, a} (the slow part runs later in add). */
+    static JSONObject inspect(Context c, Uri uri, String name) throws Exception {
+        String low = name == null ? "" : name.toLowerCase(Locale.ROOT);
+        String mime = c.getContentResolver().getType(uri);
+        String kind = low.endsWith(".epub") || "application/epub+zip".equals(mime) ? "epub" : low.endsWith(".pdf") || "application/pdf".equals(mime) ? "pdf" : "txt";
+        JSONObject o = new JSONObject().put("kind", kind).put("t", name == null ? "" : name.replaceAll("\\.[A-Za-z0-9]{2,5}$", "").replace('_', ' ')).put("a", "");
+        if ("pdf".equals(kind)) {
+            try (ParcelFileDescriptor fd = c.getContentResolver().openFileDescriptor(uri, "r"); PdfRenderer r = new PdfRenderer(fd)) { o.put("pages", r.getPageCount()); }
+        } else if ("epub".equals(kind)) {
+            try (InputStream in = c.getContentResolver().openInputStream(uri)) { epubChapters(readAll(in, 30_000_000), o); } catch (Exception ignored) {}
+        }
+        return o;
+    }
+
+    /**
+     * Adds his file / page photos as a book. pages: page pictures (a PDF's pages or the scanner's photos); lang "en" read by
+     * the phone (₹0), "te" by his AI (asked first on the page). Photos and the PDF are not kept: only the text.
+     */
+    static JSONObject add(Context c, JSONObject form, Uri file, List<Uri> photos, Progress p, AiJob job) throws Exception {
+        String id = "f-" + Long.toString(System.currentTimeMillis(), 36);
+        String kind = form.optString("kind", "txt"), lang = "te".equals(form.optString("lang")) ? "te" : "en";
+        JSONObject b = new JSONObject().put("id", id).put("t", LibText.cut(form.optString("t", "నా పుస్తకం").trim(), 160)).put("a", LibText.cut(form.optString("a", "").trim(), 100))
+                .put("src", photos != null ? "scan" : "file").put("lang", lang).put("sec", form.optString("sec", "mine")).put("era", form.optString("era", "now"))
+                .put("at", System.currentTimeMillis()).put("credit", photos != null ? "మీ ఫోటోల నుంచి" : "మీ ఫోన్ నుంచి");
+        if (b.optString("t").isEmpty()) b.put("t", "నా పుస్తకం");
+        if (!java.util.Arrays.asList(LibText.SECTIONS).contains(b.optString("sec"))) b.put("sec", "mine");
+        if (!java.util.Arrays.asList(LibText.ERAS).contains(b.optString("era"))) b.put("era", "now");
+        List<String[]> ch;
+        if (photos == null && !"pdf".equals(kind)) {
+            p.at("చదువుతున్నాను…");
+            byte[] bytes;
+            try (InputStream in = c.getContentResolver().openInputStream(file)) { bytes = readAll(in, 30_000_000); }
+            if ("epub".equals(kind)) ch = epubChapters(bytes, null);
+            else {
+                String text = new String(bytes, StandardCharsets.UTF_8);
+                if (text.contains("�")) text = new String(bytes, "windows-1252");
+                if (text.contains("PROJECT GUTENBERG")) text = LibText.stripGutenberg(text);
+                ch = LibText.chapters(text);
+            }
+        } else ch = pages(c, file, photos, lang, p, job);
+        if (ch == null || ch.isEmpty()) throw new IOException("ఇందులో చదవగలిగే అక్షరాలు దొరకలేదు");
+        long[] n = saveChapters(c, id, ch);
+        b.put("n", (int) n[0]).put("chars", n[1]).put("state", "ready");
+        put(c, b);
+        return b;
+    }
+
+    /** Page pictures → text: English by the phone's own reader (₹0), Telugu by his AI; 10 pages a chapter. */
+    private static List<String[]> pages(Context c, Uri pdf, List<Uri> photos, String lang, Progress p, AiJob job) throws Exception {
+        List<String> texts = new ArrayList<>();
+        ParcelFileDescriptor fd = null;
+        PdfRenderer r = null;
+        TextRecognizer rec = "en".equals(lang) ? OfflineRead.recognizer() : null;
+        Workshop.Engine e = "te".equals(lang) ? Workshop.engine(new Prefs(c)) : null;
+        try {
+            int n;
+            if (photos == null) { fd = c.getContentResolver().openFileDescriptor(pdf, "r"); r = new PdfRenderer(fd); n = r.getPageCount(); }
+            else n = photos.size();
+            n = Math.min(n, 600);
+            for (int i = 0; i < n; i++) {
+                if (job != null && job.stop) throw new IOException("ఆపేశాను");
+                p.at("📄 పేజీ " + (i + 1) + " / " + n + ("te".equals(lang) ? " (AI)" : "") + "…");
+                Bitmap bm;
+                if (r != null) {
+                    try (PdfRenderer.Page pg = r.openPage(i)) {
+                        int w = 1400, h = Math.round(w * (pg.getHeight() / (float) Math.max(1, pg.getWidth())));
+                        bm = Bitmap.createBitmap(w, Math.min(h, 4000), Bitmap.Config.ARGB_8888);
+                        bm.eraseColor(android.graphics.Color.WHITE);
+                        pg.render(bm, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
+                    }
+                } else bm = decode(c, photos.get(i));
+                if (bm == null) { texts.add(""); continue; }
+                String t;
+                if (rec != null) { t = OfflineRead.text(rec, bm); if (t == null) t = ""; }
+                else {
+                    String over = Workshop.overLimit(c, new Prefs(c)); // (this month's limit, checked before every paid page)
+                    if (over != null) throw new IOException(over);
+                    ByteArrayOutputStream o = new ByteArrayOutputStream();
+                    bm.compress(Bitmap.CompressFormat.JPEG, 80, o);
+                    t = aiPage(c, e, android.util.Base64.encodeToString(o.toByteArray(), android.util.Base64.NO_WRAP), job);
+                }
+                bm.recycle();
+                texts.add(t.trim());
+            }
+        } finally {
+            try { if (r != null) r.close(); } catch (Exception ignored) {}
+            try { if (fd != null) fd.close(); } catch (Exception ignored) {}
+            try { if (rec != null) rec.close(); } catch (Exception ignored) {}
+        }
+        List<String[]> out = new ArrayList<>();
+        for (int i = 0; i < texts.size(); i += 10) {
+            StringBuilder b = new StringBuilder();
+            for (int k = i; k < Math.min(texts.size(), i + 10); k++) if (!texts.get(k).isEmpty()) b.append(LibText.unwrap(texts.get(k))).append('\n');
+            if (b.toString().trim().length() > 20) out.add(new String[]{"పేజీలు " + (i + 1) + "–" + Math.min(texts.size(), i + 10), b.toString().trim()});
+        }
+        return out;
+    }
+
+    private static Bitmap decode(Context c, Uri u) {
+        try {
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inJustDecodeBounds = true;
+            try (InputStream in = c.getContentResolver().openInputStream(u)) { BitmapFactory.decodeStream(in, null, o); }
+            int s = 1;
+            while (Math.max(o.outWidth, o.outHeight) / s > 2200) s *= 2;
+            BitmapFactory.Options d = new BitmapFactory.Options();
+            d.inSampleSize = s;
+            try (InputStream in = c.getContentResolver().openInputStream(u)) { return BitmapFactory.decodeStream(in, null, d); }
+        } catch (Exception e) { return null; }
+    }
+
+    private static final String PAGE_SYS = "You read a printed book page for a reading app. Output only the page's running text exactly as written "
+            + "(Telugu or English), in reading order, as plain paragraphs. Leave out page numbers, headers, footers and figure labels. "
+            + "No comments. If the page has no text, output nothing.";
+
+    private static String aiPage(Context c, Workshop.Engine e, String jpeg, AiJob job) throws Exception {
+        StringBuilder sb = new StringBuilder();
+        Workshop.Bill bill = new Workshop.Bill();
+        try { Workshop.stream(e, PAGE_SYS, "Read this page.", jpeg, 3000, sb::append, bill); }
+        finally { Workshop.spendBooks(c, bill.rupees, false); if (job != null) job.rupees += bill.rupees; }
+        return sb.toString();
+    }
+
+    /** ₹ for reading that many Telugu page photos with his AI (approximate). */
+    static double pagesQuote(Prefs p, int pages) {
+        String m = p.workshopModel().trim();
+        return m.isEmpty() ? 0 : pages * Workshop.rupees(m, 1750, 0, 900);
+    }
+
+    // ================================================================ 🇬🇧 → తెలుగు on the phone (₹0, Google's on-phone pack)
+
+    private static Translator phoneTr;
+
+    static synchronized Translator phoneTranslator(Context c) {
+        if (!OfflineRead.ready(c)) return null;
+        if (phoneTr == null) phoneTr = OfflineRead.translator();
+        return phoneTr;
+    }
+
+    static synchronized void closeTranslator() {
+        try { if (phoneTr != null) phoneTr.close(); } catch (Exception ignored) {}
+        phoneTr = null;
+    }
+
+    /** Where a book's (or a folder file's) translations are kept: its own folder, or library/tr/<key>. */
+    static File trDir(Context c, String key) {
+        File d = LibText.goodId(key) && bookDir(c, key).exists() ? new File(bookDir(c, key), "tr") : new File(new File(root(c), "tr"), key.replaceAll("[^a-z0-9\\-]", ""));
+        d.mkdirs();
+        return d;
+    }
+
+    private static final Map<String, String[]> trMem = new LinkedHashMap<String, String[]>(8, 0.75f, true) {
+        @Override protected boolean removeEldestEntry(Map.Entry<String, String[]> e) { return size() > 6; }
+    };
+
+    /** Kept translations of one chapter ("te" phone / "ai"), n parts; null when none were kept. */
+    static synchronized String[] kept(Context c, String key, String how, int unit, int n) {
+        String k = key + "|" + how + "|" + unit;
+        String[] m = trMem.get(k);
+        if (m != null && m.length == n) return m;
+        try {
+            JSONObject j = new JSONObject(new String(Files.readAllBytes(new File(trDir(c, key), how + "_" + unit + ".json").toPath()), StandardCharsets.UTF_8));
+            JSONArray a = j.getJSONArray("a");
+            if (a.length() != n) return null; // (the chapter was cut differently: start again)
+            String[] s = new String[n];
+            for (int i = 0; i < n; i++) s[i] = a.isNull(i) ? null : a.optString(i, null);
+            trMem.put(k, s);
+            return s;
+        } catch (Exception e) { return null; }
+    }
+
+    static synchronized void keep(Context c, String key, String how, int unit, String[] s) {
+        trMem.put(key + "|" + how + "|" + unit, s);
+        try {
+            JSONArray a = new JSONArray();
+            for (String x : s) a.put(x == null ? JSONObject.NULL : x);
+            Files.write(new File(trDir(c, key), how + "_" + unit + ".json").toPath(), new JSONObject().put("a", a).toString().getBytes(StandardCharsets.UTF_8));
+        } catch (Exception ignored) {}
+    }
+
+    /** One part in Telugu by the phone (kept); null when the pack isn't on the phone or it failed. Background thread. */
+    static String tePart(Context c, String key, int unit, List<String> parts, int k) {
+        String[] s = kept(c, key, "te", unit, parts.size());
+        if (s != null && s[k] != null) return s[k];
+        Translator t = phoneTranslator(c);
+        if (t == null) return null;
+        String te;
+        try { te = Tasks.await(t.translate(parts.get(k)), 30, TimeUnit.SECONDS); } catch (Exception e) { return null; }
+        if (te == null || te.trim().isEmpty()) return null;
+        if (s == null) s = new String[parts.size()];
+        s[k] = te.trim();
+        keep(c, key, "te", unit, s);
+        return s[k];
+    }
+
+    /** Is every part of this chapter in AI Telugu? */
+    static boolean aiDone(Context c, String key, int unit, int n) {
+        String[] s = kept(c, key, "ai", unit, n);
+        if (s == null) return false;
+        for (String x : s) if (x == null) return false;
+        return true;
+    }
+
+    // ================================================================ ✨ తెలుగు by his AI: the cost said first, chapter by chapter
+
+    static final class AiJob {
+        final String id;
+        final List<Integer> units;
+        volatile boolean stop;
+        volatile double rupees;
+        volatile int done;
+        AiJob(String id, List<Integer> units) { this.id = id; this.units = units; }
+    }
+
+    static volatile AiJob running;
+
+    interface AiWatch { void progress(AiJob j, String line); void finished(AiJob j, String said); }
+
+    static volatile AiWatch aiWatch;
+
+    private static final String TR_SYS = "You translate English book text into natural, simple, flowing Telugu that reads well aloud to a Telugu "
+            + "listener. Keep the meaning, the names, the story and the tone; do not add, explain or leave out anything. "
+            + "Write each numbered line's Telugu on one line, in the same form: [n] Telugu text. Output nothing else.";
+
+    /** The cost before AI Telugu: {model, chapter: {chars, rupees, done}, book: {chapters, left, chars, rupees}, used, limit}. */
+    static JSONObject quote(Context c, String id, int unit) throws Exception {
+        Prefs p = new Prefs(c);
+        String m = p.workshopModel().trim();
+        JSONObject o = new JSONObject().put("t", "quote").put("id", id).put("unit", unit).put("model", m)
+                .put("used", Math.round(Workshop.spent(c))).put("limit", p.workshopLimit());
+        int n = count(c, id);
+        long all = 0, left = 0, here = 0;
+        int leftN = 0;
+        boolean hereDone = false;
+        for (int u = 0; u < n; u++) {
+            String text = chapter(c, id, u);
+            int parts = ReaderService.split(text).size();
+            boolean d = aiDone(c, id, u, parts);
+            all += text.length();
+            if (!d) { left += text.length(); leftN++; }
+            if (u == unit) { here = text.length(); hereDone = d; }
+        }
+        o.put("chapter", new JSONObject().put("chars", here).put("done", hereDone).put("rupees", m.isEmpty() ? 0 : cost(m, here)));
+        o.put("book", new JSONObject().put("chapters", n).put("left", leftN).put("chars", left).put("rupees", m.isEmpty() ? 0 : cost(m, left)));
+        if (m.isEmpty()) o.put("why", "వర్క్‌షాప్ AI ఇంకా ఎంచుకోలేదు Sir. ⚙️ → 🛠️ వర్క్‌షాప్ లో మోడల్ ఎంచుకుంటే (చౌక మోడల్ అయితే ఖర్చు తక్కువ) ✨ పనిచేస్తుంది.");
+        String over = Workshop.overLimit(c, p);
+        if (over != null) o.put("why", over);
+        return o;
+    }
+
+    static double cost(String model, long chars) {
+        return chars <= 0 ? 0 : Workshop.rupees(model, LibText.tokensIn(chars) + 300 * (chars / 5000 + 1), 0, LibText.tokensOutTelugu(chars));
+    }
+
+    /** Starts AI Telugu for those chapters (one job at a time); false when one is running. */
+    static synchronized boolean aiStart(Context c, String id, List<Integer> units) {
+        if (running != null) return false;
+        AiJob j = new AiJob(id, units);
+        running = j;
+        Context app = c.getApplicationContext();
+        new Thread(() -> aiRun(app, j), "jarvis-library-ai").start();
+        return true;
+    }
+
+    private static void aiRun(Context c, AiJob j) {
+        String said;
+        int missing = 0;
+        try {
+            Prefs p = new Prefs(c);
+            Workshop.Engine e = Workshop.engine(p);
+            for (int u : j.units) {
+                if (j.stop) break;
+                String text = chapter(c, j.id, u);
+                List<String> parts = ReaderService.split(text);
+                String[] s = kept(c, j.id, "ai", u, parts.size());
+                if (s == null) s = new String[parts.size()];
+                int k = 0;
+                while (k < parts.size() && !j.stop) {
+                    if (s[k] != null) { k++; continue; }
+                    String over = Workshop.overLimit(c, p);
+                    if (over != null) throw new Workshop.Problem(over);
+                    // a batch: up to 40 parts / about 5,000 letters, skipping ones already done
+                    List<Integer> idx = new ArrayList<>();
+                    int chars = 0;
+                    for (int q = k; q < parts.size() && idx.size() < 40 && chars < 5000; q++) if (s[q] == null) { idx.add(q); chars += parts.get(q).length(); }
+                    String[] got = translateBatch(c, e, parts, idx, j);
+                    String[] again = null;
+                    List<Integer> miss = new ArrayList<>();
+                    for (int q = 0; q < idx.size(); q++) if (got[q] == null) miss.add(q);
+                    if (!miss.isEmpty() && !j.stop) { // (one more try for the lines that didn't come back, same model)
+                        List<Integer> idx2 = new ArrayList<>();
+                        for (int q : miss) idx2.add(idx.get(q));
+                        again = translateBatch(c, e, parts, idx2, j);
+                        for (int q = 0; q < miss.size(); q++) got[miss.get(q)] = again[q];
+                    }
+                    for (int q = 0; q < idx.size(); q++) { s[idx.get(q)] = got[q]; if (got[q] == null) missing++; }
+                    keep(c, j.id, "ai", u, s);
+                    k = idx.get(idx.size() - 1) + 1;
+                    AiWatch w = aiWatch;
+                    if (w != null) w.progress(j, "✨ అధ్యాయం " + (u + 1) + ": " + k + " / " + parts.size() + " · " + Workshop.money(j.rupees));
+                }
+                if (j.stop) break;
+                j.done++;
+            }
+            said = j.stop ? "✨ ఆపేశాను Sir. ఇప్పటిదాకా ఖర్చు " + Workshop.money(j.rupees) + ". అయిన భాగాలు దాచాను."
+                    : "✨ AI తెలుగు అయింది Sir: " + j.done + (j.done == 1 ? " అధ్యాయం" : " అధ్యాయాలు") + ", ఖర్చు " + Workshop.money(j.rupees) + "."
+                    + (missing > 0 ? " " + missing + " వాక్యాలు అనువాదం కాలేదు (అవి ఇంగ్లీషులోనే చదువుతాను)." : "");
+            Workshop.spendBooks(c, 0, true);
+        } catch (Workshop.Problem e) {
+            said = e.getMessage() + (j.rupees > 0 ? " (ఇప్పటిదాకా " + Workshop.money(j.rupees) + ")" : "");
+        } catch (Exception e) {
+            said = "✨ AI తెలుగు ఆగిపోయింది Sir: " + (e.getMessage() == null ? "సమస్య" : e.getMessage()) + ". ఖర్చు " + Workshop.money(j.rupees) + "; అయిన భాగాలు దాచాను.";
+        }
+        running = null;
+        AiWatch w = aiWatch;
+        if (w != null) w.finished(j, said);
+        else notifyDone(c, said);
+    }
+
+    private static String[] translateBatch(Context c, Workshop.Engine e, List<String> parts, List<Integer> idx, AiJob j) throws Exception {
+        List<String> batch = new ArrayList<>();
+        int chars = 0;
+        for (int q : idx) { batch.add(parts.get(q)); chars += parts.get(q).length(); }
+        StringBuilder sb = new StringBuilder();
+        Workshop.Bill bill = new Workshop.Bill();
+        int maxOut = (int) Math.min(16000, LibText.tokensOutTelugu(chars) * 2 + 600);
+        try { Workshop.stream(e, TR_SYS, LibText.numberedRequest(batch, 0), maxOut, sb::append, bill); }
+        finally { Workshop.spendBooks(c, bill.rupees, false); j.rupees += bill.rupees; }
+        return LibText.numbered(sb.toString(), batch.size());
+    }
+
+    private static void notifyDone(Context c, String said) {
+        try {
+            NotificationManager nm = c.getSystemService(NotificationManager.class);
+            nm.createNotificationChannel(new NotificationChannel("jarvis_library", "📚 లైబ్రరీ", NotificationManager.IMPORTANCE_LOW));
+            nm.notify(194, new Notification.Builder(c, "jarvis_library").setSmallIcon(android.R.drawable.ic_menu_agenda)
+                    .setContentTitle("📚 Jarvis లైబ్రరీ").setContentText(said).setStyle(new Notification.BigTextStyle().bigText(said)).setAutoCancel(true).build());
+        } catch (Exception ignored) {}
+    }
+
+    // ================================================================ 🗣️ "… పుస్తకం చదువు": which book he means
+
+    /** The best match among his books and the racks: {entry, have}; null when none is close. */
+    static JSONObject find(Context c, String name) throws Exception {
+        String q = name == null ? "" : name.trim();
+        if (q.isEmpty()) return null;
+        JSONObject best = null;
+        double bs = 0;
+        JSONArray sh = shelf(c);
+        for (int i = 0; i < sh.length(); i++) {
+            JSONObject b = sh.optJSONObject(i);
+            if (b == null || !"ready".equals(b.optString("state"))) continue;
+            double s = Math.max(LibText.score(q, b.optString("t") + " " + b.optString("tt"), b.optString("a")), LibText.score(q, b.optString("tt"), "")) + 0.02;
+            if (s > bs) { bs = s; best = b; }
+        }
+        JSONArray st = starter(c);
+        for (int i = 0; i < st.length(); i++) {
+            JSONObject b = st.optJSONObject(i);
+            if (b == null) continue;
+            double s = Math.max(LibText.score(q, b.optString("t") + " " + b.optString("tt"), b.optString("a")), LibText.score(q, b.optString("tt"), ""));
+            if (s > bs) { bs = s; best = b; }
+        }
+        if (best == null || bs < 0.5) return null;
+        JSONObject have = book(c, best.optString("id"));
+        boolean ready = have != null && "ready".equals(have.optString("state"));
+        return new JSONObject().put("entry", ready ? have : best).put("have", ready);
+    }
+
+    /** Library books for the voice: names on his phone. */
+    static JSONArray names(Context c) {
+        JSONArray a = new JSONArray(), sh = shelf(c);
+        for (int i = 0; i < sh.length() && a.length() < 60; i++) {
+            JSONObject b = sh.optJSONObject(i);
+            if (b != null && "ready".equals(b.optString("state"))) a.put(b.optString("t"));
+        }
+        return a;
+    }
+}

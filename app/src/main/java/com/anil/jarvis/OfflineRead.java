@@ -31,7 +31,7 @@ final class OfflineRead {
     /** The English -> Telugu pack is on the phone. */
     static boolean ready(Context c) { return sp(c).getBoolean("te_pack", false); }
 
-    private static Translator translator() {
+    static Translator translator() {
         return Translation.getClient(new TranslatorOptions.Builder().setSourceLanguage(TranslateLanguage.ENGLISH).setTargetLanguage(TranslateLanguage.TELUGU).build());
     }
 
