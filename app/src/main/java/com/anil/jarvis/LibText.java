@@ -403,6 +403,48 @@ final class LibText {
                 .put("cover_url", "https://www.gutenberg.org/cache/epub/" + n + "/pg" + n + ".cover.medium.jpg");
     }
 
+    /** Project Gutenberg's foundation (PGLAF) keeps the same files on a second site: used when www.gutenberg.org is down. */
+    static final String PG_MIRROR = "https://gutenberg.pglaf.org";
+
+    /** The same Project Gutenberg file on its second site (gutenberg.pglaf.org/cache/epub/<n>/…), or "" (not a Gutenberg file). */
+    static String pgMirror(String url) {
+        if (url == null) return "";
+        Matcher m = Pattern.compile("^https?://(?:www\\.)?gutenberg\\.org(/[^?#\\s]*)$").matcher(url.trim());
+        if (!m.find()) return "";
+        String path = m.group(1);
+        Matcher x = Pattern.compile("^/cache/epub/(\\d{1,6})/(pg\\d{1,6}[A-Za-z0-9._\\-]*)$").matcher(path);
+        if (x.find()) return PG_MIRROR + "/cache/epub/" + x.group(1) + "/" + x.group(2);
+        String n;
+        if ((n = num(path, "^/ebooks/(\\d{1,6})\\.txt(?:\\.utf-8)?$")) != null) return pgCache(n, ".txt");
+        if ((n = num(path, "^/files/(\\d{1,6})/[A-Za-z0-9._\\-]+\\.txt$")) != null) return pgCache(n, ".txt");
+        if ((n = num(path, "^/ebooks/(\\d{1,6})\\.epub3\\.images$")) != null) return pgCache(n, "-images-3.epub");
+        if ((n = num(path, "^/ebooks/(\\d{1,6})\\.epub\\.images$")) != null) return pgCache(n, "-images.epub");
+        if ((n = num(path, "^/ebooks/(\\d{1,6})\\.epub(?:\\.noimages)?$")) != null) return pgCache(n, ".epub");
+        return "";
+    }
+
+    private static String num(String path, String re) { Matcher x = Pattern.compile(re).matcher(path); return x.find() ? x.group(1) : null; }
+
+    private static String pgCache(String n, String end) { return PG_MIRROR + "/cache/epub/" + n + "/pg" + n + end; }
+
+    static boolean isPgMirror(String url) { return url != null && url.startsWith(PG_MIRROR + "/"); }
+
+    static boolean isPgMain(String url) { return url != null && url.matches("^https://(?:www\\.)?gutenberg\\.org/.*"); }
+
+    /** The addresses to try for one file, in order: its own address, the same file on the second site, then the other address and its copy. */
+    static List<String> pgAddresses(String a, String b) {
+        List<String> out = new ArrayList<>();
+        for (String u : new String[]{a, b}) {
+            if (u == null || u.trim().isEmpty()) continue;
+            u = u.trim();
+            if (u.startsWith("http://") && pgMirror(u).length() > 0) u = "https://" + u.substring(7); // (Gutenberg's own links, always https here)
+            if (!out.contains(u)) out.add(u);
+            String mm = pgMirror(u);
+            if (!mm.isEmpty() && !out.contains(mm)) out.add(mm);
+        }
+        return out;
+    }
+
     /** The book's own title in a Project Gutenberg file ("Title: …", or its first line "The Project Gutenberg eBook of …"). */
     static String pgTitle(String text) {
         if (text == null) return "";

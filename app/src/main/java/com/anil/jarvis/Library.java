@@ -404,7 +404,7 @@ final class Library {
         long[] n = saveChapters(c, id, ch);
         b.put("n", (int) n[0]).put("chars", n[1]).put("state", "ready").put("wish", false).put("at", System.currentTimeMillis());
         if (!coverUrl.isEmpty() && coverUrl.startsWith("https://")) {
-            try { byte[] img = get(coverUrl, MAX_COVER); if (img.length > 500) { Files.write(coverFile(c, id).toPath(), img); b.put("cover", true); } } catch (Exception ignored) {}
+            try { byte[] img = getCover(coverUrl, MAX_COVER); if (img.length > 500) { Files.write(coverFile(c, id).toPath(), img); b.put("cover", true); } } catch (Exception ignored) {}
         }
         put(c, b);
         return b;
@@ -416,13 +416,8 @@ final class Library {
         String txt = g.optString("txt", "");
         if (!txt.isEmpty()) {
             p.at("⬇️ Project Gutenberg నుంచి దించుతున్నాను…");
-            String text;
-            try { text = new String(get(txt, MAX_BOOK), StandardCharsets.UTF_8); }
-            catch (IOException e) { // (the other standard address of the same file)
-                String alt = g.optString("txt2", "");
-                if (alt.isEmpty()) throw e;
-                text = new String(get(alt, MAX_BOOK), StandardCharsets.UTF_8);
-            }
+            // (its own address, the same file on Gutenberg's second site, then the other standard address)
+            String text = new String(pgGet(LibText.pgAddresses(txt, g.optString("txt2", "")), MAX_BOOK, p), StandardCharsets.UTF_8);
             String own = LibText.pgTitle(text);
             if (wanted != null && !wanted.isEmpty() && !own.isEmpty() && !LibText.sameBook(wanted, own))
                 throw new IOException("Project Gutenberg లో ఆ సంఖ్యలో వేరే పుస్తకం ఉంది (" + LibText.cut(own, 60) + ")");
@@ -430,9 +425,45 @@ final class Library {
         }
         if ((ch == null || ch.isEmpty()) && !g.optString("epub").isEmpty()) {
             p.at("⬇️ దించుతున్నాను (EPUB)…");
-            ch = epubChapters(get(g.optString("epub"), MAX_BOOK), null);
+            ch = epubChapters(pgGet(LibText.pgAddresses(g.optString("epub"), ""), MAX_BOOK, p), null);
         }
         return ch;
+    }
+
+    /** Until this time www.gutenberg.org is taken as down (it failed a moment ago): its second site is tried first. */
+    private static volatile long pgDownUntil = 0;
+
+    /** One file from the first address that answers; when Gutenberg's main site fails, the same file from gutenberg.pglaf.org. */
+    static byte[] pgGet(List<String> urls, int max, Progress p) throws IOException {
+        List<String> order = new ArrayList<>(urls);
+        if (System.currentTimeMillis() < pgDownUntil) { // (the main site just failed: its second site first, the main one after)
+            List<String> mirrors = new ArrayList<>();
+            for (String u : urls) if (LibText.isPgMirror(u)) mirrors.add(u);
+            order.removeAll(mirrors);
+            order.addAll(0, mirrors);
+        }
+        IOException own = null, other = null; // (own: an address that is not the second site — its problem is the one told)
+        boolean triedMirror = false;
+        for (String u : order) {
+            boolean mirror = LibText.isPgMirror(u);
+            if (mirror && p != null) p.at("⬇️ Gutenberg రెండో సైట్ (gutenberg.pglaf.org) నుంచి దించుతున్నాను…");
+            try { return get(u, max); }
+            catch (IOException e) {
+                String m = String.valueOf(e.getMessage());
+                if (LibText.isPgMain(u) && !m.startsWith("HTTP 4")) pgDownUntil = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(10);
+                if (mirror) { triedMirror = true; if (other == null) other = e; }
+                else if (own == null) own = e;
+            }
+        }
+        IOException told = own != null ? own : other;
+        if (told == null) throw new IOException("దించే లింక్ లేదు");
+        if (triedMirror && own != null) throw new IOException(own.getMessage() + " · రెండో సైట్ (gutenberg.pglaf.org) నుంచి కూడా రాలేదు");
+        throw told;
+    }
+
+    /** A cover picture: its own address, else (a Gutenberg cover) the same picture from the second site. */
+    static byte[] getCover(String url, int max) throws IOException {
+        return pgGet(LibText.pgAddresses(url, ""), max, null);
     }
 
     /** A free copy of this book: Gutendex (Gutenberg's own feed when it is down), else Open Library's link to Project Gutenberg. */

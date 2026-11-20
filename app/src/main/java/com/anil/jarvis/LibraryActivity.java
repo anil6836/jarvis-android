@@ -301,7 +301,7 @@ public class LibraryActivity extends Activity {
                 if (u.isEmpty()) continue;
                 u = u.replace(".cover.medium.jpg", ".cover.small.jpg").replace("-M.jpg", "-S.jpg");
                 try {
-                    byte[] img = Library.get(u, 300_000);
+                    byte[] img = Library.getCover(u, 300_000);
                     if (img.length > 300) send(json("thumb").put("id", o.optString("id")).put("d", "data:image/jpeg;base64," + android.util.Base64.encodeToString(img, android.util.Base64.NO_WRAP)));
                 } catch (Exception ignored) {}
             }
