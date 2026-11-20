@@ -316,7 +316,7 @@ final class Showpiece {
             {act("hx", 0), "చేతి ఎక్స్‌రే ఆపు", "hand xray off", "చేతి కిటికీ ఆపు"},
             {act("inside", ""), "లోపల", "లోపలికి", "లోపల చూపించు", "inside", "go inside", "లోపలికి వెళ్ళు", "లోపల ఏముంది", "దీని లోపల"},
             {act("inside_off"), "బయటికి", "బయటకి", "లోపల నుంచి బయటికి", "inside off", "close inside", "out", "బయటికి రా"},
-            {act("buddy", "person"), "మనిషి పక్కన", "మనిషితో పోల్చు", "మనిషి", "person", "size compare", "సైజు పోల్చు", "మనిషితో", "ఎంత పెద్దది"},
+            {act("buddy", "person"), "మనిషి పక్కన", "మనిషితో పోల్చు", "మనిషి", "person", "size compare", "సైజు పోల్చు", "మనిషితో", "మనిషితో పోలిక"},
             {act("buddy", "coin"), "నాణెం", "coin", "రూపాయి నాణెం", "నాణెంతో పోల్చు"},
             {act("buddy", ""), "పోలిక తీసేయ్", "పోలిక వద్దు", "మనిషిని తీసేయ్", "compare off"},
             {act("cond", "hot"), "హాట్ డే", "ఎండ", "ఎండాకాలం", "hot day", "hot", "వేసవి", "40 డిగ్రీలు", "ఎండలో"},
@@ -373,7 +373,8 @@ final class Showpiece {
         String t = Workshop.norm(text);
         if (t == null || t.isEmpty()) return null;
         t = t.replace("ఈ ", "").replace("ఆ ", "").trim();
-        for (Object[] row : WORDS) for (int i = 1; i < row.length; i++) if (t.equals(row[i])) return (Act) row[0];
+        String alt = t.replaceAll("యి(?= |$)", "య్"), alt2 = t.replaceAll("య్(?= |$)", "యి"); // ("తీయి" / "తీయ్": both spellings)
+        for (Object[] row : WORDS) for (int i = 1; i < row.length; i++) if (t.equals(row[i]) || alt.equals(row[i]) || alt2.equals(row[i])) return (Act) row[0];
         Matcher m = PCT.matcher(t);
         if (!m.find()) m = PCT2.matcher(t);
         else m.reset();
