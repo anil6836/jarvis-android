@@ -239,17 +239,20 @@ final class Library {
                 int s = c.getResponseCode();
                 if (s >= 300 && s < 400) {
                     String loc = c.getHeaderField("Location");
-                    if (loc == null) throw new IOException("HTTP " + s);
+                    if (loc == null) throw new IOException("HTTP " + s + " (" + host(u) + ")");
                     u = new URL(new URL(u), loc).toString();
                     continue;
                 }
-                if (s == 429) throw new IOException("సైట్ కొంచెం ఆగమంది (చాలా అడిగాం). కాసేపాగి మళ్ళీ ప్రయత్నించండి");
-                if (s >= 400) throw new IOException("HTTP " + s);
+                if (s == 429) throw new IOException(host(u) + " కొంచెం ఆగమంది (చాలా అడిగాం). కాసేపాగి మళ్ళీ ప్రయత్నించండి");
+                if (s >= 500) throw new IOException(host(u) + " సైట్ ఇప్పుడు పనిచేయడం లేదు (HTTP " + s + ")");
+                if (s >= 400) throw new IOException("HTTP " + s + " (" + host(u) + ")");
                 try (InputStream in = c.getInputStream()) { return readAll(in, max); }
             } finally { c.disconnect(); }
         }
         throw new IOException("చాలా redirects");
     }
+
+    private static String host(String u) { try { return new URL(u).getHost().replaceFirst("^www\\.", ""); } catch (Exception e) { return "సైట్"; } }
 
     static JSONObject getJson(String url) throws Exception {
         return new JSONObject(new String(get(url, 4_000_000), StandardCharsets.UTF_8));
@@ -359,28 +362,25 @@ final class Library {
         if ("pg".equals(src)) {
             JSONObject g = entry.has("txt") || entry.has("epub") ? entry : null;
             String pid = entry.optString("src_id", "");
-            if (g == null && pid.matches("\\d{1,6}")) // (its number known: Project Gutenberg's own standard links)
-                g = new JSONObject().put("src_id", pid).put("txt", "https://www.gutenberg.org/ebooks/" + pid + ".txt.utf-8")
-                        .put("epub", "https://www.gutenberg.org/ebooks/" + pid + ".epub3.images")
-                        .put("cover_url", "https://www.gutenberg.org/cache/epub/" + pid + "/pg" + pid + ".cover.medium.jpg");
-            if (g == null) {
+            if (!pid.matches("\\d{1,6}")) pid = entry.optString("pg", ""); // (a rack book: its Project Gutenberg number)
+            if (g == null && pid.matches("\\d{1,6}")) g = LibText.pgLinks(pid);
+            ch = null;
+            String problem = null;
+            if (g != null) {
+                try { ch = pgText(g, entry.optString("t"), p); }
+                catch (Exception e) { problem = e.getMessage(); }
+            }
+            if (ch == null || ch.isEmpty()) { // (no number, or the file wasn't this book: find a free copy another way)
                 p.at("Project Gutenberg లో వెతుకుతున్నాను…");
-                g = bestGutendex(entry.optString("q", entry.optString("t")), entry.optString("t"), entry.optString("a"));
-                if (g == null) throw new IOException("ఈ పుస్తకం Project Gutenberg లో ఇప్పుడు దొరకలేదు");
+                JSONObject f = bestFree(entry.optString("q", entry.optString("t")), entry.optString("t"), entry.optString("a"));
+                if (f == null && problem != null) throw new IOException(problem);
+                if (f == null) throw new IOException("ఈ పుస్తకం ఉచిత కాపీ ఇప్పుడు దొరకలేదు");
+                if (!f.optString("src_id").equals(g == null ? "" : g.optString("src_id"))) { g = f; ch = pgText(g, entry.optString("t"), p); }
+                else if (problem != null) throw new IOException(problem);
             }
             b.put("src_id", g.optString("src_id"));
             if (coverUrl.isEmpty()) coverUrl = g.optString("cover_url", "");
             if (!b.has("summary") && g.has("summary")) b.put("summary", g.optString("summary"));
-            ch = null;
-            if (!g.optString("txt").isEmpty()) {
-                p.at("⬇️ దించుతున్నాను…");
-                String text = new String(get(g.optString("txt"), MAX_BOOK), StandardCharsets.UTF_8);
-                ch = LibText.chapters(LibText.stripGutenberg(text));
-            }
-            if ((ch == null || ch.isEmpty()) && !g.optString("epub").isEmpty()) {
-                p.at("⬇️ దించుతున్నాను (EPUB)…");
-                ch = epubChapters(get(g.optString("epub"), MAX_BOOK), null);
-            }
             b.put("credit", "Project Gutenberg (ఉచితం, కాపీరైట్ లేదు)");
         } else if ("se".equals(src)) {
             String sid = entry.optString("src_id", "");
@@ -408,6 +408,58 @@ final class Library {
         }
         put(c, b);
         return b;
+    }
+
+    /** One Project Gutenberg book's chapters (plain text, else its EPUB); its own "Title:" must be the book wanted. */
+    static List<String[]> pgText(JSONObject g, String wanted, Progress p) throws Exception {
+        List<String[]> ch = null;
+        String txt = g.optString("txt", "");
+        if (!txt.isEmpty()) {
+            p.at("⬇️ Project Gutenberg నుంచి దించుతున్నాను…");
+            String text;
+            try { text = new String(get(txt, MAX_BOOK), StandardCharsets.UTF_8); }
+            catch (IOException e) { // (the other standard address of the same file)
+                String alt = g.optString("txt2", "");
+                if (alt.isEmpty()) throw e;
+                text = new String(get(alt, MAX_BOOK), StandardCharsets.UTF_8);
+            }
+            String own = LibText.pgTitle(text);
+            if (wanted != null && !wanted.isEmpty() && !own.isEmpty() && !LibText.sameBook(wanted, own))
+                throw new IOException("Project Gutenberg లో ఆ సంఖ్యలో వేరే పుస్తకం ఉంది (" + LibText.cut(own, 60) + ")");
+            ch = LibText.chapters(LibText.stripGutenberg(text));
+        }
+        if ((ch == null || ch.isEmpty()) && !g.optString("epub").isEmpty()) {
+            p.at("⬇️ దించుతున్నాను (EPUB)…");
+            ch = epubChapters(get(g.optString("epub"), MAX_BOOK), null);
+        }
+        return ch;
+    }
+
+    /** A free copy of this book: Gutendex (Gutenberg's own feed when it is down), else Open Library's link to Project Gutenberg. */
+    static JSONObject bestFree(String q, String title, String author) throws Exception {
+        JSONObject g = null;
+        Exception first = null;
+        try { g = bestGutendex(q, title, author); } catch (Exception e) { first = e; }
+        if (g != null) return g;
+        try {
+            JSONArray docs = getJson("https://openlibrary.org/search.json?limit=10&fields=key,title,author_name,first_publish_year,id_project_gutenberg&q="
+                    + enc(title + (author == null || author.isEmpty() ? "" : " " + author))).optJSONArray("docs");
+            JSONObject best = null;
+            double bs = 0;
+            for (int i = 0; docs != null && i < docs.length(); i++) {
+                JSONObject o = LibText.fromOpenLibrary(docs.getJSONObject(i));
+                if (!"pg".equals(o.optString("src"))) continue;
+                double s = LibText.score(title, o.optString("t"), "") + 0.3 * LibText.score(author == null ? "" : author, o.optString("a"), "");
+                if (s > bs) { bs = s; best = o; }
+            }
+            if (best != null && bs >= 0.6) {
+                JSONObject l = LibText.pgLinks(best.optString("src_id"));
+                l.put("t", best.optString("t")).put("a", best.optString("a"));
+                return l;
+            }
+        } catch (Exception e) { if (first == null) first = e; }
+        if (first != null) throw first;
+        return null;
     }
 
     /** The Gutendex hit that is this book (title words, then the author), or null; Project Gutenberg's own search when Gutendex is down. */

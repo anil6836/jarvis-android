@@ -1884,7 +1884,7 @@ final class Tools {
         JSONObject f = Library.find(c, name);
         JSONObject entry = f == null ? null : f.getJSONObject("entry");
         if (entry == null) { // not on the racks: a free copy anywhere?
-            JSONObject g = Library.bestGutendex(name, name, "");
+            JSONObject g = Library.bestFree(name, name, "");
             if (g == null) return err("not_free", "'" + name + "' is not on his racks and no free (copyright-free) copy was found. Say: if it is a newer book it has "
                     + "copyright — the library's 🔍 shows its details (buy / a library), or he can put his own copy with ➕. Never suggest pirate sites.");
             entry = g;

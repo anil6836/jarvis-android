@@ -394,6 +394,37 @@ final class LibText {
         return out;
     }
 
+    /** Project Gutenberg's standard addresses for book number n (plain text, its second address, EPUB, cover). */
+    static JSONObject pgLinks(String n) throws Exception {
+        return new JSONObject().put("id", "g" + n).put("src", "pg").put("src_id", n).put("free", true)
+                .put("txt", "https://www.gutenberg.org/cache/epub/" + n + "/pg" + n + ".txt")
+                .put("txt2", "https://www.gutenberg.org/ebooks/" + n + ".txt.utf-8")
+                .put("epub", "https://www.gutenberg.org/ebooks/" + n + ".epub3.images")
+                .put("cover_url", "https://www.gutenberg.org/cache/epub/" + n + "/pg" + n + ".cover.medium.jpg");
+    }
+
+    /** The book's own title in a Project Gutenberg file ("Title: …", or its first line "The Project Gutenberg eBook of …"). */
+    static String pgTitle(String text) {
+        if (text == null) return "";
+        String head = text.length() > 6000 ? text.substring(0, 6000) : text;
+        Matcher m = Pattern.compile("(?m)^\\s*Title:\\s*(.+)$").matcher(head);
+        if (m.find()) {
+            StringBuilder t = new StringBuilder(m.group(1).trim());
+            // (a long title goes on, indented, on the next line)
+            Matcher more = Pattern.compile("\\G\\r?\\n[ \\t]{2,}(\\S.*)").matcher(head);
+            int at = m.end();
+            while (more.find(at) && more.start() == at) { t.append(' ').append(more.group(1).trim()); at = more.end(); }
+            return t.toString();
+        }
+        Matcher e = Pattern.compile("(?i)The Project Gutenberg e-?book,? of (.+?)(?:,? by |\\r?\\n)").matcher(head);
+        return e.find() ? e.group(1).trim() : "";
+    }
+
+    /** Is the downloaded book the one wanted? (Most of the wanted title's words are in its own title.) */
+    static boolean sameBook(String wanted, String own) {
+        return score(wanted, own, "") >= 0.5 || score(own, wanted, "") >= 0.6;
+    }
+
     /** "Austen, Jane" → "Jane Austen". */
     static String flipName(String n) {
         String s = n == null ? "" : n.replaceAll("\\s*\\(.*?\\)", "").trim();
