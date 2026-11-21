@@ -1625,73 +1625,216 @@ function askHistory(list) {
   });
 }
 
-// ---- 🗺️ the people map
+// ---- 🗺️ the people map: the important ones first, a chapter at a time, one person and their circle; zoom and move
+const M = { res: null, rank: {}, scope: -1, focus: null, limit: 20, z: 1, px: 0, py: 0, q: '', listN: 40, evN: 12, pos: {}, pick: null, W: 0, H: 0 };
 function openMap(res) {
   closeTool();
-  const b = S.byId[T.id] || {};
+  M.res = res || { c: [], r: [], e: [] };
+  M.rank = K.mapRank(M.res.c || [], M.res.r || []);
+  M.scope = -1; M.focus = null; M.limit = 20; M.z = 1; M.px = 0; M.py = 0; M.q = ''; M.listN = 40; M.evN = 12;
   $('mapp').hidden = false;
-  $('pTitle').textContent = '🗺️ ' + (b.t || 'పాత్రలు');
+  $('pTitle').textContent = '🗺️ ' + ((S.byId[T.id] || {}).t || 'పాత్రలు');
+  mapDraw(true);
+}
+function mapTitle(u) {
+  const t = R.id === T.id && R.titles ? R.titles[u] : '';
+  return 'అ. ' + (u + 1) + (t ? ' · ' + (t.length > 22 ? t.slice(0, 22) + '…' : t) : '');
+}
+/** Build the whole panel (top = true: back to the top of it). */
+function mapDraw(top) {
   const body = $('pBody');
+  const keepY = body.scrollTop;
   body.textContent = '';
-  const cs = (res && res.c) || [], rs = (res && res.r) || [], es = (res && res.e) || [];
+  const res = M.res, cs = res.c || [], rs = res.r || [], es = res.e || [];
   if (!cs.length) { body.appendChild(el('p', '', 'ఇంకా పాత్రల మ్యాప్ లేదు. చదివే స్క్రీన్‌లో 🗺️ పాత్రలు నొక్కి చేయించండి.')); return; }
-  body.appendChild(el('p', 'muted', cs.length + ' పాత్రలు · ' + rs.length + ' సంబంధాలు' + (res.n ? ' · ' + res.done + ' / ' + res.n + ' అధ్యాయాల నుంచి' : '') + ' · ఒక పేరు తాకితే ఆ వ్యక్తి వివరాలు'));
-  const cv2 = el('canvas', ''); cv2.id = 'mapcv'; body.appendChild(cv2);
-  const info = el('div', 'tbox', ''); body.appendChild(info);
-  const W = cv2.clientWidth || 380, H = cv2.clientHeight || 360, dpr = Math.min(2, window.devicePixelRatio || 1);
-  cv2.width = W * dpr; cv2.height = H * dpr;
-  const pos = K.mapLayout(cs, rs, W, H);
-  let sel = null;
-  const draw = () => {
-    const g = cv2.getContext('2d');
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.fillStyle = '#0f0a06'; g.fillRect(0, 0, W, H);
-    g.font = '11px system-ui, sans-serif'; g.textAlign = 'center';
-    rs.forEach((l) => {
-      const a = pos[l[0]], z = pos[l[1]];
-      if (!a || !z) return;
-      const on = sel && (sel === l[0] || sel === l[1]);
-      g.strokeStyle = on ? '#ffd36a' : 'rgba(216,178,90,0.35)'; g.lineWidth = on ? 2 : 1;
-      g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(z.x, z.y); g.stroke();
-      if (on) { g.fillStyle = '#ffe2a0'; g.fillText(l[2], (a.x + z.x) / 2, (a.y + z.y) / 2 - 3); }
-    });
-    cs.forEach((c) => {
-      const p = pos[c.n];
-      if (!p) return;
-      const r = 6 + Math.min(10, (p.d || 0) * 1.5);
-      g.fillStyle = sel === c.n ? '#ffd36a' : '#c9a24e';
-      g.beginPath(); g.arc(p.x, p.y, r, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#f3e6d0'; g.font = (sel === c.n ? '600 13px' : '12px') + ' "Noto Sans Telugu", system-ui, sans-serif';
-      g.fillText(c.te || c.n, p.x, p.y + r + 13);
-    });
-  };
-  const tell = (c) => {
-    info.textContent = '';
-    if (!c) return;
-    info.appendChild(el('div', '', '👤 ' + (c.te || c.n) + (c.te && c.te !== c.n ? ' (' + c.n + ')' : '')));
-    if (c.w) info.appendChild(el('div', '', c.w));
-    info.appendChild(el('div', 'muted', 'అధ్యాయాలు: ' + (c.u || []).map((u) => u + 1).join(', ')));
-    rs.filter((l) => l[0] === c.n || l[1] === c.n).forEach((l) => info.appendChild(el('div', '', '🔗 ' + (l[0] === c.n ? l[1] : l[0]) + ' · ' + l[2])));
-  };
-  cv2.onclick = (e) => {
-    const r = cv2.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
-    let best = null, bd = 30;
-    cs.forEach((c) => { const p = pos[c.n]; if (!p) return; const d = Math.hypot(p.x - x, p.y - y); if (d < bd) { bd = d; best = c; } });
-    sel = best ? best.n : null; draw(); tell(best);
-  };
-  draw();
-  body.appendChild(el('div', 'sec2', '👥 పాత్రలు'));
-  cs.forEach((c) => {
-    const d = el('div', 'who');
-    d.appendChild(el('b', '', (c.te || c.n)));
-    d.appendChild(document.createTextNode((c.te && c.te !== c.n ? ' (' + c.n + ')' : '') + (c.w ? ' — ' + c.w : '')));
-    d.onclick = () => { sel = c.n; draw(); tell(c); $('pBody').scrollTop = 0; };
-    body.appendChild(d);
-  });
-  if (es.length) {
-    body.appendChild(el('div', 'sec2', '📜 కథ, అధ్యాయం వారీగా'));
-    es.slice().sort((a, b2) => a.u - b2.u).forEach((x) => body.appendChild(el('div', 'ev', 'అధ్యాయం ' + (x.u + 1) + ': ' + x.e)));
+  body.appendChild(el('p', 'muted', cs.length + ' పాత్రలు · ' + rs.length + ' సంబంధాలు' + (res.n ? ' · ' + res.done + ' / ' + res.n + ' అధ్యాయాల నుంచి' : '')));
+  // which part of the book
+  const chs = Array.from(new Set([].concat(...cs.map((c) => c.u || [])))).sort((a, b) => a - b);
+  if (chs.length > 1) {
+    const row = el('div', 'mrow'); row.id = 'mScope';
+    const add = (u, name) => { const b = btn(name, 'chip' + (M.scope === u ? ' on' : ''), () => { M.scope = u; M.focus = null; M.limit = 20; M.z = 1; M.px = 0; M.py = 0; M.listN = 40; mapDraw(false); }); row.appendChild(b); };
+    add(-1, '📚 అన్నీ');
+    chs.forEach((u) => add(u, mapTitle(u)));
+    body.appendChild(row);
+    setTimeout(() => { const on = row.querySelector('.on'); if (on) row.scrollLeft = Math.max(0, on.offsetLeft - 40); }, 0);
   }
+  const pick = K.mapPick(cs, rs, M.rank, { scope: M.scope, focus: M.focus, limit: M.limit });
+  M.pick = pick;
+  const say = el('div', 'msay');
+  if (pick.focus) {
+    const me = cs.find((c) => c.n === pick.focus) || {};
+    say.textContent = '👤 ' + (me.te || me.n) + ' చుట్టూ: ' + (pick.total ? pick.shown + ' / ' + pick.total + ' మంది' : 'ఎవరితోనూ సంబంధం లేదు') + (M.scope >= 0 ? ' (అధ్యాయం ' + (M.scope + 1) + ')' : '');
+  } else say.textContent = (M.scope >= 0 ? 'అధ్యాయం ' + (M.scope + 1) + ': ' : '') + pick.shown + ' / ' + pick.total + ' పాత్రలు · ముఖ్యమైనవాళ్ళు ముందు';
+  body.appendChild(say);
+  const cv2 = el('canvas', ''); cv2.id = 'mapcv'; body.appendChild(cv2);
+  const tools = el('div', 'mrow');
+  if (pick.more > 0) tools.appendChild(btn('➕ ఇంకా ' + Math.min(20, pick.more), 'chip', () => { M.limit += 20; mapDraw(false); }));
+  if (M.limit > 20) tools.appendChild(btn('➖ తక్కువ', 'chip', () => { M.limit = 20; mapDraw(false); }));
+  if (pick.focus) tools.appendChild(btn('✕ అందరూ', 'chip on', () => { M.focus = null; M.limit = 20; M.z = 1; M.px = 0; M.py = 0; mapDraw(false); }));
+  tools.appendChild(btn('＋', 'chip', () => mapZoom(1.4)));
+  tools.appendChild(btn('－', 'chip', () => mapZoom(1 / 1.4)));
+  tools.appendChild(btn('⟲', 'chip', () => { M.z = 1; M.px = 0; M.py = 0; mapPaint(); }));
+  body.appendChild(tools);
+  body.appendChild(el('p', 'muted', 'ఒక వేలు: జరపండి · రెండు వేళ్ళు: దగ్గర / దూరం · ఒక పేరు నొక్కితే ఆ వ్యక్తి మధ్యలో, వాళ్ళ వాళ్ళు చుట్టూ'));
+  const info = el('div', 'tbox', ''); info.id = 'mInfo'; body.appendChild(info);
+  // sizes, places
+  const W = cv2.clientWidth || 360, H = cv2.clientHeight || 340, dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv2.width = Math.round(W * dpr); cv2.height = Math.round(H * dpr);
+  M.W = W; M.H = H; M.dpr = dpr;
+  M.pos = pick.focus ? K.egoLayout(pick.focus, pick.people.slice(1).map((p) => p.n), W, H) : K.mapLayout(pick.people, pick.links, W, H);
+  mapPaint();
+  mapTouch(cv2);
+  if (pick.focus) mapInfo(cs.find((c) => c.n === pick.focus));
+  // everyone, as a list
+  body.appendChild(el('div', 'sec2', '👥 పాత్రలు' + (M.scope >= 0 ? ' (అధ్యాయం ' + (M.scope + 1) + ')' : '')));
+  const q = el('input', 'f'); q.type = 'search'; q.id = 'mFind'; q.placeholder = '🔍 పేరు వెతుకు (తెలుగు / English)'; q.value = M.q;
+  body.appendChild(q);
+  const list = el('div', ''); list.id = 'mList'; body.appendChild(list);
+  const fill = () => {
+    list.textContent = '';
+    const want = M.q.trim().toLowerCase();
+    const all = cs.filter((c) => (M.scope < 0 || (c.u || []).indexOf(M.scope) >= 0) && (!want || String(c.n).toLowerCase().includes(want) || String(c.te || '').toLowerCase().includes(want)))
+      .sort((a, b) => (M.rank[b.n] || 0) - (M.rank[a.n] || 0));
+    all.slice(0, M.listN).forEach((c) => {
+      const d = el('div', 'who');
+      d.appendChild(el('b', '', c.te || c.n));
+      d.appendChild(document.createTextNode((c.te && c.te !== c.n ? ' (' + c.n + ')' : '') + (c.w ? ' — ' + c.w : '')));
+      d.appendChild(el('span', 'muted', ' · ' + (c.u || []).length + ' అధ్యాయాలు'));
+      d.onclick = () => mapFocus(c.n);
+      list.appendChild(d);
+    });
+    if (!all.length) list.appendChild(el('p', 'muted', 'ఆ పేరుతో ఎవరూ లేరు.'));
+    if (all.length > M.listN) list.appendChild(btn('➕ ఇంకా ' + Math.min(40, all.length - M.listN) + ' (మొత్తం ' + all.length + ')', 'wide', () => { M.listN += 40; fill(); }));
+  };
+  q.oninput = () => { M.q = q.value; M.listN = 40; fill(); };
+  fill();
+  // what happened
+  const ev = es.filter((x) => M.scope < 0 || x.u === M.scope).sort((a, b) => a.u - b.u);
+  if (ev.length) {
+    body.appendChild(el('div', 'sec2', '📜 కథ, అధ్యాయం వారీగా'));
+    ev.slice(0, M.evN).forEach((x) => body.appendChild(el('div', 'ev', 'అధ్యాయం ' + (x.u + 1) + ': ' + x.e)));
+    if (ev.length > M.evN) body.appendChild(btn('➕ మిగతా ' + (ev.length - M.evN) + ' అధ్యాయాలు', 'wide', () => { M.evN = 1e9; mapDraw(false); }));
+  }
+  body.scrollTop = top ? 0 : keepY;
+}
+/** One person in the middle (from the map or the list). */
+function mapFocus(name) {
+  M.focus = name; M.limit = 20; M.z = 1; M.px = 0; M.py = 0;
+  mapDraw(false);
+  const cv2 = $('mapcv'); if (cv2) $('pBody').scrollTop = Math.max(0, cv2.offsetTop - 120);
+}
+function mapInfo(c) {
+  const info = $('mInfo');
+  if (!info) return;
+  info.textContent = '';
+  if (!c) return;
+  info.appendChild(el('div', '', '👤 ' + (c.te || c.n) + (c.te && c.te !== c.n ? ' (' + c.n + ')' : '')));
+  if (c.w) info.appendChild(el('div', '', c.w));
+  info.appendChild(el('div', 'muted', 'అధ్యాయాలు: ' + K.ranges((c.u || []).map((u) => u + 1))));
+  const mine = (M.res.r || []).filter((l) => l[0] === c.n || l[1] === c.n).map((l) => ({ o: l[0] === c.n ? l[1] : l[0], how: l[2] }))
+    .sort((a, b) => (M.rank[b.o] || 0) - (M.rank[a.o] || 0));
+  const byN = {};
+  (M.res.c || []).forEach((p) => { byN[p.n] = p; });
+  mine.slice(0, 12).forEach((x) => {
+    const d = el('div', 'mlink', '🔗 ' + ((byN[x.o] || {}).te || x.o) + ' · ' + x.how);
+    d.onclick = () => mapFocus(x.o);
+    info.appendChild(d);
+  });
+  if (mine.length > 12) info.appendChild(el('div', 'muted', '… ఇంకా ' + (mine.length - 12) + ' సంబంధాలు (పైన ➕ ఇంకా)'));
+}
+function mapZoom(f, cx, cy) {
+  const z2 = Math.max(0.6, Math.min(5, M.z * f)), k = z2 / M.z;
+  const ox = cx === undefined ? M.W / 2 : cx, oy = cy === undefined ? M.H / 2 : cy;
+  // keep the point under the fingers where it is
+  M.px = ox - M.W / 2 - (ox - M.W / 2 - M.px) * k;
+  M.py = oy - M.H / 2 - (oy - M.H / 2 - M.py) * k;
+  M.z = z2;
+  mapPaint();
+}
+function mapAt(p) { return { x: (p.x - M.W / 2) * M.z + M.W / 2 + M.px, y: (p.y - M.H / 2) * M.z + M.H / 2 + M.py }; }
+function mapPaint() {
+  const cv2 = $('mapcv');
+  if (!cv2 || !M.pick) return;
+  const g = cv2.getContext('2d'), pick = M.pick, W = M.W, H = M.H;
+  g.setTransform(M.dpr, 0, 0, M.dpr, 0, 0);
+  g.fillStyle = '#0f0a06'; g.fillRect(0, 0, W, H);
+  const maxR = Math.max(1, ...pick.people.map((p) => M.rank[p.n] || 0));
+  const zr = Math.sqrt(Math.max(0.6, Math.min(M.z, 3)));
+  const rad = (p) => (5 + 11 * Math.sqrt((M.rank[p.n] || 0) / maxR)) * zr;
+  const fs = Math.round(Math.max(10, Math.min(16, 11.5 * zr)));
+  const taken = [];
+  const free = (x, y, w, h) => { for (const t of taken) if (x < t[0] + t[2] && x + w > t[0] && y < t[1] + t[3] && y + h > t[1]) return false; taken.push([x, y, w, h]); return true; };
+  const label = (text, x, y, size, col, bg, must) => {
+    g.font = size + 'px "Noto Sans Telugu", system-ui, sans-serif';
+    const w = g.measureText(text).width + 8, h = size + 6;
+    const bx = x - w / 2, by = y - h / 2;
+    if (bx > W || by > H || bx + w < 0 || by + h < 0) return;
+    if (!free(bx, by, w, h) && !must) return;
+    g.fillStyle = bg; g.beginPath(); g.roundRect ? g.roundRect(bx, by, w, h, 5) : g.rect(bx, by, w, h); g.fill();
+    g.fillStyle = col; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, x, y + 0.5);
+  };
+  // links
+  pick.links.forEach((l) => {
+    const a = M.pos[l[0]], z = M.pos[l[1]];
+    if (!a || !z) return;
+    const A = mapAt(a), Z = mapAt(z);
+    g.strokeStyle = pick.focus ? 'rgba(255,211,106,0.55)' : 'rgba(216,178,90,0.28)'; g.lineWidth = pick.focus ? 1.6 : 1;
+    g.beginPath(); g.moveTo(A.x, A.y); g.lineTo(Z.x, Z.y); g.stroke();
+  });
+  // people, then names (the important first; a name that would sit on another waits for zoom)
+  const order = pick.people.slice().sort((a, b) => (a.n === pick.focus ? -1 : b.n === pick.focus ? 1 : (M.rank[b.n] || 0) - (M.rank[a.n] || 0)));
+  order.slice().reverse().forEach((p) => {
+    const P = M.pos[p.n]; if (!P) return;
+    const S2 = mapAt(P), r = rad(p) * (p.n === pick.focus ? 1.25 : 1);
+    g.fillStyle = p.n === pick.focus ? '#ffd36a' : '#c9a24e';
+    g.beginPath(); g.arc(S2.x, S2.y, r, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = '#0f0a06'; g.lineWidth = 1.5; g.stroke();
+  });
+  order.forEach((p) => {
+    const P = M.pos[p.n]; if (!P) return;
+    const S2 = mapAt(P), r = rad(p) * (p.n === pick.focus ? 1.25 : 1);
+    label(p.te || p.n, S2.x, S2.y + r + fs / 2 + 4, p.n === pick.focus ? fs + 2 : fs, p.n === pick.focus ? '#1a1208' : '#f3e6d0', p.n === pick.focus ? '#ffd36a' : 'rgba(15,10,6,0.82)', p.n === pick.focus);
+  });
+  // in one person's circle: how each is linked, on the line
+  if (pick.focus) pick.links.forEach((l) => {
+    const a = M.pos[l[0]], z = M.pos[l[1]];
+    if (!a || !z || !l[2]) return;
+    const A = mapAt(a), Z = mapAt(z);
+    const t = l[2].length > 18 ? l[2].slice(0, 18) + '…' : l[2];
+    label(t, A.x + (Z.x - A.x) * 0.55, A.y + (Z.y - A.y) * 0.55, Math.max(9, fs - 2), '#ffe2a0', 'rgba(40,28,10,0.9)', false);
+  });
+}
+function mapTouch(cv2) {
+  const pts = new Map();
+  let moved = false, startD = 0, startZ = 1, last = null;
+  cv2.onpointerdown = (e) => { cv2.setPointerCapture && cv2.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.offsetX, y: e.offsetY }); moved = false; last = { x: e.offsetX, y: e.offsetY };
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; startD = Math.hypot(a.x - b.x, a.y - b.y); startZ = M.z; } };
+  cv2.onpointermove = (e) => {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+    if (pts.size >= 2) {
+      const [a, b] = [...pts.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (startD > 10) mapZoom((startZ * d / startD) / M.z, (a.x + b.x) / 2, (a.y + b.y) / 2);
+      moved = true;
+      return;
+    }
+    const dx = e.offsetX - last.x, dy = e.offsetY - last.y;
+    if (!moved && Math.hypot(e.offsetX - last.x, e.offsetY - last.y) < 6) return;
+    moved = true;
+    M.px += dx; M.py += dy; last = { x: e.offsetX, y: e.offsetY };
+    mapPaint();
+  };
+  const up = (e) => {
+    const was = pts.size;
+    pts.delete(e.pointerId);
+    if (was === 1 && !moved) {
+      let best = null, bd = 28;
+      (M.pick ? M.pick.people : []).forEach((p) => { const P = M.pos[p.n]; if (!P) return; const S2 = mapAt(P), d = Math.hypot(S2.x - e.offsetX, S2.y - e.offsetY); if (d < bd) { bd = d; best = p; } });
+      if (best) { if (best.n === M.focus) mapInfo(best); else mapFocus(best.n); }
+    }
+    if (pts.size === 1) { last = [...pts.values()][0]; }
+  };
+  cv2.onpointerup = up; cv2.onpointercancel = up;
 }
 $('pBack').onclick = () => { $('mapp').hidden = true; };
 

@@ -254,8 +254,75 @@
     return pos;
   }
 
+  /** 🗺️ How much a person matters in the book: chapters they are in (×2) + their links. */
+  function mapRank(people, links) {
+    const r = {};
+    people.forEach((p) => { r[p.n] = 2 * (p.u || []).length; });
+    (links || []).forEach((l) => { if (l[0] in r) r[l[0]]++; if (l[1] in r) r[l[1]]++; });
+    return r;
+  }
+
+  /**
+   * 🗺️ Who the map shows: {scope: -1 the whole book | a chapter (0-based), focus: a name | null, limit}.
+   * No focus → the most important `limit` people (of that chapter) and the links between them.
+   * A focus → that person in the middle and the `limit` most important people linked to them (in that chapter).
+   * → {people, links, shown, total, more}
+   */
+  function mapPick(people, links, rank, opt) {
+    const o = opt || {}, lim = Math.max(1, o.limit || 20), sc = o.scope === undefined ? -1 : o.scope;
+    const by = (a, b) => (rank[b.n] || 0) - (rank[a.n] || 0) || String(a.n).localeCompare(String(b.n));
+    const pool = people.filter((p) => sc < 0 || (p.u || []).indexOf(sc) >= 0);
+    const inPool = {};
+    pool.forEach((p) => { inPool[p.n] = p; });
+    if (o.focus) {
+      const me = people.find((p) => p.n === o.focus);
+      if (me) {
+        const seen = {}, nb = [];
+        (links || []).forEach((l) => {
+          const other = l[0] === me.n ? l[1] : l[1] === me.n ? l[0] : null;
+          if (other && other !== me.n && inPool[other] && !seen[other]) { seen[other] = 1; nb.push(inPool[other]); }
+        });
+        nb.sort(by);
+        const show = nb.slice(0, lim), keep = { [me.n]: 1 };
+        show.forEach((p) => { keep[p.n] = 1; });
+        const ls = (links || []).filter((l) => (l[0] === me.n && keep[l[1]]) || (l[1] === me.n && keep[l[0]]));
+        return { people: [me].concat(show), links: ls, shown: show.length, total: nb.length, more: nb.length - show.length, focus: me.n };
+      }
+    }
+    const show = pool.slice().sort(by).slice(0, lim), keep = {};
+    show.forEach((p) => { keep[p.n] = 1; });
+    const ls = (links || []).filter((l) => keep[l[0]] && keep[l[1]] && l[0] !== l[1]);
+    return { people: show, links: ls, shown: show.length, total: pool.length, more: pool.length - show.length, focus: null };
+  }
+
+  /** 🗺️ One person in the middle, the others around (one ring up to 12, else an inner and an outer ring, taking turns). */
+  function egoLayout(center, others, w, h) {
+    const cx = w / 2, cy = h / 2, pos = {};
+    pos[center] = { x: Math.round(cx), y: Math.round(cy) };
+    const n = others.length, rx = Math.max(10, w / 2 - 50), ry = Math.max(10, h / 2 - 28);
+    others.forEach((name, i) => {
+      const a = (i / Math.max(1, n)) * Math.PI * 2 - Math.PI / 2;
+      const f = n <= 12 ? 0.86 : (i % 2 === 0 ? 0.95 : 0.58);
+      pos[name] = { x: Math.round(cx + Math.cos(a) * rx * f), y: Math.round(cy + Math.sin(a) * ry * f) };
+    });
+    return pos;
+  }
+
+  /** [2,3,4,5,9,11,12] → "2–5, 9, 11–12" */
+  function ranges(nums) {
+    const a = Array.from(new Set(nums || [])).filter((x) => Number.isFinite(x)).sort((x, y) => x - y);
+    const out = [];
+    for (let i = 0; i < a.length; i++) {
+      let j = i;
+      while (j + 1 < a.length && a[j + 1] === a[j] + 1) j++;
+      out.push(j > i ? a[i] + '–' + a[j] : String(a[i]));
+      i = j;
+    }
+    return out.join(', ');
+  }
+
   const K = { centre, SECTIONS, ERAS, MY, MY_SHELVES, CASE, racks, hash, colourOf, sizeOf, merge, onRack, myShelves, layout, myLayout, mark,
-    yearSaid, pagesSaid, money, rackName, spineLines, wordAt, nextReads, mapLayout };
+    yearSaid, pagesSaid, money, rackName, spineLines, wordAt, nextReads, mapLayout, mapRank, mapPick, egoLayout, ranges };
   if (typeof module !== 'undefined' && module.exports) module.exports = K;
   root.LibKit = K;
 })(typeof window !== 'undefined' ? window : globalThis);
