@@ -68,6 +68,8 @@
         <exclude domain="sharedpref" path="jarvis_backup.xml" />
         <exclude domain="external" path="recordings/" />
         <exclude domain="external" path="Download/" />
+        <exclude domain="file" path="library_pdf/" />
+        <exclude domain="file" path="ocr/" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="jarvis_guard.xml" />

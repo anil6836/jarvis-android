@@ -10,6 +10,11 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // only for Tesseract4Android (the library's free on-phone Telugu page reader)
+        maven {
+            url 'https://jitpack.io'
+            content { includeGroup 'cz.adaptech.tesseract4android' }
+        }
     }
 }
 rootProject.name = "Jarvis"

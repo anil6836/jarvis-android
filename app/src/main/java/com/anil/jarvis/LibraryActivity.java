@@ -264,7 +264,9 @@ public class LibraryActivity extends Activity {
             case "wish": io.execute(() -> { try { Library.wish(this, m.getJSONObject("item")); say("🔖 కోరికల రాక్‌లో పెట్టాను."); sendShelf(); } catch (Exception e) { say("పెట్టలేకపోయాను"); } }); break;
             case "chapter": chapter(id, m.optInt("unit", 0)); break;
             case "te_phone": tePhone(id, m.optInt("unit", 0)); break;
-            case "read": heldReading = false; ui.removeCallbacks(resumeR); read(id, m.optString("lang", "en"), m.has("unit") ? m.optInt("unit") : -1, m.optInt("part", 0)); break;
+            case "read": { JSONObject bk = LibText.goodId(id) ? Library.book(this, id) : null;
+                if (bk != null && bk.optBoolean("pdf")) { say("📖 ఇది PDF పుస్తకం: 🔊 కోసం ముందు పుస్తకం కార్డులో \"🔤 అక్షరాలుగా కూడా చేయి\" నొక్కండి."); break; } }
+                heldReading = false; ui.removeCallbacks(resumeR); read(id, m.optString("lang", "en"), m.has("unit") ? m.optInt("unit") : -1, m.optInt("part", 0)); break;
             case "pause": heldReading = false; ui.removeCallbacks(resumeR); ReaderService.control(this, ReaderService.ACTION_TOGGLE); break;
             case "stop": heldReading = false; ui.removeCallbacks(resumeR); ReaderService.control(this, ReaderService.ACTION_STOP); break;
             case "sleep": {
@@ -353,6 +355,12 @@ public class LibraryActivity extends Activity {
             case "add_go": addGo(m.optJSONObject("form")); break;
             case "add_cancel": pickedFile = null; pickedPhotos = null; dropWebPdf(); break;
             case "pdfadd": pdfAdd(m.optString("url", ""), m.optString("title", ""), m.optString("author", "")); break;
+            case "ocr_try": ocrTry(); break;
+            case "pdf_open": io.execute(() -> pdfOpen(id)); break;
+            case "pdf_page": { int i = m.optInt("i", 0), w = m.optInt("w", 1400); io.execute(() -> pdfPage(id, i, w)); break; }
+            case "pdf_pos": if (LibText.goodId(id)) Library.savePos(this, id, Math.max(0, m.optInt("i", 0)), 0); break;
+            case "pdf_close": io.execute(this::pdfClose); break;
+            case "pdf_convert": pdfConvert(id); break;
             case "site": site(m.optString("url", "")); break;
             case "prefs": {
                 android.content.SharedPreferences.Editor e = getSharedPreferences("jarvis_library_ui", MODE_PRIVATE).edit();
@@ -473,6 +481,80 @@ public class LibraryActivity extends Activity {
                 }
             } catch (Exception e) { say("అనువాదం రాలేదు: " + e.getMessage()); }
         });
+    }
+
+    // ================================================================ 📖 PDF books kept as PDF: their pages as pictures (₹0)
+
+    private android.os.ParcelFileDescriptor pdfFd;
+    private android.graphics.pdf.PdfRenderer pdfR;
+    private String pdfId;
+
+    /** (io thread) */
+    private void pdfOpen(String id) {
+        try {
+            if (!LibText.goodId(id)) return;
+            File f = Library.pdfOf(this, id);
+            if (!f.isFile()) { say("ఈ PDF ఫోన్‌లో కనబడలేదు"); return; }
+            pdfClose();
+            pdfFd = android.os.ParcelFileDescriptor.open(f, android.os.ParcelFileDescriptor.MODE_READ_ONLY);
+            pdfR = new android.graphics.pdf.PdfRenderer(pdfFd);
+            pdfId = id;
+            send(json("pdf_meta").put("id", id).put("n", pdfR.getPageCount()).put("at", Library.posOf(this, id)[0]));
+        } catch (Exception e) { pdfClose(); say("PDF తెరవలేకపోయాను: " + e.getMessage()); }
+    }
+
+    /** (io thread) one page as a JPEG picture for the page */
+    private void pdfPage(String id, int i, int w) {
+        try {
+            if (pdfR == null || !id.equals(pdfId)) pdfOpen(id);
+            if (pdfR == null || i < 0 || i >= pdfR.getPageCount()) return;
+            android.graphics.Bitmap bm;
+            try (android.graphics.pdf.PdfRenderer.Page pg = pdfR.openPage(i)) {
+                int ww = Math.max(600, Math.min(2000, w)), h = Math.round(ww * (pg.getHeight() / (float) Math.max(1, pg.getWidth())));
+                bm = android.graphics.Bitmap.createBitmap(ww, Math.max(1, Math.min(h, 4000)), android.graphics.Bitmap.Config.ARGB_8888);
+                bm.eraseColor(Color.WHITE);
+                pg.render(bm, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
+            }
+            java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream();
+            bm.compress(android.graphics.Bitmap.CompressFormat.JPEG, 82, o);
+            bm.recycle();
+            send(json("pdf_img").put("id", id).put("i", i).put("n", pdfR.getPageCount())
+                    .put("src", "data:image/jpeg;base64," + android.util.Base64.encodeToString(o.toByteArray(), android.util.Base64.NO_WRAP)));
+        } catch (Exception e) { say("ఆ పేజీ చూపలేకపోయాను: " + e.getMessage()); }
+    }
+
+    private void pdfClose() {
+        try { if (pdfR != null) pdfR.close(); } catch (Exception ignored) {}
+        try { if (pdfFd != null) pdfFd.close(); } catch (Exception ignored) {}
+        pdfR = null; pdfFd = null; pdfId = null;
+    }
+
+    /** 🔤 A PDF book's letters too: ➕'s form on the kept PDF (🆓 phone ₹0 / 🇮🇳 AI / English), as a new book; the PDF stays. */
+    private void pdfConvert(String id) {
+        JSONObject b = LibText.goodId(id) ? Library.book(this, id) : null;
+        File f = Library.pdfOf(this, id);
+        if (b == null || !f.isFile()) return;
+        dropWebPdf();
+        Uri u = Uri.fromFile(f);
+        pickedFile = u;
+        pickedPhotos = null;
+        io.execute(() -> {
+            try {
+                JSONObject info = Library.inspect(this, u, "book.pdf").put("t", b.optString("t")).put("a", b.optString("a")).put("convert", true).put("sec", b.optString("sec", "mine"));
+                send(json("addinfo").put("info", info).put("quote1", Library.pagesQuote(new Prefs(this), 1)));
+            } catch (Exception e) { say("PDF తెరవలేకపోయాను: " + e.getMessage()); }
+        });
+    }
+
+    /** 🔍 one page the free way, before the whole book (₹0; the Telugu file comes once, about 9 MB). */
+    private void ocrTry() {
+        Uri f = pickedFile;
+        List<Uri> ph = pickedPhotos;
+        if (f == null && ph == null) return;
+        new Thread(() -> {
+            try { send(json("ocr_try").put("r", Library.ocrTry(this, f, ph, this::say))); }
+            catch (Exception e) { try { send(json("ocr_try").put("err", "కాలేదు: " + e.getMessage())); } catch (Exception ignored) {} }
+        }, "jarvis-ocr-try").start();
     }
 
     private void read(String id, String lang, int unit, int part) {
@@ -975,6 +1057,7 @@ public class LibraryActivity extends Activity {
     @Override protected void onDestroy() {
         destroyed = true;
         dropWebPdf();
+        io.execute(this::pdfClose);
         open = Math.max(0, open - 1);
         if (WakeService.workshopWake == wakeR) WakeService.workshopWake = null;
         if (earWake == earR) earWake = null;

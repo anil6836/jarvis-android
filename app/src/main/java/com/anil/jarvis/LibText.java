@@ -854,6 +854,9 @@ final class LibText {
     }
 
     /** How clean a scan's text is, 0–1: letters, digits, spaces and plain punctuation out of all; Telugu books also need Telugu letters. */
+    /** A PDF's own letters (Android 15+) are real Telugu text, not an old font's junk: then they are read as they are (₹0). */
+    static boolean layerGood(String s) { return s != null && s.trim().length() >= 200 && textQuality(s, true) >= 0.7; }
+
     static double textQuality(String s, boolean telugu) {
         if (s == null || s.length() < 200) return 0;
         int good = 0, letters = 0, te = 0, n = 0;

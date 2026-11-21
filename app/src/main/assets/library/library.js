@@ -737,13 +737,14 @@ function showCard(b) {
   if (b.about || b.summary) c.appendChild(el('p', '', b.about || b.summary));
   const marks = el('div', 'row');
   const ready = b.state === 'ready';
-  if (ready) marks.appendChild(el('span', 'pill ok', '✅ ఫోన్‌లో ఉంది · ' + (b.n || 0) + ' అధ్యాయాలు · ' + K.pagesSaid(b.chars)));
+  if (ready && b.pdf) marks.appendChild(el('span', 'pill ok', '📖 PDF పుస్తకం · ' + (b.n || 0) + ' పేజీలు (ఉన్నది ఉన్నట్టు)'));
+  else if (ready) marks.appendChild(el('span', 'pill ok', '✅ ఫోన్‌లో ఉంది · ' + (b.n || 0) + ' అధ్యాయాలు · ' + K.pagesSaid(b.chars)));
   else if (b.wish) { const m = K.mark(b); marks.appendChild(el('span', 'pill ' + m.cls, m.i + ' ' + m.s)); }
   else if (b.src === 'home') { /* (only the 🏠 pill below: no free copy found) */ }
   else marks.appendChild(el('span', 'pill ok', '✅ ఉచితం · ' + (SRC_NAME[b.src] || 'Project Gutenberg')));
   if (b.credit && ready) marks.appendChild(el('span', 'pill', b.credit));
   const at = S.pos[b.id];
-  if (ready && at && !b.done) marks.appendChild(el('span', 'pill', '🔖 అధ్యాయం ' + (at[0] + 1) + ' దగ్గర ఆగారు'));
+  if (ready && at && !b.done) marks.appendChild(el('span', 'pill', '🔖 ' + (b.pdf ? 'పేజీ ' : 'అధ్యాయం ') + (at[0] + 1) + ' దగ్గర ఆగారు'));
   if (b.done) marks.appendChild(el('span', 'pill ok', '✓ పూర్తయింది'));
   if (b.home) marks.appendChild(el('span', 'pill web', '🏠 మీ ఇంట్లో ఉంది (కాగితం పుస్తకం)'));
   const ai = aiInfo(b);
@@ -759,7 +760,10 @@ function showCard(b) {
   c.appendChild(prog);
   const row = el('div', 'row');
   const te = b.lang !== 'te';
-  if (ready) {
+  if (ready && b.pdf) { // 📖 a PDF kept as PDF: its pages; its letters too on his tap (🆓 ₹0 / 🇮🇳 AI)
+    row.appendChild(btn('📖 PDF చదువు', 'gold', () => openPdf(b.id)));
+    row.appendChild(btn('🔤 అక్షరాలుగా కూడా చేయి', '', () => { hideCard(); post({ t: 'pdf_convert', id: b.id }); }));
+  } else if (ready) {
     row.appendChild(btn('🔊 చదువు', 'gold', () => post({ t: 'read', id: b.id, lang: 'en' })));
     if (te) row.appendChild(btn('🔊 తెలుగులో (ఫోన్, ₹0)', '', () => post({ t: 'read', id: b.id, lang: 'te' })));
     if (te) row.appendChild(btn('✨ AI తెలుగు', '', () => post({ t: 'quote', id: b.id, unit: (S.pos[b.id] || [0])[0] })));
@@ -992,7 +996,7 @@ function openAdd() {
   a.hidden = false;
   a.appendChild(btn('✕', 'x', closeAdd));
   a.appendChild(el('h2', '', '➕ మీ పుస్తకం రాక్‌లో పెట్టు'));
-  a.appendChild(el('p', 'muted', 'మీ ఫోన్‌లోని PDF / EPUB / TXT, లేదా మీ దగ్గర ఉన్న పుస్తకం పేజీల ఫోటోలు. అక్షరాలు మాత్రమే దాచుతాను; ఫోటోలు, PDF కాపీ దాచను.'));
+  a.appendChild(el('p', 'muted', 'మీ ఫోన్‌లోని PDF / EPUB / TXT, లేదా మీ దగ్గర ఉన్న పుస్తకం పేజీల ఫోటోలు. అక్షరాలు మాత్రమే దాచుతాను; ఫోటోలు దాచను. PDF కాపీ "📖 PDF గానే ఉంచు" ఎంచుకుంటేనే ఫోన్‌లో ఉంటుంది.'));
   a.appendChild(btn('📄 ఫోన్ నుంచి ఫైల్ (PDF / EPUB / TXT)', 'wide', () => post({ t: 'add', kind: 'file' })));
   a.appendChild(btn('📸 పుస్తకం పేజీల ఫోటోలు (స్కానర్)', 'wide', () => post({ t: 'add', kind: 'scan' })));
   a.appendChild(btn('🏠 ఇంటి పుస్తకాల అర ఫోటో (పేర్లు AI చదువుతుంది)', 'wide', () => { closeAdd(); post({ t: 'shelf_photo' }); }));
@@ -1022,13 +1026,36 @@ function addForm(m) {
   const pages = info.kind === 'pdf' || info.kind === 'photos';
   if (info.web) { $('search').hidden = true; K.SECTIONS.some((x) => x.k === 'telugu') && (sec.value = 'telugu'); }
   if (pages) {
-    a.appendChild(el('label', 'l', 'పేజీల్లో భాష'));
+    a.appendChild(el('label', 'l', 'ఎలా చదవాలి'));
     const n = info.pages || 0;
-    const r1 = el('div', 'radio' + (lang === 'en' ? ' on' : ''), '🔤 English: ఫోన్ తానే చదువుతుంది · ₹0');
-    const r2 = el('div', 'radio', '');
-    r1.onclick = () => { lang = 'en'; r1.classList.add('on'); r2.classList.remove('on'); };
-    r2.onclick = () => { lang = 'te'; r2.classList.add('on'); r1.classList.remove('on'); };
-    a.appendChild(r1); a.appendChild(r2);
+    const radios = [];
+    const mk = (k, text, sub) => {
+      const r = el('div', 'radio' + (lang === k ? ' on' : ''));
+      r.appendChild(el('span', 'rt', text));
+      if (sub) r.appendChild(el('span', 'sub', sub));
+      r.onclick = () => { lang = k; radios.forEach(([kk, x]) => x.classList.toggle('on', kk === k)); };
+      radios.push([k, r]);
+      a.appendChild(r);
+      return r;
+    };
+    mk('en', '🔤 English: ఫోన్ తానే చదువుతుంది · ₹0');
+    // 🆓 Telugu on the phone (Anil, 22 Nov: "C రెండు చేయి"): the PDF's own letters, else the phone's Telugu reader
+    mk('tf', '🆓 తెలుగు: ఫోన్ తానే చదువుతుంది · ₹0', 'PDF లో అసలు అక్షరాలు ఉంటే నేరుగా తీస్తాను; లేకపోతే ఫోన్ తెలుగు గుర్తింపు (మొదటిసారి సుమారు 9 MB, ఒక్కసారే). AI కంటే తప్పులు ఎక్కువ, కొంచెం నెమ్మది.');
+    const tryBox = el('div', 'try');
+    const tryOut = el('div', 'tryout', '');
+    const tryBtn = btn('🔍 ముందు 1 పేజీ ప్రయత్నించు (₹0)', '', () => { tryBtn.disabled = true; tryOut.textContent = '⏳ …'; post({ t: 'ocr_try' }); });
+    tryBox.appendChild(tryBtn); tryBox.appendChild(tryOut);
+    a.appendChild(tryBox);
+    S.addTry = (mm) => {
+      tryBtn.disabled = false;
+      tryOut.textContent = '';
+      if (mm.err) { tryOut.appendChild(el('div', 'muted', '⚠ ' + mm.err)); return; }
+      const r = mm.r || {};
+      tryOut.appendChild(el('div', 'muted', (r.how === 'layer' ? '✅ ఈ PDF లోనే అసలు అక్షరాలు ఉన్నాయి: తప్పులు ఉండవు' : '📷 ఫోన్ చదివింది ఇది') + ' · పేజీ ' + r.page + ' / ' + r.pages));
+      tryOut.appendChild(el('div', 'sample', r.text || '(ఈ పేజీలో ఏమీ రాలేదు)'));
+      tryOut.appendChild(el('div', 'muted', 'బాగుంటే 🆓 ఎంచుకుని ➕ నొక్కండి. తప్పులు ఎక్కువైతే 🇮🇳 AI (ఖర్చుతో) లేదా 📖 PDF గానే.'));
+    };
+    const r2 = mk('te', '');
     // 🤖 which AI reads the Telugu pages: every model with this book's cost (his pick; the library's AI, as in ✨)
     const mrow = el('div', 'mrow2');
     const mname = el('span', 'muted', '');
@@ -1037,18 +1064,23 @@ function addForm(m) {
     a.appendChild(mrow);
     S.addCost = (perPage) => {
       const c = perPage > 0 ? K.money(perPage * n) : '';
-      r2.textContent = '🇮🇳 తెలుగు: మీ AI చదువుతుంది · ' + (c ? 'సుమారు ' + c + ' (' + n + ' పేజీలు)' : 'వర్క్‌షాప్ AI ఎంచుకోవాలి');
+      r2.querySelector('.rt').textContent = '🇮🇳 తెలుగు: మీ AI చదువుతుంది · ' + (c ? 'సుమారు ' + c + ' (' + n + ' పేజీలు)' : 'వర్క్‌షాప్ AI ఎంచుకోవాలి');
       mname.textContent = '🤖 చదివే AI: ' + (S.model || 'ఇంకా ఎంచుకోలేదు') + ' ';
     };
     S.addCost(Number(m.quote1) || 0);
     S.addModelBtn = mbtn;
-  } else { S.addCost = null; S.addModelBtn = null; }
+    S.addTryBtn = tryBtn;
+    // 📖 keep the PDF itself: its pages shown as they are (₹0)
+    if (info.kind === 'pdf' && !info.convert) mk('pdf', '📖 PDF గానే ఉంచు · ₹0', 'పేజీలు ఉన్నది ఉన్నట్టు చూపిస్తాను (పెద్దది చేయొచ్చు, 🌙). PDF ఫోన్‌లో ఉంటుంది. 🔊 / పెద్ద అక్షరాలు ఉండవు: తర్వాత కార్డులో "🔤 అక్షరాలుగా కూడా చేయి".');
+    if (info.convert) a.appendChild(el('p', 'muted', '📖 మీ PDF పుస్తకం అలాగే ఉంటుంది; అక్షరాల పుస్తకం కొత్తగా రాక్‌లోకి వస్తుంది.'));
+  } else { S.addCost = null; S.addModelBtn = null; S.addTry = null; S.addTryBtn = null; }
   const prog = el('div', 'prog', ''); prog.id = 'addProg';
   const row = el('div', 'row');
   const go = btn('➕ రాక్‌లో పెట్టు', 'gold', () => {
-    if (!lang) { prog.textContent = 'ముందు పేజీల్లో భాష ఎంచుకోండి (English ₹0 / తెలుగు: ఖర్చు పైన ఉంది).'; return; }
+    if (!lang) { prog.textContent = 'ముందు ఎలా చదవాలో ఎంచుకోండి (English ₹0 / 🆓 తెలుగు ₹0 / 🇮🇳 AI: ఖర్చు పైన ఉంది / 📖 PDF గానే).'; return; }
     go.disabled = true;
     if (S.addModelBtn) S.addModelBtn.disabled = true; // (the AI is fixed once it starts)
+    if (S.addTryBtn) S.addTryBtn.disabled = true;
     prog.textContent = 'మొదలుపెడుతున్నాను…';
     post({ t: 'add_go', form: { kind: info.kind, t: t.value.trim(), a: au.value.trim(), sec: sec.value, era: era.value, lang } });
     row.appendChild(btn('⏹ ఆపు', '', () => post({ t: 'ai_stop' })));
@@ -1156,7 +1188,87 @@ function packSheet() {
 
 // ================================================================ 📖 the reading screen
 const R = S.reader;
+// ================================================================ 📖 a PDF book: its pages as they are (Anil, 22 Nov: "C రెండు చేయి")
+const P = { id: null, n: 0, i: 0, z: 1, night: false, cache: {}, order: [] };
+function openPdf(id) {
+  const b = S.byId[id];
+  if (!b) return;
+  closeBook(true);
+  $('search').hidden = true;
+  P.id = id; P.n = b.n || 0; P.i = (S.pos[id] || [0])[0] || 0; P.cache = {}; P.order = []; P.z = 1;
+  $('pvTitle').textContent = b.t || '';
+  $('pdfv').hidden = false;
+  $('pdfv').classList.toggle('night', P.night);
+  pvZoom();
+  pvLabel();
+  post({ t: 'pdf_open', id });
+}
+function pdfMeta(m) {
+  if (m.id !== P.id) return;
+  P.n = m.n || P.n;
+  if (m.at >= 0 && m.at < P.n) P.i = m.at;
+  pvShow(P.i);
+}
+function pvWidth() { return Math.round(Math.min(2000, Math.max(800, ($('pvBox').clientWidth || 360) * (window.devicePixelRatio || 2) * 1.5))); }
+function pvLabel() {
+  $('pvSub').textContent = '📄 PDF · పేజీ ' + (P.i + 1) + ' / ' + (P.n || '…');
+  $('pvNo').textContent = (P.i + 1) + ' / ' + (P.n || '…');
+  const sk = $('pvSeek'); sk.max = Math.max(1, P.n); sk.value = P.i + 1;
+}
+function pvShow(i) {
+  if (!P.id) return;
+  P.i = Math.max(0, Math.min(Math.max(0, P.n - 1), i));
+  pvLabel();
+  const img = $('pvImg');
+  if (P.cache[P.i]) img.src = P.cache[P.i];
+  else { img.removeAttribute('src'); $('pvWait').hidden = false; post({ t: 'pdf_page', id: P.id, i: P.i, w: pvWidth() }); }
+  if (P.cache[P.i]) $('pvWait').hidden = true;
+  $('pvBox').scrollTop = 0;
+  post({ t: 'pdf_pos', id: P.id, i: P.i });
+  S.pos[P.id] = [P.i, 0, Date.now()];
+  if (P.i + 1 < P.n && !P.cache[P.i + 1]) post({ t: 'pdf_page', id: P.id, i: P.i + 1, w: pvWidth() }); // (the next one ready)
+}
+function pdfImg(m) {
+  if (m.id !== P.id) return;
+  if (m.n) P.n = m.n;
+  P.cache[m.i] = m.src;
+  P.order.push(m.i);
+  while (P.order.length > 6) { const k = P.order.shift(); if (k !== P.i && k !== P.i + 1) delete P.cache[k]; }
+  if (m.i === P.i) { $('pvImg').src = m.src; $('pvWait').hidden = true; }
+  pvLabel();
+}
+function pvZoom() { $('pvImg').style.width = Math.round(P.z * 100) + '%'; }
+function pvClose() { $('pdfv').hidden = true; P.id = null; P.cache = {}; post({ t: 'pdf_close' }); }
+$('pvBack').onclick = pvClose;
+$('pvPrev').onclick = () => pvShow(P.i - 1);
+$('pvNext').onclick = () => pvShow(P.i + 1);
+$('pvIn').onclick = () => { P.z = Math.min(3, P.z + 0.5); pvZoom(); };
+$('pvOut').onclick = () => { P.z = Math.max(1, P.z - 0.5); pvZoom(); };
+$('pvNight').onclick = () => { P.night = !P.night; $('pdfv').classList.toggle('night', P.night); };
+$('pvSeek').oninput = () => { $('pvNo').textContent = $('pvSeek').value + ' / ' + P.n; };
+$('pvSeek').onchange = () => pvShow(Number($('pvSeek').value) - 1);
+(() => { // two fingers: bigger / smaller; one finger sideways (not zoomed): next / back
+  const box = $('pvBox');
+  let d0 = 0, z0 = 1, x0 = null, y0 = 0;
+  const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  box.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2) { d0 = dist(e.touches); z0 = P.z; x0 = null; }
+    else if (e.touches.length === 1) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }
+  }, { passive: true });
+  box.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2 && d0 > 0) { e.preventDefault(); P.z = Math.max(1, Math.min(3, z0 * dist(e.touches) / d0)); pvZoom(); }
+  }, { passive: false });
+  box.addEventListener('touchend', (e) => {
+    if (e.touches.length === 0) d0 = 0;
+    if (x0 === null || P.z > 1.05 || !e.changedTouches.length) { x0 = null; return; }
+    const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+    x0 = null;
+    if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) pvShow(P.i + (dx < 0 ? 1 : -1));
+  }, { passive: true });
+})();
+
 function openReader(id, unit) {
+  if (S.byId[id] && S.byId[id].pdf) { openPdf(id); return; }
   const b = S.byId[id];
   if (!b) return;
   closeBook(true);
@@ -2486,6 +2598,9 @@ function onJarvis(m) {
       if (m.v === 'era' || m.v === 'sec') { closeBook(true); S.view = m.v; post({ t: 'prefs', view: S.view }); rebuild(); goRack(m.v === 'era' ? 'universe' : 'fic', true); }
       break;
     case 'addinfo': addForm(m); break;
+    case 'ocr_try': if (S.addTry) S.addTry(m); break;
+    case 'pdf_meta': pdfMeta(m); break;
+    case 'pdf_img': pdfImg(m); break;
     // ---- 📊 🖍️ 🎧 💬 📝 ❓ 🗺️ 📚 🏠
     case 'dictst': dictOn(m.on); break;
     case 'dictated': {

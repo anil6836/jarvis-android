@@ -74,6 +74,8 @@ dependencies {
     // English -> Telugu translation (O29, Google's pack downloaded once when he taps it in Settings)
     implementation 'com.google.mlkit:text-recognition:16.0.0'
     implementation 'com.google.mlkit:translate:17.0.2'
+    // 📚 library: free Telugu page reading on the phone (Tesseract; its Telugu file is fetched once on his tap)
+    implementation 'cz.adaptech.tesseract4android:tesseract4android:4.9.0'
     // ⑮ the car box's 3D city map: MapLibre (free, open source) drawing OpenFreeMap's OpenStreetMap map, no key
     implementation 'org.maplibre.gl:android-sdk:11.13.5'
     // ✋ (7) the 3D workshop's hand signs: Google's MediaPipe hand model on the phone (the model file is downloaded by the build)

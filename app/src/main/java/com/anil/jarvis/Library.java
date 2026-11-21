@@ -59,6 +59,9 @@ final class Library {
 
     static File bookDir(Context c, String id) { return new File(root(c), "b-" + id); }
 
+    /** 📖 PDF books he chose to keep as PDF (left out of Google's backup: big). */
+    static File pdfOf(Context c, String id) { File d = new File(c.getFilesDir(), "library_pdf"); d.mkdirs(); return new File(d, id + ".pdf"); }
+
     static File coverFile(Context c, String id) { File d = new File(root(c), "covers"); d.mkdirs(); return new File(d, id + ".jpg"); }
 
     // ================================================================ the shelf: his books (shelf.json)
@@ -112,6 +115,8 @@ final class Library {
         saveShelf(c, out);
         wipe(bookDir(c, id));
         coverFile(c, id).delete();
+        //noinspection ResultOfMethodCallIgnored
+        pdfOf(c, id).delete();
         pos(c).edit().remove(id).apply();
     }
 
@@ -1265,13 +1270,33 @@ final class Library {
      */
     static JSONObject add(Context c, JSONObject form, Uri file, List<Uri> photos, Progress p, AiJob job) throws Exception {
         String id = "f-" + Long.toString(System.currentTimeMillis(), 36);
-        String kind = form.optString("kind", "txt"), lang = "te".equals(form.optString("lang")) ? "te" : "en";
+        String kind = form.optString("kind", "txt"), how = form.optString("lang", "en");
+        if (!how.matches("en|te|tf|pdf")) how = "en";
+        String lang = "te".equals(how) || "tf".equals(how) || ("pdf".equals(how) && "telugu".equals(form.optString("sec"))) ? "te" : "en";
         JSONObject b = new JSONObject().put("id", id).put("t", LibText.cut(form.optString("t", "నా పుస్తకం").trim(), 160)).put("a", LibText.cut(form.optString("a", "").trim(), 100))
                 .put("src", photos != null ? "scan" : "file").put("lang", lang).put("sec", form.optString("sec", "mine")).put("era", form.optString("era", "now"))
                 .put("at", System.currentTimeMillis()).put("credit", photos != null ? "మీ ఫోటోల నుంచి" : form.optString("credit", "").isEmpty() ? "మీ ఫోన్ నుంచి" : LibText.cut(form.optString("credit"), 80));
         if (b.optString("t").isEmpty()) b.put("t", "నా పుస్తకం");
         if (!java.util.Arrays.asList(LibText.SECTIONS).contains(b.optString("sec"))) b.put("sec", "mine");
         if (!java.util.Arrays.asList(LibText.ERAS).contains(b.optString("era"))) b.put("era", "now");
+        if ("pdf".equals(how) && "pdf".equals(kind) && photos == null) { // 📖 kept as the PDF itself: its pages shown as they are (₹0)
+            p.at("📖 PDF ని రాక్‌లో పెడుతున్నాను…");
+            File out = pdfOf(c, id);
+            try (InputStream in = c.getContentResolver().openInputStream(file); java.io.FileOutputStream o = new java.io.FileOutputStream(out)) {
+                if (in == null) throw new IOException("ఫైల్ తెరవలేకపోయాను");
+                byte[] buf = new byte[65536];
+                long got = 0;
+                for (int r; (r = in.read(buf)) > 0; ) { o.write(buf, 0, r); got += r; if (got > (300L << 20)) throw new IOException("PDF చాలా పెద్దది (300 MB పైన)"); }
+            } catch (IOException e) { //noinspection ResultOfMethodCallIgnored
+                out.delete(); throw e; }
+            int n;
+            try (ParcelFileDescriptor fd = ParcelFileDescriptor.open(out, ParcelFileDescriptor.MODE_READ_ONLY); PdfRenderer r = new PdfRenderer(fd)) { n = r.getPageCount(); }
+            catch (Exception e) { //noinspection ResultOfMethodCallIgnored
+                out.delete(); throw new IOException("ఈ PDF తెరుచుకోలేదు"); }
+            b.put("pdf", true).put("n", n).put("chars", 0).put("state", "ready");
+            put(c, b);
+            return b;
+        }
         List<String[]> ch;
         if (photos == null && !"pdf".equals(kind)) {
             p.at("చదువుతున్నాను…");
@@ -1284,7 +1309,7 @@ final class Library {
                 if (text.contains("PROJECT GUTENBERG")) text = LibText.stripGutenberg(text);
                 ch = LibText.chapters(text);
             }
-        } else ch = pages(c, file, photos, lang, p, job);
+        } else ch = pages(c, file, photos, "pdf".equals(how) ? "en" : how, p, job);
         if (ch == null || ch.isEmpty()) throw new IOException("ఇందులో చదవగలిగే అక్షరాలు దొరకలేదు");
         long[] n = saveChapters(c, id, ch);
         b.put("n", (int) n[0]).put("chars", n[1]).put("state", "ready");
@@ -1292,34 +1317,90 @@ final class Library {
         return b;
     }
 
-    /** Page pictures → text: English by the phone's own reader (₹0), Telugu by his AI; 10 pages a chapter. */
+    /** The PDF's first pages carry real Telugu letters of their own (Android 15+). */
+    private static boolean layerOf(PdfRenderer r, int n) {
+        StringBuilder s = new StringBuilder();
+        for (int i = 0; i < Math.min(n, 8) && s.length() < 1500; i++) try (PdfRenderer.Page pg = r.openPage(i)) { String t = LibOcr.pageText(pg); if (t != null) s.append(t).append('\n'); }
+        return LibText.layerGood(s.toString());
+    }
+
+    /** 🔍 One page tried the free way first (₹0): {text, how: layer | ocr, page, pages, q}. */
+    static JSONObject ocrTry(Context c, Uri pdf, List<Uri> photos, Progress p) throws Exception {
+        ParcelFileDescriptor fd = null;
+        PdfRenderer r = null;
+        try {
+            int n;
+            if (photos == null) { fd = c.getContentResolver().openFileDescriptor(pdf, "r"); r = new PdfRenderer(fd); n = r.getPageCount(); }
+            else n = photos.size();
+            if (n <= 0) throw new IOException("పేజీలు లేవు");
+            int at = n > 4 ? 2 : 0; // (past the cover and the title page)
+            Bitmap bm = null;
+            String t = null, how = "ocr";
+            if (r != null) {
+                boolean layer = layerOf(r, n);
+                try (PdfRenderer.Page pg = r.openPage(at)) {
+                    if (layer) { t = LibOcr.pageText(pg); if (t != null && t.trim().length() < 20) t = null; else how = "layer"; }
+                    if (t == null) {
+                        int w = 1800, h = Math.round(w * (pg.getHeight() / (float) Math.max(1, pg.getWidth())));
+                        bm = Bitmap.createBitmap(w, Math.min(h, 5000), Bitmap.Config.ARGB_8888);
+                        bm.eraseColor(android.graphics.Color.WHITE);
+                        pg.render(bm, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
+                    }
+                }
+            } else bm = decode(c, photos.get(at));
+            if (t == null) {
+                if (bm == null) throw new IOException("ఆ పేజీ తెరుచుకోలేదు");
+                LibOcr.fetch(c, p);
+                p.at("🔍 పేజీ " + (at + 1) + " ఫోన్ చదువుతోంది (₹0)…");
+                try (LibOcr.Reader o = new LibOcr.Reader(c)) { t = o.read(bm); }
+                bm.recycle();
+            }
+            return new JSONObject().put("text", LibText.cut(t.trim(), 900)).put("how", how).put("page", at + 1).put("pages", n)
+                    .put("q", Math.round(LibText.textQuality(t, true) * 100));
+        } finally {
+            try { if (r != null) r.close(); } catch (Exception ignored) {}
+            try { if (fd != null) fd.close(); } catch (Exception ignored) {}
+        }
+    }
+
+    /** Page pictures → text: English by the phone's own reader (₹0), Telugu by his AI or free on the phone; 10 pages a chapter. */
     private static List<String[]> pages(Context c, Uri pdf, List<Uri> photos, String lang, Progress p, AiJob job) throws Exception {
         List<String> texts = new ArrayList<>();
         ParcelFileDescriptor fd = null;
         PdfRenderer r = null;
+        boolean free = "tf".equals(lang); // 🆓 Telugu on the phone: the PDF's own letters, else Tesseract (₹0)
         TextRecognizer rec = "en".equals(lang) ? OfflineRead.recognizer() : null;
         Workshop.Engine e = "te".equals(lang) ? engine(new Prefs(c)) : null;
+        LibOcr.Reader ocr = null;
         try {
             int n;
             if (photos == null) { fd = c.getContentResolver().openFileDescriptor(pdf, "r"); r = new PdfRenderer(fd); n = r.getPageCount(); }
             else n = photos.size();
             n = Math.min(n, 600);
+            boolean layer = free && r != null && layerOf(r, n); // (typed in Unicode? then its own letters, perfect and quick)
             for (int i = 0; i < n; i++) {
                 if (job != null && job.stop) throw new IOException("ఆపేశాను");
-                p.at("📄 పేజీ " + (i + 1) + " / " + n + ("te".equals(lang) ? " (AI)" : "") + "…");
-                Bitmap bm;
+                p.at("📄 పేజీ " + (i + 1) + " / " + n + ("te".equals(lang) ? " (AI)" : free ? (layer ? " (PDF అక్షరాలు, ₹0)" : " (ఫోన్ తెలుగు, ₹0)") : "") + "…");
+                Bitmap bm = null;
+                String t = null;
                 if (r != null) {
                     try (PdfRenderer.Page pg = r.openPage(i)) {
-                        int w = 1400, h = Math.round(w * (pg.getHeight() / (float) Math.max(1, pg.getWidth())));
-                        bm = Bitmap.createBitmap(w, Math.min(h, 4000), Bitmap.Config.ARGB_8888);
-                        bm.eraseColor(android.graphics.Color.WHITE);
-                        pg.render(bm, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
+                        if (layer) { t = LibOcr.pageText(pg); if (t != null && t.trim().length() < 20) t = null; }
+                        if (t == null) {
+                            int w = free ? 1800 : 1400, h = Math.round(w * (pg.getHeight() / (float) Math.max(1, pg.getWidth())));
+                            bm = Bitmap.createBitmap(w, Math.min(h, 5000), Bitmap.Config.ARGB_8888);
+                            bm.eraseColor(android.graphics.Color.WHITE);
+                            pg.render(bm, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
+                        }
                     }
                 } else bm = decode(c, photos.get(i));
+                if (t != null) { texts.add(t.trim()); continue; }
                 if (bm == null) { texts.add(""); continue; }
-                String t;
                 if (rec != null) { t = OfflineRead.text(rec, bm); if (t == null) t = ""; }
-                else {
+                else if (free) {
+                    if (ocr == null) { LibOcr.fetch(c, p::at); ocr = new LibOcr.Reader(c); }
+                    t = ocr.read(bm);
+                } else {
                     String over = Workshop.overLimit(c, new Prefs(c)); // (this month's limit, checked before every paid page)
                     if (over != null) throw new IOException(over);
                     ByteArrayOutputStream o = new ByteArrayOutputStream();
@@ -1333,6 +1414,7 @@ final class Library {
             try { if (r != null) r.close(); } catch (Exception ignored) {}
             try { if (fd != null) fd.close(); } catch (Exception ignored) {}
             try { if (rec != null) rec.close(); } catch (Exception ignored) {}
+            if (ocr != null) ocr.close();
         }
         List<String[]> out = new ArrayList<>();
         for (int i = 0; i < texts.size(); i += 10) {
