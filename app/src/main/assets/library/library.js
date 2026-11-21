@@ -1005,13 +1005,22 @@ function openReader(id, unit) {
   applyReaderLook();
   post({ t: 'chapter', id, unit: R.unit });
 }
+/** The whole name in at most two lines: the letters get a little smaller until it fits (never under 13.5px). */
+function fitTitle() {
+  const t = $('rTitle');
+  if (!t || $('reader').hidden) return;
+  let f = 17;
+  t.style.fontSize = f + 'px';
+  while (f > 13.5 && t.scrollHeight > t.clientHeight + 2) { f -= 0.5; t.style.fontSize = f + 'px'; }
+}
 /** The reader's top line: the book's whole name (made a little smaller when long), its writer and which chapter. */
 function readerHead() {
   const b = S.byId[R.id] || {};
   const t = $('rTitle');
   t.textContent = b.lang === 'te' && b.tt ? b.tt : b.t || '';
-  t.style.fontSize = '17px';
-  for (let f = 17; f > 14 && t.scrollWidth > t.clientWidth + 1; f -= 0.5) t.style.fontSize = f + 'px';
+  fitTitle();
+  requestAnimationFrame(fitTitle);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitTitle);
   $('rSub').textContent = [b.a || '', R.n ? 'అధ్యాయం ' + (R.unit + 1) + ' / ' + R.n : ''].filter(Boolean).join(' · ');
 }
 function applyReaderLook() {
@@ -1202,6 +1211,19 @@ function nowBar() {
 $('nowP').onclick = () => post({ t: 'pause' });
 $('nowR').onclick = () => { const n = S.now; if (n) openReader(n.id, n.unit); };
 $('nowS').onclick = sleepNext;
+
+// ================================================================ the top bar's height decides where the rack names and bars sit
+function layoutTop() {
+  const h = $('top').offsetHeight;
+  $('chips').style.top = (h - 2) + 'px';
+  const below = h - 2 + Math.max(38, $('chips').offsetHeight) + 6;
+  $('aibar').style.top = below + 'px';
+  $('toast').style.top = below + 'px';
+}
+try { const ro = new ResizeObserver(layoutTop); ro.observe($('top')); ro.observe($('chips')); } catch (e) { /* (old WebView: the CSS places are kept) */ }
+window.addEventListener('resize', () => { layoutTop(); fitTitle(); });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(layoutTop);
+layoutTop();
 
 // ================================================================ the top buttons
 $('bClose').onclick = () => post({ t: 'close' });
