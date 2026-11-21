@@ -357,8 +357,11 @@ public class CircuitLabActivity extends Activity {
 
     /** 💰 The AI for this studio, picked by his tap from every model his keys can use, each with its cost for one job. */
     private void pickModel() {
+        final int size = board != null && CircuitLab.partCount(board) > 0 ? forAi(board).length() : 0; // (a board on the screen: a change costs by its size)
         Models.pick(this, Workshop.studioName(Workshop.LAB) + " AI ఎంచుకోండి", new String[]{Prefs.OPENAI, Prefs.ANTHROPIC, Prefs.GEMINI},
-                new String[]{p.openAiKey(), p.anthropicKey(), p.geminiKey()}, Workshop.modelFor(p, Workshop.LAB), Workshop.costWhat(Workshop.LAB), Workshop.costOf(Workshop.LAB), it -> {
+                new String[]{p.openAiKey(), p.anthropicKey(), p.geminiKey()}, Workshop.modelFor(p, Workshop.LAB),
+                size > 0 ? "ఈ బోర్డ్‌లో ఒక మార్పుకి, ఒక కొత్త బోర్డ్‌కి ఖర్చు" : Workshop.costWhat(Workshop.LAB),
+                size > 0 ? mm -> "మార్పు " + CircuitLab.aboutMoney(mm, size, false) + " · కొత్తది " + CircuitLab.aboutMoney(mm, 0, false) : Workshop.costOf(Workshop.LAB), it -> {
                     p.setStudioModel(Workshop.LAB, it.id);
                     showChip();
                     refresh();

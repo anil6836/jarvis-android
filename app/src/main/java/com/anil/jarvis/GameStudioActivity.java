@@ -460,7 +460,9 @@ public class GameStudioActivity extends Activity {
     /** 💰 The AI for this studio, picked by his tap from every model his keys can use, each with its cost for one job. */
     private void pickModel() {
         Models.pick(this, Workshop.studioName(Workshop.GAMES) + " AI ఎంచుకోండి", new String[]{Prefs.OPENAI, Prefs.ANTHROPIC, Prefs.GEMINI},
-                new String[]{p.openAiKey(), p.anthropicKey(), p.geminiKey()}, Workshop.modelFor(p, Workshop.GAMES), Workshop.costWhat(Workshop.GAMES), Workshop.costOf(Workshop.GAMES), it -> {
+                new String[]{p.openAiKey(), p.anthropicKey(), p.geminiKey()}, Workshop.modelFor(p, Workshop.GAMES),
+                game != null && game.brokenId != null ? "ఒక కొత్త ఆటకి, ఈ ఆటలో తప్పు సరిచేయడానికి ఖర్చు" : Workshop.costWhat(Workshop.GAMES),
+                game != null && game.brokenId != null ? mm -> "కొత్త ఆట " + GameStudio.aboutMoney(mm) + " · సరిచేయడం " + GameStudio.fixMoney(mm) : Workshop.costOf(Workshop.GAMES), it -> {
                     p.setStudioModel(Workshop.GAMES, it.id);
                     showChip();
                     refresh();

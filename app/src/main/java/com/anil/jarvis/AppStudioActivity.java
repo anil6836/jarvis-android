@@ -382,12 +382,27 @@ public class AppStudioActivity extends Activity {
         return t;
     }
 
-    /** 💰 The AI for this studio, picked by his tap from every model his keys can use, each with its cost for one job. */
+    /**
+     * 💰 The AI for this studio, picked by his tap from every model his keys can use, each with its cost for what is on the
+     * screen: the plan being shown (its size), a change to the open app (its code), else one plan + one usual app.
+     */
     private void pickModel() {
+        final AppStudio.Plan pl = "plan".equals(overlayKind) ? plan : null;
+        final AppStudio.Made a = pl == null ? app : null;
+        String what = Workshop.costWhat(Workshop.APPS);
+        Models.Cost cost = Workshop.costOf(Workshop.APPS);
+        if (pl != null) {
+            what = "ఈ ప్లాన్ (\"" + pl.title + "\") యాప్ తయారీకి ఖర్చు, ఎక్కువలో ఎక్కువ కూడా";
+            cost = mm -> "తయారీ " + AppStudio.buildMoney(mm, pl.size) + " (ఎక్కువలో " + AppStudio.mostMoney(mm) + ")";
+        } else if (a != null) {
+            what = "తెరిచి ఉన్న యాప్ (\"" + a.title + "\") లో ఒక మార్పుకి ఖర్చు";
+            cost = mm -> "మార్పు " + AppStudio.changeMoney(mm, a.codeSize());
+        }
         Models.pick(this, Workshop.studioName(Workshop.APPS) + " AI ఎంచుకోండి", new String[]{Prefs.OPENAI, Prefs.ANTHROPIC, Prefs.GEMINI},
-                new String[]{p.openAiKey(), p.anthropicKey(), p.geminiKey()}, Workshop.modelFor(p, Workshop.APPS), Workshop.costWhat(Workshop.APPS), Workshop.costOf(Workshop.APPS), it -> {
+                new String[]{p.openAiKey(), p.anthropicKey(), p.geminiKey()}, Workshop.modelFor(p, Workshop.APPS), what, cost, it -> {
                     p.setStudioModel(Workshop.APPS, it.id);
                     showChip();
+                    if (pl != null && pl == plan && "plan".equals(overlayKind)) showPlan(pl, planCostShown); // (the card's ₹ for the new AI)
                     refresh();
                     android.widget.Toast.makeText(this, "✓ " + Workshop.studioName(Workshop.APPS) + " AI: " + it.id + " (వర్క్‌షాప్ AI మారలేదు)", android.widget.Toast.LENGTH_LONG).show();
                 });
@@ -584,7 +599,11 @@ public class AppStudioActivity extends Activity {
         return t;
     }
 
+    /** The plan's own cost line as last shown (kept when the card is drawn again for another AI). */
+    private String planCostShown;
+
     private void showPlan(AppStudio.Plan pl, String cost) {
+        planCostShown = cost;
         overlayKind = "plan";
         overlayBox.removeAllViews();
         TextView h = Ui.text(this, "📋 " + pl.title, 20, Ui.TEXT);
@@ -597,8 +616,13 @@ public class AppStudioActivity extends Activity {
         TextView money = Ui.text(this, "💰 తయారీ సుమారు " + (m.isEmpty() ? "?" : AppStudio.buildMoney(m, pl.size)) + " (ఎక్కువలో ఎక్కువ "
                 + (m.isEmpty() ? "?" : AppStudio.mostMoney(m)) + ")" + (cost == null ? "" : " · ఈ ప్లాన్‌కి " + cost)
                 + "\n📲 ఫోన్‌లో పెట్టడం, ప్రివ్యూ చూడటం ₹0", 13.5f, Ui.GOLD);
-        money.setPadding(0, 0, 0, dp(12));
+        money.setPadding(0, 0, 0, dp(4));
         overlayBox.addView(money);
+        // 🤖 which AI makes it, and every model's cost for THIS plan (his tap picks; the workshop's AI stays)
+        TextView ai = Ui.text(this, "🤖 AI: " + (m.isEmpty() ? "ఎంచుకోలేదు" : WorkshopActivity.label(m)) + " · మార్చు (ఈ ప్లాన్‌కి ప్రతి మోడల్ ఖర్చు) →", 13.5f, Ui.CYAN);
+        ai.setPadding(0, dp(6), 0, dp(12));
+        ai.setOnClickListener(v -> pickModel());
+        overlayBox.addView(ai);
         TextView ok = cardButton("✅ ఇలాగే తయారు చేయి", Ui.CYAN, 0xFF04131A, v -> startMake());
         overlayBox.addView(ok, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout row = new LinearLayout(this);
