@@ -401,7 +401,7 @@ public class WakeService extends Service {
     private void onShake() {
         if (JarvisCamera.open) { Runnable cam = cameraWake; if (cam != null && !JarvisCamera.micInUse) cam.run(); return; } // the camera hears him itself
         Runnable ws0 = workshopWake;
-        if (ws0 != null && (WorkshopActivity.front || GameStudioActivity.front || CircuitLabActivity.front || AppStudioActivity.front)) { if (!WorkshopVoice.micInUse) ws0.run(); return; } // (the workshop / 🎮 game studio / ⚡ circuit lab too)
+        if (ws0 != null && (WorkshopActivity.front || GameStudioActivity.front || CircuitLabActivity.front || AppStudioActivity.front || LibraryActivity.front)) { if (!WorkshopVoice.micInUse) ws0.run(); return; } // (the workshop / 🎮 game studio / ⚡ circuit lab too)
         if (MainActivity.busyTalking()) return;
         stopEngine();
         wakeScreen();
@@ -455,7 +455,7 @@ public class WakeService extends Service {
             return;
         }
         Runnable ws = workshopWake;
-        if (ws != null && (WorkshopActivity.front || GameStudioActivity.front || CircuitLabActivity.front || AppStudioActivity.front)) { ws.run(); return; } // 🛠️ the workshop / 🎮 game studio / ⚡ circuit lab in front listens itself: no panel over it
+        if (ws != null && (WorkshopActivity.front || GameStudioActivity.front || CircuitLabActivity.front || AppStudioActivity.front || LibraryActivity.front)) { ws.run(); return; } // 🛠️ the workshop / 🎮 game studio / ⚡ circuit lab in front listens itself: no panel over it
         // Look at the screen first (for "what's on my screen?"), then open Jarvis on top.
         final boolean[] opened = {false};
         Runnable open = () -> { if (!opened[0]) { opened[0] = true; openJarvis(); } };

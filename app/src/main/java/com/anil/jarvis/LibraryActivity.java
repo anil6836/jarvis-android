@@ -99,6 +99,7 @@ public class LibraryActivity extends Activity {
         first = getIntent();
         newPage();
         watchReader();
+        ear = new WorkshopVoice(owner(), new Prefs(this));
     }
 
     @Override protected void onNewIntent(Intent i) {
@@ -261,9 +262,9 @@ public class LibraryActivity extends Activity {
             case "wish": io.execute(() -> { try { Library.wish(this, m.getJSONObject("item")); say("🔖 కోరికల రాక్‌లో పెట్టాను."); sendShelf(); } catch (Exception e) { say("పెట్టలేకపోయాను"); } }); break;
             case "chapter": chapter(id, m.optInt("unit", 0)); break;
             case "te_phone": tePhone(id, m.optInt("unit", 0)); break;
-            case "read": read(id, m.optString("lang", "en"), m.has("unit") ? m.optInt("unit") : -1, m.optInt("part", 0)); break;
-            case "pause": ReaderService.control(this, ReaderService.ACTION_TOGGLE); break;
-            case "stop": ReaderService.control(this, ReaderService.ACTION_STOP); break;
+            case "read": heldReading = false; ui.removeCallbacks(resumeR); read(id, m.optString("lang", "en"), m.has("unit") ? m.optInt("unit") : -1, m.optInt("part", 0)); break;
+            case "pause": heldReading = false; ui.removeCallbacks(resumeR); ReaderService.control(this, ReaderService.ACTION_TOGGLE); break;
+            case "stop": heldReading = false; ui.removeCallbacks(resumeR); ReaderService.control(this, ReaderService.ACTION_STOP); break;
             case "sleep": {
                 int min = Math.max(0, Math.min(180, m.optInt("min", 0)));
                 ReaderService.sleepIn(min);
@@ -361,6 +362,20 @@ public class LibraryActivity extends Activity {
                 break;
             }
             case "close": finish(); break;
+            // ---- 🎙️ his voice here
+            case "mic": if (ear != null) { if (!WorkshopVoice.micInUse) holdReading(); ear.tap(); } break;
+            case "vdone": {
+                String w = m.optString("s", ""), said = m.optString("say", "");
+                if (ear == null) break;
+                if (m.optBoolean("brain")) ear.toBrain(w); // (not about the library: the same Jarvis as the panel answers here)
+                else if (!said.isEmpty()) ear.say(said, false);
+                break;
+            }
+            case "vpause": // ("ఆపు" heard: reading stays stopped after his words)
+                heldReading = false;
+                ui.removeCallbacks(resumeR);
+                if (!ReaderService.reading.isEmpty() && !ReaderService.paused) ReaderService.control(this, ReaderService.ACTION_TOGGLE);
+                break;
             default: break;
         }
     }
@@ -827,15 +842,88 @@ public class LibraryActivity extends Activity {
     /** The library is on the screen now (an AI Telugu job that ends while it isn't also says so in a notification). */
     static volatile boolean front;
 
-    @Override protected void onResume() { super.onResume(); front = true; JarvisAccessibility.bubbleAside(true); }
+    @Override protected void onResume() {
+        super.onResume();
+        front = true;
+        JarvisAccessibility.bubbleAside(true);
+        WakeService.workshopWake = wakeR; // (🎙️ "Jarvis" here: the library hears him, no panel over it)
+    }
 
-    @Override protected void onPause() { super.onPause(); front = false; JarvisAccessibility.bubbleAside(false); }
+    @Override protected void onPause() {
+        super.onPause();
+        front = false;
+        JarvisAccessibility.bubbleAside(false);
+        if (WakeService.workshopWake == wakeR) WakeService.workshopWake = null;
+        if (ear != null) ear.away();
+    }
+
+    @Override protected void onStart() { super.onStart(); visible = true; earWake = earR; }
+
+    @Override protected void onStop() { super.onStop(); visible = false; if (earWake == earR) earWake = null; }
+
+    // ================================================================ 🎙️ his voice inside the library (Anil, 21 Nov: "అన్ని చేయి")
+
+    private WorkshopVoice ear;
+    /** Jarvis's reading aloud was paused for his words: it goes on after them (not after ఆపు / చదువు / another chapter). */
+    private boolean heldReading;
+    /** The library is on the screen (also under the see-through earbud entry, which only pauses it). */
+    static volatile boolean visible;
+    /** His earbud press-and-hold while the library is on the screen: the library listens (AssistEntry runs this). */
+    static volatile Runnable earWake;
+    private final Runnable wakeR = () -> { if (ear != null && front && !destroyed) { if (!WorkshopVoice.micInUse) holdReading(); ear.wake(); } };
+    /** (from the earbud entry: the library comes back to the front first) */
+    private final Runnable earR = new Runnable() {
+        private int tries;
+        @Override public void run() {
+            if (destroyed) return;
+            if (!front && tries++ < 8) { ui.postDelayed(this, 150); return; }
+            tries = 0;
+            if (front && !WorkshopVoice.micInUse) wakeR.run();
+        }
+    };
+    private final Runnable resumeR = this::resumeReading;
+
+    private WorkshopVoice.Owner owner() {
+        return new WorkshopVoice.Owner() {
+            @Override public Activity screen() { return LibraryActivity.this; }
+            /** The page decides (a library word, a sheet that takes words, a question about the book); what it doesn't take comes back for the brain. */
+            @Override public boolean take(String words) { try { send(json("vheard").put("s", words)); } catch (Exception ignored) {} return true; }
+            @Override public void line(String text) { try { send(json("vline").put("s", text == null ? "" : text)); } catch (Exception ignored) {} }
+            @Override public void mic(int state) {
+                try { send(json("vmic").put("st", state)); } catch (Exception ignored) {}
+                ui.removeCallbacks(resumeR);
+                if (state == WorkshopVoice.IDLE && heldReading) ui.postDelayed(resumeR, 1200);
+            }
+            @Override public boolean front() { return front && !destroyed; }
+            @Override public boolean waitWords(String words) { return false; }
+        };
+    }
+
+    /** Jarvis is reading a library book aloud: it waits while he talks (his words are not mixed with the reading). */
+    private void holdReading() {
+        String uri = ReaderService.mark(this).getString("uri", "");
+        if (!ReaderService.reading.isEmpty() && !ReaderService.paused && uri.startsWith("lib:")) {
+            heldReading = true;
+            ReaderService.control(this, ReaderService.ACTION_TOGGLE);
+        }
+    }
+
+    private void resumeReading() {
+        if (!heldReading || destroyed) return;
+        heldReading = false;
+        if (!ReaderService.reading.isEmpty() && ReaderService.paused) ReaderService.control(this, ReaderService.ACTION_TOGGLE);
+    }
 
     @Override public void onBackPressed() { send(json("back")); }
 
     @Override protected void onDestroy() {
         destroyed = true;
         open = Math.max(0, open - 1);
+        if (WakeService.workshopWake == wakeR) WakeService.workshopWake = null;
+        if (earWake == earR) earWake = null;
+        ui.removeCallbacks(resumeR);
+        if (heldReading) resumeReading();
+        if (ear != null) ear.shutdown();
         if (open == 0) { ReaderService.watch = null; Library.aiWatch = null; if (ReaderService.reading.isEmpty()) Library.closeTranslator(); }
         Library.AiJob a = addJob;
         if (a != null) a.stop = true;

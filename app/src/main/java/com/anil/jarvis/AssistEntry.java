@@ -11,6 +11,13 @@ import android.os.Bundle;
 public class AssistEntry extends Activity {
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Runnable lib = LibraryActivity.earWake;
+        if (LibraryActivity.visible && lib != null) { // 📚 the library is on the screen: it listens itself (no panel over it)
+            finish();
+            overridePendingTransition(0, 0);
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(lib, 250);
+            return;
+        }
         Intent i = new Prefs(this).compactPanel()
                 ? new Intent(this, SheetActivity.class)
                 : new Intent(this, MainActivity.class).putExtra(MainActivity.EXTRA_WAKE, true);

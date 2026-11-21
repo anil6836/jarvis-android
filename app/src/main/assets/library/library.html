@@ -169,6 +169,10 @@
   .msay { color: var(--gold); margin: 4px 0 6px; }
   .mlink { padding: 3px 0; cursor: pointer; }
   #mFind { width: 100%; margin: 6px 0; }
+  .mic { flex: none; }
+  .mic.on { background: #2fb8d8 !important; color: #08131a !important; border-color: #2fb8d8 !important; }
+  #vline { position: absolute; left: 12px; right: 12px; bottom: 74px; z-index: 13; background: rgba(12,28,34,.94); color: #d9f6ff; border: 1px solid #2fb8d8;
+           border-radius: 14px; padding: 8px 12px; font-size: 15px; line-height: 1.45; text-align: center; pointer-events: none; }
   #hallbar { position: absolute; left: 8px; right: 8px; bottom: 34px; z-index: 4; display: flex; gap: 6px; justify-content: space-between; }
   #hallbar button { background: rgba(29,20,13,.95); border-color: var(--gold2); padding: 8px 12px; }
   [hidden] { display: none !important; }
@@ -184,6 +188,7 @@
   <button id="bTr" aria-label="అనువాదాలు">✨</button>
   <button id="bSearch" aria-label="వెతుకు">🔍</button>
   <button id="bAdd" aria-label="పుస్తకం పెట్టు">➕</button>
+  <button id="bMic" class="mic" aria-label="మాట్లాడండి">🎙️</button>
 </div>
 <div id="chips"></div>
 <div id="hint">పుస్తకం మీద నొక్కండి · వేలితో జరపండి · రెండు వేళ్ళతో దగ్గరగా / దూరంగా</div>
@@ -207,17 +212,17 @@
 </div>
 
 <div id="me" class="panel" hidden>
-  <header><button id="mBack">←</button><span class="h">📊 నా చదువు</span></header>
+  <header><button id="mBack">←</button><span class="h">📊 నా చదువు</span><button class="mic" aria-label="మాట్లాడండి">🎙️</button></header>
   <div class="body" id="mBody"></div>
 </div>
 
 <div id="mapp" class="panel" hidden>
-  <header><button id="pBack">←</button><span class="h" id="pTitle">🗺️ పాత్రలు</span></header>
+  <header><button id="pBack">←</button><span class="h" id="pTitle">🗺️ పాత్రలు</span><button class="mic" aria-label="మాట్లాడండి">🎙️</button></header>
   <div class="body" id="pBody"></div>
 </div>
 
 <div id="reader" class="panel" hidden>
-  <header><button id="rBack">←</button><span class="h" id="rTitle"></span><select id="chap"></select><button id="rSmall">A−</button><button id="rBig">A+</button><button id="rNight">🌙</button></header>
+  <header><button id="rBack">←</button><span class="h" id="rTitle"></span><select id="chap"></select><button id="rSmall">A−</button><button id="rBig">A+</button><button id="rNight">🌙</button><button id="rMic" class="mic" aria-label="మాట్లాడండి">🎙️</button></header>
   <div id="modes"></div>
   <div id="pairs" hidden></div>
   <div id="rAi" hidden></div>
@@ -227,6 +232,7 @@
 </div>
 <div id="bubble" hidden></div>
 <div id="toast"></div>
+<div id="vline" hidden></div>
 
 <script src="libkit.js"></script>
 <script type="module" src="library.js"></script>

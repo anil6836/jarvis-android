@@ -321,8 +321,145 @@
     return out.join(', ');
   }
 
+  // ================================================================ 🎙️ his words (Telugu or English, as the phone wrote them)
+  const TE_C = { 'క': 'k', 'ఖ': 'kh', 'గ': 'g', 'ఘ': 'gh', 'ఙ': 'n', 'చ': 'ch', 'ఛ': 'ch', 'జ': 'j', 'ఝ': 'jh', 'ఞ': 'n', 'ట': 't', 'ఠ': 'th', 'డ': 'd', 'ఢ': 'dh',
+    'ణ': 'n', 'త': 't', 'థ': 'th', 'ద': 'd', 'ధ': 'dh', 'న': 'n', 'ప': 'p', 'ఫ': 'f', 'బ': 'b', 'భ': 'bh', 'మ': 'm', 'య': 'y', 'ర': 'r', 'ఱ': 'r', 'ల': 'l', 'ళ': 'l',
+    'వ': 'v', 'శ': 'sh', 'ష': 'sh', 'స': 's', 'హ': 'h' };
+  const TE_V = { 'అ': 'a', 'ఆ': 'a', 'ఇ': 'i', 'ఈ': 'i', 'ఉ': 'u', 'ఊ': 'u', 'ఋ': 'ru', 'ఎ': 'e', 'ఏ': 'e', 'ఐ': 'ai', 'ఒ': 'o', 'ఓ': 'o', 'ఔ': 'au' };
+  const TE_S = { 'ా': 'a', 'ి': 'i', 'ీ': 'i', 'ు': 'u', 'ూ': 'u', 'ృ': 'ru', 'ె': 'e', 'ే': 'e', 'ై': 'ai', 'ొ': 'o', 'ో': 'o', 'ౌ': 'au' };
+  /** Telugu letters → rough English letters ("షెర్లాక్ హోమ్స్" → "sherlak homs"), so a name said in Telugu can meet its English spelling. */
+  function te2lat(s) {
+    let out = '';
+    const a = Array.from(String(s || ''));
+    for (let i = 0; i < a.length; i++) {
+      const ch = a[i];
+      if (TE_C[ch]) {
+        const nx = a[i + 1];
+        out += TE_C[ch];
+        if (nx === '్') i++;
+        else if (TE_S[nx]) { out += TE_S[nx]; i++; }
+        else out += 'a';
+      } else if (TE_V[ch]) out += TE_V[ch];
+      else if (ch === 'ం') out += 'm';
+      else if (ch === 'ః' || ch === '‌' || ch === '‍' || ch === '్') { /* (nothing said) */ }
+      else out += ch;
+    }
+    return out;
+  }
+  /** Both scripts into one plain spelling for comparing ("Sherlock" ≈ "షెర్లాక్"). */
+  function vnorm(s) {
+    let t = te2lat(String(s || '').toLowerCase()).replace(/[^a-z0-9 ]+/g, ' ');
+    t = t.replace(/ph/g, 'f').replace(/ck/g, 'k').replace(/q/g, 'k').replace(/x/g, 'ks').replace(/w/g, 'v').replace(/z/g, 'j')
+      .replace(/c(?=[eiy])/g, 's').replace(/ch/g, 'c').replace(/c/g, 'k').replace(/([tdkgbs])h/g, '$1').replace(/y/g, 'i')
+      .replace(/ee|ii/g, 'i').replace(/oo|uu|ou/g, 'u').replace(/aa/g, 'a').replace(/(.)\1+/g, '$1');
+    return t.replace(/\s+/g, ' ').trim();
+  }
+  function grams(w) { const g = []; for (let i = 0; i < w.length - 1; i++) g.push(w.slice(i, i + 2)); return g; }
+  function dice(a, b) {
+    if (!a || !b) return 0;
+    if (a === b) return 1;
+    const x = grams(a), y = grams(b);
+    if (!x.length || !y.length) return 0;
+    const pool = y.slice();
+    let hit = 0;
+    x.forEach((g) => { const k = pool.indexOf(g); if (k >= 0) { hit++; pool.splice(k, 1); } });
+    return 2 * hit / (x.length + y.length);
+  }
+  /** How alike two single words are (letters, and the consonants alone: "homs" ≈ "holmes"). */
+  function subseq(x, y) { let j = 0; for (let i = 0; i < y.length && j < x.length; i++) if (y[i] === x[j]) j++; return j === x.length; }
+  function wordLike(a, b) {
+    const ca = a.replace(/[aeiou]/g, ''), cb = b.replace(/[aeiou]/g, '');
+    // (a silent letter: "homs" said, "holmes" written → the same consonants in order, same first letter)
+    const quiet = ca.length >= 3 && cb.length >= 3 && ca[0] === cb[0] && Math.abs(ca.length - cb.length) <= 1 && (subseq(ca, cb) || subseq(cb, ca)) ? 0.8 : 0;
+    return Math.max(dice(a, b), ca.length > 1 && cb.length > 1 ? dice(ca, cb) * 0.95 : 0, a.length >= 4 && (b.startsWith(a) || a.startsWith(b)) ? 0.9 : 0, quiet);
+  }
+  const VSTOP = new Set(['the', 'of', 'a', 'an', 'and', 'in', 'to', 'tu', 'or', 'ni', 'nu', 'lo', 'pustakam', 'book']);
+  /** How well what he said names this (0–1): each word he said finds its best word in the name. */
+  function sayLike(said, name) {
+    const w = vnorm(said).split(' ').filter((x) => x.length > 1 && !VSTOP.has(x));
+    const n = vnorm(name).split(' ').filter((x) => x.length > 1 && !VSTOP.has(x));
+    if (!w.length || !n.length) return 0;
+    let sum = 0;
+    w.forEach((x) => { let best = 0; n.forEach((y) => { best = Math.max(best, wordLike(x, y)); }); sum += best; });
+    return sum / w.length;
+  }
+  /** The best of `items` for what he said: names(item) → its names (English, Telugu…). → {item, score} | null below `min`. */
+  function bestSaid(said, items, names, min) {
+    let best = null, bs = 0;
+    (items || []).forEach((it) => {
+      let sc = 0;
+      names(it).forEach((n) => { if (n) sc = Math.max(sc, sayLike(said, n)); });
+      if (sc > bs + 1e-9) { bs = sc; best = it; }
+    });
+    return best && bs >= (min || 0.6) ? { item: best, score: bs } : null;
+  }
+  const ORD = [['మొదటి', 1], ['ఒకటో', 1], ['రెండో', 2], ['రెండవ', 2], ['మూడో', 3], ['మూడవ', 3], ['నాలుగో', 4], ['నాలుగవ', 4], ['ఐదో', 5], ['ఐదవ', 5],
+    ['ఆరో', 6], ['ఆరవ', 6], ['ఏడో', 7], ['ఏడవ', 7], ['ఎనిమిదో', 8], ['ఎనిమిదవ', 8], ['తొమ్మిదో', 9], ['తొమ్మిదవ', 9], ['పదో', 10], ['పదవ', 10]];
+  /**
+   * 🎙️ A library word he said → {c, arg?, lang?} | null (not a library word: the page then looks at what is open, then the brain).
+   * c: note mark unmark me marks hall hallnext hallprev out nextq next prev chapter bigger smaller sum quiz map audio read pause search open back
+   */
+  function voiceCmd(raw) {
+    const t = String(raw || '').trim().replace(/[.!?।,]+$/g, '').trim();
+    const s = t.toLowerCase();
+    if (!s) return null;
+    const has = (...ws) => ws.some((w) => s.includes(w));
+    let m = t.match(/^(నోట్|note)\s*(రాయి|పెట్టు|:|-)?\s*/i);
+    if (m && t.length > m[0].length) return { c: 'note', arg: t.slice(m[0].length).trim() };
+    if (has('నా చదువు', 'లెక్కలు', 'స్టాట్స్', 'stats', 'my reading')) return { c: 'me' };
+    if (has('గుర్తులు చూపించు', 'నా గుర్తులు', 'నోట్స్ చూపించు', 'గుర్తులన్నీ', 'my marks', 'my notes')) return { c: 'marks' };
+    if (has('గుర్తు తీసేయి', 'గుర్తు తీసెయ్', 'గుర్తు తీయి', 'unmark')) return { c: 'unmark' };
+    if (has('గుర్తు పెట్టు', 'గుర్తుపెట్టు', 'హైలైట్', 'highlight', 'mark this', 'mark it')) return { c: 'mark' };
+    if (has('కాలం హాల్', 'హాల్లో నడ', 'హాల్‌లో నడ', 'time hall', 'టైం హాల్', 'టైమ్ హాల్')) return { c: 'hall' };
+    if (has('తర్వాతి కాలం', 'తరువాతి కాలం', 'next era')) return { c: 'hallnext' };
+    if (has('వెనకటి కాలం', 'ముందటి కాలం', 'previous era')) return { c: 'hallprev' };
+    if (has('బయటకు', 'బయటికి', 'exit')) return { c: 'out' };
+    if (has('తర్వాతి ప్రశ్న', 'తరువాతి ప్రశ్న', 'next question')) return { c: 'nextq' };
+    if (has('తర్వాతి అధ్యాయం', 'తరువాతి అధ్యాయం', 'నెక్స్ట్ చాప్టర్', 'next chapter')) return { c: 'next' };
+    if (has('ముందటి అధ్యాయం', 'వెనకటి అధ్యాయం', 'ముందు అధ్యాయం', 'previous chapter', 'ప్రీవియస్ చాప్టర్')) return { c: 'prev' };
+    m = s.match(/(?:అధ్యాయం|chapter|చాప్టర్)\s*(?:నంబర్|number)?\s*(\d+)/) || s.match(/(\d+)\s*(?:వ|వది|ో)?\s*(?:అధ్యాయం|chapter|చాప్టర్)/);
+    if (m) return { c: 'chapter', arg: Number(m[1]) };
+    if (has('అధ్యాయం', 'అధ్యాయానికి', 'chapter')) for (const [w, n] of ORD) if (s.includes(w)) return { c: 'chapter', arg: n };
+    if (has('పెద్దవి', 'పెద్దగా', 'పెద్ద అక్షరాలు', 'bigger', 'larger')) return { c: 'bigger' };
+    if (has('చిన్నవి', 'చిన్నగా', 'చిన్న అక్షరాలు', 'smaller')) return { c: 'smaller' };
+    if (has('సారాంశం', 'summary')) return { c: 'sum' };
+    if (has('క్విజ్', 'quiz')) return { c: 'quiz' };
+    if (has('ఆడియో ఫైల్', 'audio file')) return { c: 'audio' };
+    if (/^(పాత్రలు|పాత్రల మ్యాప్|మ్యాప్|characters|character map|పాత్రలు చూపించు|పాత్రల మ్యాప్ చూపించు|మ్యాప్ చూపించు)$/.test(s)) return { c: 'map' };
+    if (has('కొనసాగించు', 'continue', 'resume')) return { c: 'read', lang: '', arg: '' };
+    if (/^(ఆపు|ఆపేయి|ఆపెయ్|ఆగు|ఆపండి|pause|stop)$/.test(s) || has('చదవడం ఆపు', 'చదవటం ఆపు', 'stop reading')) return { c: 'pause' };
+    if (/(చదువు|చదవు|చదివి వినిపించు|వినిపించు|\bread\b)/.test(s)) {
+      const lang = has('ai తెలుగు', 'ఏఐ తెలుగు', 'ai telugu', 'ఏ ఐ తెలుగు') ? 'ai' : has('తెలుగులో', 'telugu') ? 'te' : has('ఇంగ్లీష్', 'ఇంగ్లిష్', 'english') ? 'en' : '';
+      const arg = t.replace(/(చదివి వినిపించు|వినిపించు|చదువు|చదవు|\bread\b|ai తెలుగులో|ఏ ?ఐ తెలుగులో|తెలుగులో|ఇంగ్లీష్‌?లో|ఇంగ్లీషులో|ఇంగ్లిష్‌?లో|in english|in telugu|పుస్తకాన్ని|పుస్తకం|\bthe book\b)/gi, ' ')
+        .replace(/\s(ని|ను)(?=\s|$)/g, ' ').replace(/\s+/g, ' ').trim();
+      return { c: 'read', lang, arg: arg.length > 1 ? arg : '' };
+    }
+    m = t.match(/^(.+?)\s*(?:ని|ను)?\s*(?:వెతుకు|వెతికి పెట్టు|వెతకు|సెర్చ్ చేయి|సెర్చ్)$/) || t.match(/^(?:search|find)\s+(?:for\s+)?(.+)$/i);
+    if (m) return { c: 'search', arg: m[1].trim() };
+    m = t.match(/^(.+?)\s*(?:పుస్తకం|పుస్తకాన్ని)?\s*(?:ని|ను)?\s*(?:తెరువు|తెరవు|తెరిచి చూపించు|ఓపెన్ చేయి|ఓపెన్|చూపించు|చూపెట్టు|చూపు)$/) || t.match(/^(?:open|show)\s+(?:me\s+)?(.+)$/i);
+    if (m) return { c: 'open', arg: m[1].replace(/\s(ని|ను)$/, '').trim() };
+    if (/^(వెనక్కి|వెనక్కు|back|go back|మూసేయి|close)$/.test(s)) return { c: 'back' };
+    return null;
+  }
+  /** ❓ Which answer he said: "B", "బి", "రెండోది", "2", or the answer's own words → 0–3 | -1. */
+  function quizPick(raw, options) {
+    const s = String(raw || '').trim().toLowerCase().replace(/[.!?।,]+$/g, '').replace(/^(జవాబు|answer|ఆప్షన్|option)\s*/, '').trim();
+    const L = [['a', 'ఏ', 'ఎ', 'ఒకటి', '1', 'మొదటిది', 'మొదటి'], ['b', 'బి', 'బీ', 'రెండు', '2', 'రెండోది', 'రెండవది', 'రెండో'], ['c', 'సి', 'సీ', 'మూడు', '3', 'మూడోది', 'మూడవది', 'మూడో'],
+      ['d', 'డి', 'డీ', 'నాలుగు', '4', 'నాలుగోది', 'నాలుగవది', 'నాలుగో']];
+    for (let i = 0; i < L.length && i < (options || []).length; i++) if (L[i].includes(s)) return i;
+    let best = -1, bs = 0;
+    (options || []).forEach((o, i) => { const sc = Math.max(sayLike(s, o), dice(vnorm(s), vnorm(o))); if (sc > bs) { bs = sc; best = i; } });
+    return bs >= 0.6 ? best : -1;
+  }
+  /** Sounds like a question ("ఎవరు…", "…ఎందుకు?", "who…"). */
+  function isQuestion(raw) {
+    const s = String(raw || '').trim().toLowerCase();
+    return /[?？]$/.test(s) || /(ఎవరు|ఎవరి|ఏమి|ఏం|ఏంటి|ఏమిటి|ఎందుకు|ఎలా|ఎక్కడ|ఎప్పుడు|ఏది|ఎన్ని|ఎంత)/.test(s) || /^(who|what|why|how|where|when|which)\b/.test(s);
+  }
+
   const K = { centre, SECTIONS, ERAS, MY, MY_SHELVES, CASE, racks, hash, colourOf, sizeOf, merge, onRack, myShelves, layout, myLayout, mark,
-    yearSaid, pagesSaid, money, rackName, spineLines, wordAt, nextReads, mapLayout, mapRank, mapPick, egoLayout, ranges };
+    yearSaid, pagesSaid, money, rackName, spineLines, wordAt, nextReads, mapLayout, mapRank, mapPick, egoLayout, ranges,
+    te2lat, vnorm, sayLike, bestSaid, voiceCmd, quizPick, isQuestion };
   if (typeof module !== 'undefined' && module.exports) module.exports = K;
   root.LibKit = K;
 })(typeof window !== 'undefined' ? window : globalThis);

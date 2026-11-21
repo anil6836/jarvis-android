@@ -1032,6 +1032,8 @@ function gotChapter(m) {
   toolsBar();
   renderText();
   $('rBody').scrollTop = 0;
+  const vp = V.pend;
+  if (vp && vp.id === R.id && vp.unit === R.unit) { V.pend = null; markSet(vp.part, vp.on, vp.note); S.jumpTo = { id: vp.id, unit: vp.unit, part: vp.part }; }
   const j = S.jumpTo;
   if (j && j.id === R.id && j.unit === R.unit) {
     S.jumpTo = null; R.follow = false; R.scrolledAt = Date.now();
@@ -1985,6 +1987,197 @@ function shelfBooks(m) {
   q.appendChild(r);
 }
 
+// ================================================================ 🎙️ his voice in the library (the phone listens; the page decides what his words mean here)
+// ₹0 words are done at once; anything that costs money only gets its cost shown (his tap starts it); other words go to the brain.
+const V = { st: 0, hideAt: 0, pend: null };
+function vLine(s, keep) {
+  const l = $('vline');
+  if (!s) { l.hidden = true; return; }
+  l.textContent = s;
+  l.hidden = false;
+  V.hideAt = keep ? 0 : Date.now() + 4500;
+  if (!keep) setTimeout(() => { if (V.hideAt && Date.now() >= V.hideAt && V.st === 0) l.hidden = true; }, 4700);
+}
+function vMic(st) {
+  V.st = st;
+  document.querySelectorAll('.mic').forEach((b) => { b.classList.toggle('on', st === 1); b.textContent = st === 1 ? '👂' : '🎙️'; });
+  if (st === 0) { V.hideAt = Date.now() + 3500; setTimeout(() => { if (V.st === 0 && Date.now() >= V.hideAt) $('vline').hidden = true; }, 3700); }
+}
+document.querySelectorAll('.mic').forEach((b) => { b.onclick = (e) => { e.stopPropagation(); post({ t: 'mic' }); }; });
+
+/** The books he could mean, the likeliest first (on the phone, then the ones he read last). */
+function vBooks() {
+  return S.books.slice().sort((a, b) => ((b.state === 'ready') - (a.state === 'ready')) || ((S.pos[b.id] ? S.pos[b.id][2] || 1 : 0) - (S.pos[a.id] ? S.pos[a.id][2] || 1 : 0)));
+}
+function vFindBook(said) {
+  const r = K.bestSaid(said, vBooks(), (b) => [b.t, b.tt, b.t + ' ' + (b.a || '')], 0.6);
+  return r ? r.item : null;
+}
+/** The line he means: the one Jarvis is reading now, else the first one on the screen. */
+function vLineNow() {
+  const n = S.now;
+  if (n && n.id === R.id && n.unit === R.unit && n.part >= 0) return n.part;
+  const box = $('rBody').getBoundingClientRect();
+  const ps = [...$('text').querySelectorAll('.p')];
+  const d = ps.find((x) => x.getBoundingClientRect().bottom > box.top + 8);
+  return d ? Number(d.dataset.i) : 0;
+}
+/** A mark / note on the line being read (opens the reader at it when only the 🔊 bar is showing). */
+function vMark(on, note) {
+  if (!$('reader').hidden && R.parts.length) {
+    const i = vLineNow();
+    markSet(i, on, note);
+    return on ? (note ? 'నోట్ దాచాను' : 'గుర్తు పెట్టాను') : 'గుర్తు తీసేశాను';
+  }
+  const n = S.now;
+  if (n && n.id) { V.pend = { id: n.id, unit: n.unit, part: n.part, on, note }; openReader(n.id, n.unit); return on ? (note ? 'నోట్ దాచాను' : 'గుర్తు పెట్టాను') : 'గుర్తు తీసేశాను'; }
+  return 'ఏ లైన్? ముందు పుస్తకం చదివే స్క్రీన్ తెరవండి.';
+}
+function vNeedsBook() { return 'ఏ పుస్తకం? ముందు చదివే స్క్రీన్‌లో పుస్తకం తెరవండి.'; }
+/** Go to a chapter (and keep reading aloud from its start when Jarvis was reading this book). */
+function vChapter(u) {
+  const n = S.now, readingIt = n && n.on && (n.id === R.id || $('reader').hidden);
+  const id = !$('reader').hidden ? R.id : n ? n.id : '';
+  const b = S.byId[id];
+  if (!b) return vNeedsBook();
+  const max = (b.n || R.n || 1) - 1;
+  if (u < 0 || u > max) return 'ఈ పుస్తకంలో ' + (max + 1) + ' అధ్యాయాలే ఉన్నాయి.';
+  if (!$('reader').hidden) { R.unit = u; R.te = null; R.ai = null; post({ t: 'chapter', id: R.id, unit: u }); }
+  if (readingIt) post({ t: 'read', id, lang: n.lang || 'en', unit: u, part: 0 });
+  return 'అధ్యాయం ' + (u + 1);
+}
+function vShowBook(b) {
+  closeTool(); $('quote').hidden = true; $('me').hidden = true; $('mapp').hidden = true; $('search').hidden = true; $('trs').hidden = true;
+  if (!$('reader').hidden) closeReader();
+  if (S.hall) leaveHall();
+  show(b.id);
+  return '';
+}
+/** One library word → what Jarvis says ('' = nothing; the screen shows it). */
+function vRun(c) {
+  const rd = !$('reader').hidden;
+  switch (c.c) {
+    case 'note': return vMark(true, c.arg);
+    case 'mark': return vMark(true, undefined);
+    case 'unmark': return vMark(false, '');
+    case 'me': closeTool(); if (rd) closeReader(); openMe(); return '';
+    case 'marks': if (rd) { openMarksSheet(); return ''; } openMe(); return 'గుర్తులు కిందికి జరిపితే ఉన్నాయి';
+    case 'hall':
+      closeTool(); $('me').hidden = true; $('mapp').hidden = true; if (rd) closeReader();
+      if (S.view !== 'era') { closeBook(true); S.view = 'era'; post({ t: 'prefs', view: 'era' }); rebuild(); }
+      if (!S.hall) enterHall();
+      return '';
+    case 'hallnext': if (S.hall) { $('hNext').click(); return ''; } return 'ముందు "కాలం హాల్" అనండి';
+    case 'hallprev': if (S.hall) { $('hPrev').click(); return ''; } return 'ముందు "కాలం హాల్" అనండి';
+    case 'out': if (S.hall) { leaveHall(); return ''; } back(); return '';
+    case 'nextq': { const nx = [...$('tool').querySelectorAll('button')].find((x) => !x.hidden && /తర్వాతి ప్రశ్న|ఫలితం చూడు/.test(x.textContent)); if (nx) { nx.click(); return ''; } return ''; }
+    case 'next': return rd ? vChapter(R.unit + 1) : S.now ? vChapter(S.now.unit + 1) : vNeedsBook();
+    case 'prev': return rd ? vChapter(R.unit - 1) : S.now ? vChapter(S.now.unit - 1) : vNeedsBook();
+    case 'chapter': return rd || S.now ? vChapter(c.arg - 1) : vNeedsBook();
+    case 'bigger': if (rd) { $('rBig').click(); return ''; } return vNeedsBook();
+    case 'smaller': if (rd) { $('rSmall').click(); return ''; } return vNeedsBook();
+    case 'sum': if (rd) { toolAsk('sum'); return 'ఖర్చు చూపిస్తున్నాను; చేయించాలంటే నొక్కండి.'; } return vNeedsBook();
+    case 'quiz': if (rd) { toolAsk('quiz'); return ''; } return vNeedsBook();
+    case 'map': if (rd) { toolAsk('map'); return ''; } return vNeedsBook();
+    case 'audio': if (rd) { openAudio(); return 'భాష ఎంచుకుని తయారు చేయి నొక్కండి.'; } return vNeedsBook();
+    case 'pause': post({ t: 'vpause' }); return '';
+    case 'back': back(); return '';
+    case 'read': {
+      if (c.arg) {
+        const b = vFindBook(c.arg);
+        if (!b) { openSearch(c.arg); return c.arg + ': రాక్‌లలో దొరకలేదు, వెతుకుతున్నాను.'; }
+        if (b.state !== 'ready') { vShowBook(b); return 'ఈ పుస్తకం ఇంకా ఫోన్‌లో లేదు; ⬇️ దించండి.'; }
+        post({ t: 'read', id: b.id, lang: c.lang || 'en' });
+        return '';
+      }
+      if (rd) {
+        const n = S.now;
+        const at = n && n.id === R.id && n.unit === R.unit ? n.part : vLineNow();
+        post({ t: 'read', id: R.id, lang: c.lang || readLang(), unit: R.unit, part: at || 0 });
+        return '';
+      }
+      if (S.now && S.now.id) { post({ t: 'read', id: S.now.id, lang: c.lang || S.now.lang || 'en' }); return ''; }
+      if (S.sel && S.sel.state === 'ready') { post({ t: 'read', id: S.sel.id, lang: c.lang || 'en' }); return ''; }
+      return 'ఏ పుస్తకం చదవాలి? పేరు చెప్పండి, ఉదా: "Dracula చదువు".';
+    }
+    case 'search': {
+      const b = vFindBook(c.arg);
+      if (b) { vShowBook(b); return ''; }
+      closeTool(); if (rd) closeReader(); $('me').hidden = true; $('mapp').hidden = true;
+      openSearch(c.arg);
+      return '';
+    }
+    case 'open': {
+      if (!$('mapp').hidden && M.res) { const p = K.bestSaid(c.arg, M.res.c || [], (x) => [x.n, x.te], 0.6); if (p) { mapFocus(p.item.n); return ''; } }
+      const b = vFindBook(c.arg);
+      if (b) return vShowBook(b);
+      closeTool(); if (rd) closeReader(); $('me').hidden = true; $('mapp').hidden = true;
+      openSearch(c.arg);
+      return c.arg + ': రాక్‌లలో దొరకలేదు, వెతుకుతున్నాను.';
+    }
+    default: return '';
+  }
+}
+/** Is this question about the book open on the screen (its words, its people, or the chapter's names)? */
+function vBookish(t) {
+  if (/(పుస్తక|అధ్యాయ|కథ|పాత్ర|రచయిత|book|chapter|story)/i.test(t)) return true;
+  const QW = new Set(K.vnorm('ఎవరు ఎవరి ఏమి ఏంటి ఏమిటి ఎందుకు ఎలా ఎక్కడ ఎప్పుడు ఏది ఎన్ని ఎంత ఉంది ఉన్నాడు ఉన్నది చేశాడు చెప్పు who what why how where when which').split(' '));
+  const said = K.vnorm(t).split(' ').filter((w) => w.length >= 3 && !QW.has(w));
+  const names = new Set();
+  // (names: capitalised in the middle of a sentence, so "Every" / "When" starting a sentence are not names)
+  (R.parts || []).join(' ').replace(/(?<=[a-z,;] )([A-Z][a-z]{3,})\b/g, (x, w) => { names.add(K.vnorm(w)); return x; });
+  if (M.res && M.res.c) M.res.c.forEach((p) => { String(p.n).split(/\s+/).forEach((w) => { if (w.length > 3) names.add(K.vnorm(w)); }); });
+  for (const w of said) for (const n of names) if (K.sayLike(w, n) >= 0.75) return true;
+  return false;
+}
+/** His words, heard by the phone: → {took, say}. */
+function voiceDo(text) {
+  const t = String(text || '').trim();
+  if (!t) return { took: true, say: '' };
+  const tool = !$('tool').hidden;
+  const c = K.voiceCmd(t);
+  // a sheet that is waiting for words
+  if (tool && T.kind === 'note' && (!c || c.c === 'note')) {
+    const ta = $('tool').querySelector('textarea');
+    if (/^(దాచు|సేవ్|save)$/i.test(t)) { const sv = [...$('tool').querySelectorAll('button')].find((x) => /దాచు/.test(x.textContent)); if (sv) sv.click(); return { took: true, say: 'నోట్ దాచాను' }; }
+    if (ta) { ta.value = (ta.value ? ta.value.trim() + ' ' : '') + (c ? c.arg : t); return { took: true, say: 'రాశాను. దాచాలంటే 💾 నొక్కండి, లేదా "దాచు" అనండి.' }; }
+  }
+  if (tool && T.kind === 'ask' && !c && $('askq')) {
+    $('askq').value = t; T.q = t;
+    const go = [...$('tool').querySelectorAll('button')].find((x) => /ఖర్చు చూసి అడుగు/.test(x.textContent));
+    if (go) go.click();
+    return { took: true, say: 'ఖర్చు చూపిస్తున్నాను. అడగాలంటే ✅ నొక్కండి.' };
+  }
+  if (tool && T.kind === 'quiz' && (!c || c.c === 'nextq')) {
+    if (c) return { took: true, say: vRun(c) };
+    const opts = [...$('tool').querySelectorAll('.opt')];
+    const done = opts.some((o) => /right|wrong/.test(o.className));
+    if (opts.length && !done) {
+      const i = K.quizPick(t, opts.map((o) => o.textContent));
+      if (i < 0) return { took: true, say: 'ఏ జవాబు? A, B, C, D లో ఒకటి చెప్పండి.' };
+      opts[i].click();
+      const right = opts[i].classList.contains('right');
+      return { took: true, say: right ? 'సరైనది!' : 'కాదు. ' + ($('tool').querySelector('.opt.right') || {}).textContent + ' సరైనది.' };
+    }
+  }
+  if (c) return { took: true, say: vRun(c) };
+  // the map: a name
+  if (!$('mapp').hidden && M.res) {
+    const p = K.bestSaid(t.replace(/\s*(ని|ను)?\s*(చూపించు|గురించి చెప్పు)?$/, ''), M.res.c || [], (x) => [x.n, x.te], 0.6);
+    if (p) { mapFocus(p.item.n); return { took: true, say: '' }; }
+  }
+  // a question about the book being read → the 💬 box with its cost (his ✅ asks)
+  if (!$('reader').hidden && K.isQuestion(t) && vBookish(t)) {
+    T.q = t; T.scope = 'book';
+    openAsk();
+    $('askq').value = t;
+    const go = [...$('tool').querySelectorAll('button')].find((x) => /ఖర్చు చూసి అడుగు/.test(x.textContent));
+    if (go) go.click();
+    return { took: true, say: 'ఈ ప్రశ్న పుస్తకంలో వెతకడానికి ఖర్చు చూపిస్తున్నాను. అడగాలంటే ✅ నొక్కండి.' };
+  }
+  return { took: false, say: '' };
+}
+
 // ================================================================ messages from the phone
 function onJarvis(m) {
   switch (m.t) {
@@ -2087,6 +2280,9 @@ function onJarvis(m) {
       break;
     case 'addinfo': addForm(m); break;
     // ---- 📊 🖍️ 🎧 💬 📝 ❓ 🗺️ 📚 🏠
+    case 'vheard': { const r = voiceDo(m.s); post({ t: 'vdone', s: m.s, brain: !r.took, say: r.say || '' }); break; }
+    case 'vline': vLine(m.s, V.st === 1 || V.st === 2); break;
+    case 'vmic': vMic(m.st); break;
     case 'stats': S.me.stats = m; renderMe(); break;
     case 'allmarks': S.me.marks = m.list || []; renderMe(); break;
     case 'marks':
