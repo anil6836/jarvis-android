@@ -376,12 +376,16 @@ public class GameStudioActivity extends Activity {
         ideaRow.setOrientation(LinearLayout.HORIZONTAL);
         ideaRow.setPadding(0, dp(6), 0, dp(2));
         for (String[] idea : IDEAS) {
-            TextView t = pill(idea[0], v -> { input.setText(idea[1]); input.setSelection(input.getText().length()); input.requestFocus(); setStatus("✏️ కావాలంటే మార్చి, 🔨 తయారు చెయ్ నొక్కండి · " + estimate()); });
+            TextView t = pill(idea[0], v -> { input.setText(idea[1]); input.setSelection(input.getText().length()); input.requestFocus(); setStatus("✏️ కావాలంటే మార్చి, 🔨 తయారు చెయ్ నొక్కండి"); });
             ideaRow.addView(t);
         }
         ideas = new HorizontalScrollView(this);
         ideas.setHorizontalScrollBarEnabled(false);
         ideas.addView(ideaRow);
+        costAi = Ui.text(this, "", 13.5f, Ui.CYAN);
+        costAi.setPadding(dp(2), dp(4), 0, dp(2));
+        costAi.setOnClickListener(v -> pickModel());
+        bottom.addView(costAi);
         bottom.addView(ideas);
 
         LinearLayout actions = new LinearLayout(this);
@@ -418,6 +422,11 @@ public class GameStudioActivity extends Activity {
         input.setImeOptions(EditorInfo.IME_ACTION_GO);
         input.setBackground(Ui.round(this, 0x1AFFFFFF, Ui.LINE2, 14));
         input.setPadding(dp(14), dp(11), dp(14), dp(11));
+        input.addTextChangedListener(new android.text.TextWatcher() { // (the blue line: this job's ₹ as he writes)
+            @Override public void beforeTextChanged(CharSequence c, int a, int b, int d) {}
+            @Override public void onTextChanged(CharSequence c, int a, int b, int d) {}
+            @Override public void afterTextChanged(android.text.Editable e) { costAiText(); }
+        });
         input.setOnEditorActionListener((v, id, ev) -> {
             if (id == EditorInfo.IME_ACTION_GO || (ev != null && ev.getKeyCode() == KeyEvent.KEYCODE_ENTER)) { typed(); return true; }
             return false;
@@ -459,10 +468,18 @@ public class GameStudioActivity extends Activity {
 
     /** 💰 The AI for this studio, picked by his tap from every model his keys can use, each with its cost for one job. */
     private void pickModel() {
+        final String typed = input == null ? "" : input.getText().toString().trim();
+        String what = Workshop.costWhat(Workshop.GAMES) + " (కింద ఆట గురించి రాస్తే, దానికి తగ్గట్టు చూపిస్తాను)";
+        Models.Cost cost = Workshop.costOf(Workshop.GAMES);
+        if (game != null && game.brokenId != null) {
+            what = "ఒక కొత్త ఆటకి, ఈ ఆటలో తప్పు సరిచేయడానికి ఖర్చు";
+            cost = mm -> "కొత్త ఆట " + Workshop.fine(GameStudio.aboutRupees(mm)) + " · సరిచేయడం " + Workshop.fine(GameStudio.fixRupees(mm));
+        } else if (!typed.isEmpty()) {
+            what = "🎮 ఈ ఆటకి ఖర్చు: \"" + Workshop.cap(typed, 60) + "\" (" + Workshop.asks(typed) + " విషయాలు అడిగారు)";
+            cost = mm -> "ఈ ఆట " + Workshop.fine(GameStudio.aboutRupeesFor(mm, typed));
+        }
         Models.pick(this, Workshop.studioName(Workshop.GAMES) + " AI ఎంచుకోండి", new String[]{Prefs.OPENAI, Prefs.ANTHROPIC, Prefs.GEMINI},
-                new String[]{p.openAiKey(), p.anthropicKey(), p.geminiKey()}, Workshop.modelFor(p, Workshop.GAMES),
-                game != null && game.brokenId != null ? "ఒక కొత్త ఆటకి, ఈ ఆటలో తప్పు సరిచేయడానికి ఖర్చు" : Workshop.costWhat(Workshop.GAMES),
-                game != null && game.brokenId != null ? mm -> "కొత్త ఆట " + GameStudio.aboutMoney(mm) + " · సరిచేయడం " + GameStudio.fixMoney(mm) : Workshop.costOf(Workshop.GAMES), it -> {
+                new String[]{p.openAiKey(), p.anthropicKey(), p.geminiKey()}, Workshop.modelFor(p, Workshop.GAMES), what, cost, it -> {
                     p.setStudioModel(Workshop.GAMES, it.id);
                     showChip();
                     refresh();
@@ -475,6 +492,18 @@ public class GameStudioActivity extends Activity {
         chip.setText(m.isEmpty() ? "AI ఎంచుకోలేదు" : WorkshopActivity.label(m));
     }
 
+    /** 🎮 The blue line over the ideas: which AI, and about what the game in the box costs (any game, with the box empty). */
+    private TextView costAi;
+
+    private void costAiText() {
+        if (costAi == null || costAi.getVisibility() != View.VISIBLE) return;
+        String m = Workshop.modelFor(p, Workshop.GAMES);
+        String w = input == null ? "" : input.getText().toString().trim();
+        costAi.setText(m.isEmpty() ? "🤖 AI ఎంచుకోలేదు · ఎంచుకో (ప్రతి మోడల్‌తో ఆట ఖర్చు) →"
+                : "🤖 AI: " + WorkshopActivity.label(m) + " · " + (w.isEmpty() ? "ఒక ఆటకి సుమారు " + Workshop.fine(GameStudio.aboutRupees(m))
+                : "ఈ ఆటకి సుమారు " + Workshop.fine(GameStudio.aboutRupeesFor(m, w))) + " · మార్చు (ప్రతి మోడల్‌తో " + (w.isEmpty() ? "" : "ఈ ") + "ఆట ఖర్చు) →");
+    }
+
     private String estimate() {
         String m = Workshop.modelFor(p, Workshop.GAMES);
         return m.isEmpty() ? "AI ఎంచుకోలేదు" : "సుమారు " + GameStudio.aboutMoney(m);
@@ -485,6 +514,7 @@ public class GameStudioActivity extends Activity {
         if (go == null) return;
         boolean busy = job != null, has = game != null;
         ideas.setVisibility(!busy && !has ? View.VISIBLE : View.GONE);
+        if (costAi != null) { costAi.setVisibility(ideas.getVisibility()); costAiText(); }
         stopBtn.setVisibility(busy ? View.VISIBLE : View.GONE);
         newBtn.setVisibility(!busy && has ? View.VISIBLE : View.GONE);
         go.setText(has ? "🔨 కొత్త గేమ్" : "🔨 తయారు చెయ్");

@@ -76,14 +76,7 @@ final class AppStudio {
     }
 
     /** How many things he asked for in these words (split by commas, new lines, "మరియు", "and"; a bracket is one thing). */
-    static int asks(String words) {
-        if (words == null) return 0;
-        String w = words.replaceAll("\\([^)]*\\)", " ");
-        int n = 0;
-        for (String piece : w.split("[,،;\\n]|\\s+మరియు\\s+|\\s+and\\s+|\\s+&\\s+"))
-            if (piece.replaceAll("[^\\p{L}\\p{N}]", "").length() >= 2) n++;
-        return n;
-    }
+    static int asks(String words) { return Workshop.asks(words); }
 
     /** The app's size this ask may come to (only a guess for the cost: the plan decides). */
     static String sizeFor(String words) { int a = asks(words); return a <= 3 ? "small" : a <= 8 ? "medium" : "large"; }

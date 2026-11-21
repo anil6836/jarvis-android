@@ -268,10 +268,14 @@ public class CircuitLabActivity extends Activity {
         ideaRow.setPadding(0, dp(2), 0, dp(2));
         for (String[] idea : IDEAS)
             ideaRow.addView(pill(idea[0], v -> { input.setText(idea[1]); input.setSelection(input.getText().length()); input.requestFocus();
-                setStatus("✏️ కావాలంటే మార్చి, ⚡ చెయ్ నొక్కండి · AI " + estimate(false, false)); }));
+                setStatus("✏️ కావాలంటే మార్చి, ⚡ చెయ్ నొక్కండి"); }));
         ideas = new HorizontalScrollView(this);
         ideas.setHorizontalScrollBarEnabled(false);
         ideas.addView(ideaRow);
+        costAi = Ui.text(this, "", 13.5f, Ui.CYAN);
+        costAi.setPadding(dp(2), dp(4), 0, dp(2));
+        costAi.setOnClickListener(v -> pickModel());
+        bottom.addView(costAi);
         bottom.addView(ideas);
 
         LinearLayout actions = new LinearLayout(this);
@@ -306,6 +310,11 @@ public class CircuitLabActivity extends Activity {
         input.setImeOptions(EditorInfo.IME_ACTION_GO);
         input.setBackground(Ui.round(this, 0x1AFFFFFF, Ui.LINE2, 14));
         input.setPadding(dp(12), dp(10), dp(12), dp(10));
+        input.addTextChangedListener(new android.text.TextWatcher() { // (the blue line: this job's ₹ as he writes)
+            @Override public void beforeTextChanged(CharSequence c, int a, int b, int d) {}
+            @Override public void onTextChanged(CharSequence c, int a, int b, int d) {}
+            @Override public void afterTextChanged(android.text.Editable e) { costAiText(); }
+        });
         input.setOnEditorActionListener((v, id, ev) -> {
             if (id == EditorInfo.IME_ACTION_GO || (ev != null && ev.getKeyCode() == KeyEvent.KEYCODE_ENTER)) { typed(); return true; }
             return false;
@@ -358,10 +367,21 @@ public class CircuitLabActivity extends Activity {
     /** 💰 The AI for this studio, picked by his tap from every model his keys can use, each with its cost for one job. */
     private void pickModel() {
         final int size = board != null && CircuitLab.partCount(board) > 0 ? forAi(board).length() : 0; // (a board on the screen: a change costs by its size)
+        final String typed = input == null ? "" : input.getText().toString().trim();
+        String what = Workshop.costWhat(Workshop.LAB) + " (కింద సర్క్యూట్ గురించి రాస్తే, దానికి తగ్గట్టు చూపిస్తాను)";
+        Models.Cost cost = Workshop.costOf(Workshop.LAB);
+        if (size > 0 && !typed.isEmpty()) {
+            what = "⚡ ఈ బోర్డ్‌లో ఈ మార్పుకి ఖర్చు: \"" + Workshop.cap(typed, 60) + "\"";
+            cost = mm -> "ఈ మార్పు " + Workshop.fine(CircuitLab.boardRupeesFor(mm, typed, size));
+        } else if (size > 0) {
+            what = "ఈ బోర్డ్‌లో ఒక మార్పుకి, ఒక కొత్త బోర్డ్‌కి ఖర్చు";
+            cost = mm -> "మార్పు " + Workshop.fine(CircuitLab.aboutRupees(mm, CircuitLab.MODE_BOARD, size, false)) + " · కొత్తది " + Workshop.fine(CircuitLab.aboutRupees(mm, CircuitLab.MODE_BOARD, 0, false));
+        } else if (!typed.isEmpty()) {
+            what = "⚡ ఈ బోర్డ్‌కి ఖర్చు: \"" + Workshop.cap(typed, 60) + "\" (" + Workshop.asks(typed) + " విషయాలు అడిగారు)";
+            cost = mm -> "ఈ బోర్డ్ " + Workshop.fine(CircuitLab.boardRupeesFor(mm, typed, 0));
+        }
         Models.pick(this, Workshop.studioName(Workshop.LAB) + " AI ఎంచుకోండి", new String[]{Prefs.OPENAI, Prefs.ANTHROPIC, Prefs.GEMINI},
-                new String[]{p.openAiKey(), p.anthropicKey(), p.geminiKey()}, Workshop.modelFor(p, Workshop.LAB),
-                size > 0 ? "ఈ బోర్డ్‌లో ఒక మార్పుకి, ఒక కొత్త బోర్డ్‌కి ఖర్చు" : Workshop.costWhat(Workshop.LAB),
-                size > 0 ? mm -> "మార్పు " + CircuitLab.aboutMoney(mm, size, false) + " · కొత్తది " + CircuitLab.aboutMoney(mm, 0, false) : Workshop.costOf(Workshop.LAB), it -> {
+                new String[]{p.openAiKey(), p.anthropicKey(), p.geminiKey()}, Workshop.modelFor(p, Workshop.LAB), what, cost, it -> {
                     p.setStudioModel(Workshop.LAB, it.id);
                     showChip();
                     refresh();
@@ -372,6 +392,18 @@ public class CircuitLabActivity extends Activity {
     private void showChip() {
         String m = Workshop.modelFor(p, Workshop.LAB);
         chip.setText(m.isEmpty() ? "AI ఎంచుకోలేదు" : WorkshopActivity.label(m));
+    }
+
+    /** ⚡ The blue line over the ideas: which AI, and about what the board in the box costs (any board, with the box empty). */
+    private TextView costAi;
+
+    private void costAiText() {
+        if (costAi == null || costAi.getVisibility() != View.VISIBLE) return;
+        String m = Workshop.modelFor(p, Workshop.LAB);
+        String w = input == null ? "" : input.getText().toString().trim();
+        costAi.setText(m.isEmpty() ? "🤖 AI ఎంచుకోలేదు · ఎంచుకో (ప్రతి మోడల్‌తో బోర్డ్ ఖర్చు) →"
+                : "🤖 AI: " + WorkshopActivity.label(m) + " · " + (w.isEmpty() ? "ఒక బోర్డ్‌కి సుమారు " + Workshop.fine(CircuitLab.aboutRupees(m, CircuitLab.MODE_BOARD, 0, false))
+                : "ఈ బోర్డ్‌కి సుమారు " + Workshop.fine(CircuitLab.boardRupeesFor(m, w, 0))) + " · మార్చు (ప్రతి మోడల్‌తో " + (w.isEmpty() ? "" : "ఈ ") + "బోర్డ్ ఖర్చు) →");
     }
 
     private String estimate(boolean change, boolean photo) {
@@ -398,6 +430,7 @@ public class CircuitLabActivity extends Activity {
         if (go == null) return;
         boolean busy = job != null, empty = CircuitLab.empty(board), wide = wide();
         ideas.setVisibility(!busy && empty && !wide ? View.VISIBLE : View.GONE);
+        if (costAi != null) { costAi.setVisibility(ideas.getVisibility()); costAiText(); }
         status.setMaxLines(wide ? 2 : 4);
         stopBtn.setVisibility(busy ? View.VISIBLE : View.GONE);
         input.setHint(empty ? "ఏ సర్క్యూట్? ఉదా: ఇన్వర్టర్, 4 బల్బులు, 2 ఫ్యాన్లు" : CircuitLab.partCount(board) == 0 ? "📐 బొమ్మ మాత్రమే · కొత్త సర్క్యూట్ చెప్పండి"

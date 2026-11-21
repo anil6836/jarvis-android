@@ -109,6 +109,23 @@ final class Workshop {
     /** About what one usual 3D model costs to build (the answer and a repair or two): "₹60–110" on Fable 5.2. */
     static String buildMoney(String model) { return fine(buildRupees(model)); }
 
+    /** How many things he asked for in these words (split by commas, new lines, "మరియు", "and"; a bracket is one thing). */
+    static int asks(String words) {
+        if (words == null) return 0;
+        String w = words.replaceAll("\\([^)]*\\)", " ");
+        int n = 0;
+        for (String piece : w.split("[,،;\\n]|\\s+మరియు\\s+|\\s+and\\s+|\\s+&\\s+"))
+            if (piece.replaceAll("[^\\p{L}\\p{N}]", "").length() >= 2) n++;
+        return n;
+    }
+
+    /** {least, most} rupees of a 3D model of THESE words (one thing asked = the usual build; each detail more adds a little). */
+    static double[] buildRupeesFor(String model, String words) {
+        int a = Math.max(1, asks(words)), len = words == null ? 0 : words.trim().length();
+        long in = 4000 + Math.round(len / 1.5);
+        return new double[]{rupees(model, in, 0, Math.min(MAX_OUT, 15000 + 700 * (a - 1))), rupees(model, in + 1000, 0, Math.min(MAX_OUT, 28000 + 1400 * (a - 1)))};
+    }
+
     static double[] buildRupees(String model) { return new double[]{rupees(model, 4000, 0, 15000), rupees(model, 5000, 0, 28000)}; }
 
     /** 💰 A cost range said finely enough to tell cheap models apart: "₹0.12–0.35", "₹2.4–6.8", "₹46–108". */

@@ -67,6 +67,14 @@ final class CircuitLab {
         return "₹" + Math.max(1, (int) Math.floor(r[0])) + "–" + Math.max(2, (int) Math.ceil(r[1]));
     }
 
+    /** {least, most} rupees of a board of THESE words (a new board, or a change to one of boardChars): the parts asked for grow it. */
+    static double[] boardRupeesFor(String model, String words, int boardChars) {
+        int a = Math.max(1, Workshop.asks(words)), len = words == null ? 0 : words.trim().length();
+        long in = Math.round(SYSTEM.length() / 3.2) + 200 + Math.round(len / 1.5) + Math.round(boardChars / 3.0);
+        int lo = 600 + 120 * a, hi = Math.min(maxOut(MODE_BOARD), (boardChars > 0 ? 4500 : 3500) + 250 * (a - 1));
+        return new double[]{Workshop.rupees(model, in, 0, lo), Workshop.rupees(model, in, 0, hi)};
+    }
+
     static double[] aboutRupees(String model, String mode, int chars, boolean photo) {
         long in = Math.round(SYSTEM.length() / 3.2) + 200 + (photo ? 1600 : 0);
         int lo = 600, hi;

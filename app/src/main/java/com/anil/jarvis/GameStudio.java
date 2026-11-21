@@ -48,6 +48,14 @@ final class GameStudio {
         return "₹" + Math.max(1, (int) Math.floor(r[0])) + "–" + Math.max(2, (int) Math.ceil(r[1]));
     }
 
+    /** {least, most} rupees of a game of THESE words: they go in with the brief, and the game grows with the things asked for. */
+    static double[] aboutRupeesFor(String model, String words) {
+        int a = Math.max(1, Workshop.asks(words)), len = words == null ? 0 : words.trim().length();
+        long in = Math.round(SYSTEM.length() / 3.2) + 300 + Math.round(len / 1.5);
+        return new double[]{Workshop.rupees(model, in, 0, Math.min(GAME_OUT, 3000 + 200 * a)),
+                Workshop.rupees(model, in, 0, Math.min(GAME_OUT, 8000 + 500 * a)) + Workshop.rupees(model, 9000, 0, 2500)};
+    }
+
     static double[] aboutRupees(String model) {
         long in = Math.round(SYSTEM.length() / 3.2) + 300;
         return new double[]{Workshop.rupees(model, in, 0, 3500), Workshop.rupees(model, in, 0, 9500) + Workshop.rupees(model, 9000, 0, 2500)};

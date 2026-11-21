@@ -470,7 +470,7 @@ public class WorkshopActivity extends Activity {
         spinBtn = pill("⏸ తిప్పడం ఆపు", v -> command(spinning ? "spin_off" : "spin_on", false));
         TextView view = pill("🎯 మధ్యలో", v -> command("center", false));
         stopBtn = pill("⏹ ఆపు", v -> askStop());
-        stopBtn.setVisibility(View.GONE);
+        stopBtn.setVisibility(View.GONE); costAiText();
         explodeBtn = pill("💥 విడదీయి", v -> command(exploded ? "assemble" : "explode", false));
         undoBtn = pill("↩️ వెనక్కి", v -> command("undo", false));
         nightBtn = pill("🌙 రాత్రి", v -> command(night ? "day" : "night", false));
@@ -571,6 +571,11 @@ public class WorkshopActivity extends Activity {
         hs.addView(actions);
         bottom.addView(hs);
 
+        costAi = Ui.text(this, "", 13.5f, Ui.CYAN);
+        costAi.setPadding(dp(2), dp(2), 0, dp(4));
+        costAi.setOnClickListener(v -> pickModel());
+        bottom.addView(costAi);
+
         LinearLayout ask = new LinearLayout(this);
         ask.setOrientation(LinearLayout.HORIZONTAL);
         ask.setGravity(Gravity.CENTER_VERTICAL);
@@ -584,6 +589,11 @@ public class WorkshopActivity extends Activity {
         input.setImeOptions(EditorInfo.IME_ACTION_GO);
         input.setBackground(Ui.round(this, 0x1AFFFFFF, Ui.LINE2, 14));
         input.setPadding(dp(14), dp(11), dp(14), dp(11));
+        input.addTextChangedListener(new android.text.TextWatcher() { // (the blue line: this job's ₹ as he writes)
+            @Override public void beforeTextChanged(CharSequence c, int a, int b, int d) {}
+            @Override public void onTextChanged(CharSequence c, int a, int b, int d) {}
+            @Override public void afterTextChanged(android.text.Editable e) { costAiText(); }
+        });
         input.setOnEditorActionListener((v, id, ev) -> {
             if (id == EditorInfo.IME_ACTION_GO || (ev != null && ev.getKeyCode() == KeyEvent.KEYCODE_ENTER)) { typed(); return true; }
             return false;
@@ -680,6 +690,7 @@ public class WorkshopActivity extends Activity {
         if (go == null) return;
         boolean has = shown != null && !shown.parts.isEmpty();
         go.setText(has ? "➤ పంపు" : "🔨 తయారు చెయ్");
+        costAiText();
         input.setHint(has && pickedName != null ? "👆 " + pickedName + ": ఇది ఏం చేస్తుంది? · ఇది ఎరుపు చెయ్"
                 : has ? "ఏం మార్చాలి? ఉదా: రెక్కలు నీలం చెయ్ · విడదీయి · 👆 భాగం తాకండి" : "ఏం తయారు చేయాలి? ఉదా: ఒక టేబుల్ ఫ్యాన్");
         explodeBtn.setVisibility(has ? View.VISIBLE : View.GONE);
@@ -743,12 +754,35 @@ public class WorkshopActivity extends Activity {
 
     /** 💰 The AI for this studio, picked by his tap from every model his keys can use, each with its cost for one job. */
     private void pickModel() {
+        final String typed = input == null || (shown != null && !shown.parts.isEmpty()) ? "" : input.getText().toString().trim();
+        String what = Workshop.costWhat(null) + (shown != null && !shown.parts.isEmpty() ? "" : " (కింద బొమ్మ గురించి రాస్తే, దానికి తగ్గట్టు చూపిస్తాను)");
+        Models.Cost cost = Workshop.costOf(null);
+        if (!typed.isEmpty()) {
+            what = "🛠️ ఈ బొమ్మకి ఖర్చు: \"" + Workshop.cap(typed, 60) + "\"" + (Workshop.asks(typed) > 1 ? " (" + Workshop.asks(typed) + " విషయాలు అడిగారు)" : "");
+            cost = mm -> "ఈ బొమ్మ " + Workshop.fine(Workshop.buildRupeesFor(mm, typed));
+        }
         Models.pick(this, "🛠️ వర్క్‌షాప్ AI ఎంచుకోండి", new String[]{Prefs.OPENAI, Prefs.ANTHROPIC, Prefs.GEMINI},
-                new String[]{p.openAiKey(), p.anthropicKey(), p.geminiKey()}, p.workshopModel().trim(), Workshop.costWhat(null), Workshop.costOf(null), it -> {
+                new String[]{p.openAiKey(), p.anthropicKey(), p.geminiKey()}, p.workshopModel().trim(), what, cost, it -> {
                     p.sp.edit().putString("workshop_model", it.id).apply();
                     showChip();
+                    costAiText();
                     android.widget.Toast.makeText(this, "✓ వర్క్‌షాప్ AI: " + it.id + " (🎮 ⚡ 📱 📚 కి సొంత AI ఎంచుకోకపోతే అవీ ఇదే వాడతాయి)", android.widget.Toast.LENGTH_LONG).show();
                 });
+    }
+
+    /** 🛠️ The blue line over the box (no model on the stage): which AI, and about what the model in the box costs. */
+    private TextView costAi;
+
+    private void costAiText() {
+        if (costAi == null) return;
+        boolean has = shown != null && !shown.parts.isEmpty();
+        costAi.setVisibility(has || job != null ? View.GONE : View.VISIBLE); // (only before a model: a build on its way or a model on the stage hides it)
+        if (has || job != null) return;
+        String m = p.workshopModel().trim();
+        String w = input == null ? "" : input.getText().toString().trim();
+        costAi.setText(m.isEmpty() ? "🤖 AI ఎంచుకోలేదు · ఎంచుకో (ప్రతి మోడల్‌తో బొమ్మ ఖర్చు) →"
+                : "🤖 AI: " + label(m) + " · " + (w.isEmpty() ? "ఒక బొమ్మకి సుమారు " + Workshop.fine(Workshop.buildRupees(m))
+                : "ఈ బొమ్మకి సుమారు " + Workshop.fine(Workshop.buildRupeesFor(m, w))) + " · మార్చు (ప్రతి మోడల్‌తో " + (w.isEmpty() ? "" : "ఈ ") + "బొమ్మ ఖర్చు) →");
     }
 
     private void showChip() {
@@ -1581,7 +1615,7 @@ public class WorkshopActivity extends Activity {
         send(json("reset"));
         titleView.setText(what);
         showChip();
-        stopBtn.setVisibility(View.VISIBLE);
+        stopBtn.setVisibility(View.VISIBLE); costAiText();
         refreshButtons();
         if (!saidAlready) speak("బెంచ్ మీద పెడుతున్నాను Sir.", false);
         setStatus("🧠 " + label(e.model) + " డిజైన్ ఆలోచిస్తోంది…");
@@ -1624,7 +1658,7 @@ public class WorkshopActivity extends Activity {
         j.pickedName = pickedName;
         closeAnswer();
         job = j;
-        stopBtn.setVisibility(View.VISIBLE);
+        stopBtn.setVisibility(View.VISIBLE); costAiText();
         refreshButtons();
         setStatus("🧠 \"" + words + "\" — ఆలోచిస్తోంది…");
         ticker(j, "\"" + (words.length() > 30 ? words.substring(0, 30) + "…" : words) + "\" ఆలోచిస్తోంది");
@@ -1738,7 +1772,7 @@ public class WorkshopActivity extends Activity {
         ui.post(() -> {
             if (job == j) job = null;
             if (destroyed) return;
-            stopBtn.setVisibility(View.GONE);
+            stopBtn.setVisibility(View.GONE); costAiText();
             if (keep) {
                 undo.addFirst(before);
                 while (undo.size() > 5) undo.removeLast();
@@ -1960,7 +1994,7 @@ public class WorkshopActivity extends Activity {
             if (job == j) job = null;
             if (destroyed) return;
             if (result != null) { shown = result; thumbLater(); }
-            stopBtn.setVisibility(View.GONE);
+            stopBtn.setVisibility(View.GONE); costAiText();
             refreshButtons();
             setStatus(line);
             speak(words, true);
@@ -3379,7 +3413,7 @@ public class WorkshopActivity extends Activity {
         j.quiet = true;
         job = j;
         closeAnswer();
-        stopBtn.setVisibility(View.VISIBLE);
+        stopBtn.setVisibility(View.VISIBLE); costAiText();
         refreshButtons();
         final String req = Long.toHexString(System.nanoTime()) + Integer.toHexString((int) (Math.random() * 0xFFFF));
         descJob = j;
@@ -3436,7 +3470,7 @@ public class WorkshopActivity extends Activity {
     private void finishMake(Job j, JSONObject show, String guide, String refused, String failure) {
         if (job == j) job = null;
         if (destroyed) return;
-        stopBtn.setVisibility(View.GONE);
+        stopBtn.setVisibility(View.GONE); costAiText();
         String cost = Workshop.money(j.rupees) + (j.estimated ? " (సుమారు)" : "");
         if (shown != null && (show != null || guide != null || j.rupees > 0)) { // (what it cost goes on the model's bill; kept with it)
             Shown after = shown.copy();
@@ -3471,7 +3505,7 @@ public class WorkshopActivity extends Activity {
     private void failMake(Job j, String why) {
         if (job == j) job = null;
         if (destroyed) return;
-        stopBtn.setVisibility(View.GONE);
+        stopBtn.setVisibility(View.GONE); costAiText();
         refreshButtons();
         String s = why == null ? "⏹ ఆపేశారు · ఖర్చు ₹0" : "✗ " + why + " · ఖర్చు ₹0";
         setStatus(s);

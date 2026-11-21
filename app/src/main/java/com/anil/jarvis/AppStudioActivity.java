@@ -1051,7 +1051,7 @@ public class AppStudioActivity extends Activity {
             input.setText(idea[1]);
             input.setSelection(input.getText().length());
             input.requestFocus();
-            setStatus("✏️ కావాలంటే మార్చి, 🧠 ప్లాన్ చూపించు నొక్కండి · ప్లాన్‌కి " + planEstimate());
+            setStatus("✏️ కావాలంటే మార్చి, 🧠 ప్లాన్ చూపించు నొక్కండి");
         };
         if (starter == null) { words.run(); return; }
         String id = starter;
