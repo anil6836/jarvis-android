@@ -382,12 +382,12 @@ public class AppStudioActivity extends Activity {
     }
 
     private void showChip() {
-        String m = p.workshopModel().trim();
+        String m = Workshop.modelFor(p, Workshop.APPS);
         chip.setText(m.isEmpty() ? "AI ఎంచుకోలేదు" : WorkshopActivity.label(m));
     }
 
     private String planEstimate() {
-        String m = p.workshopModel().trim();
+        String m = Workshop.modelFor(p, Workshop.APPS);
         return m.isEmpty() ? "AI ఎంచుకోలేదు" : "సుమారు " + AppStudio.planMoney(m);
     }
 
@@ -403,7 +403,7 @@ public class AppStudioActivity extends Activity {
         buildBtn.setVisibility(ready && !publishing && !"building".equals(app.buildState) ? View.VISIBLE : View.GONE);
         buildBtn.setText(hasApp && "ok".equals(app.buildState) && app.builtVersion > 0 ? "📲 ఫోన్‌లో మళ్ళీ పెట్టు (v" + app.version + ")" : "📲 ఫోన్‌లో పెట్టు");
         installBtn.setVisibility(hasApp && !busy && "ok".equals(app.buildState) && !app.repo.isEmpty() ? View.VISIBLE : View.GONE);
-        String m = p.workshopModel().trim();
+        String m = Workshop.modelFor(p, Workshop.APPS);
         fixBtn.setVisibility(hasApp && !busy && app.brokenId != null ? View.VISIBLE : View.GONE);
         versionsBtn.setVisibility(hasApp && !busy && versionCount >= 2 ? View.VISIBLE : View.GONE);
         sendBtn.setVisibility(hasApp && !busy && "ok".equals(app.buildState) && !app.repo.isEmpty() ? View.VISIBLE : View.GONE);
@@ -581,7 +581,7 @@ public class AppStudioActivity extends Activity {
         body.setLineSpacing(0, 1.18f);
         body.setPadding(0, dp(8), 0, dp(10));
         overlayBox.addView(body);
-        String m = p.workshopModel().trim();
+        String m = Workshop.modelFor(p, Workshop.APPS);
         TextView money = Ui.text(this, "💰 తయారీ సుమారు " + (m.isEmpty() ? "?" : AppStudio.buildMoney(m, pl.size)) + " (ఎక్కువలో ఎక్కువ "
                 + (m.isEmpty() ? "?" : AppStudio.mostMoney(m)) + ")" + (cost == null ? "" : " · ఈ ప్లాన్‌కి " + cost)
                 + "\n📲 ఫోన్‌లో పెట్టడం, ప్రివ్యూ చూడటం ₹0", 13.5f, Ui.GOLD);
@@ -1066,7 +1066,7 @@ public class AppStudioActivity extends Activity {
         words.setHint("ఏమైనా చెప్పాలా? ఉదా: ఇలాంటి పాల లెక్క యాప్ (ఖాళీ అయినా సరే)");
         words.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         box.addView(words);
-        String m = p.workshopModel().trim();
+        String m = Workshop.modelFor(p, Workshop.APPS);
         new AlertDialog.Builder(this).setTitle("📸 ఈ ఫోటోతో ప్లాన్")
                 .setView(box)
                 .setPositiveButton("🧠 ప్లాన్ చూపించు" + (m.isEmpty() ? "" : " (" + AppStudio.planMoney(m, true) + ")"), (d, w) -> {

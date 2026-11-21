@@ -355,12 +355,12 @@ public class CircuitLabActivity extends Activity {
     }
 
     private void showChip() {
-        String m = p.workshopModel().trim();
+        String m = Workshop.modelFor(p, Workshop.LAB);
         chip.setText(m.isEmpty() ? "AI ఎంచుకోలేదు" : WorkshopActivity.label(m));
     }
 
     private String estimate(boolean change, boolean photo) {
-        String m = p.workshopModel().trim();
+        String m = Workshop.modelFor(p, Workshop.LAB);
         if (m.isEmpty()) return "ఎంచుకోలేదు (⚙️ → 🛠️)";
         int size = change && board != null ? forAi(board).length() : 0;
         return "సుమారు " + CircuitLab.aboutMoney(m, size, photo);
@@ -369,12 +369,12 @@ public class CircuitLabActivity extends Activity {
     /** 📐 The estimate for one of the photo's choices, or for a board made from the saved drawing (chars = its size). */
     /** " (ఎక్కువలో ఎక్కువ ₹50)": the most one answer can cost, when a model is chosen. */
     private String most(String mode, int chars, boolean photo) {
-        String m = p.workshopModel().trim();
+        String m = Workshop.modelFor(p, Workshop.LAB);
         return m.isEmpty() ? "" : " (ఎక్కువలో ఎక్కువ " + CircuitLab.mostMoney(m, mode, chars, photo) + ")";
     }
 
     private String estimate(String mode, int chars, boolean photo) {
-        String m = p.workshopModel().trim();
+        String m = Workshop.modelFor(p, Workshop.LAB);
         if (m.isEmpty()) return "ఎంచుకోలేదు (⚙️ → 🛠️)";
         return "సుమారు " + CircuitLab.aboutMoney(m, mode, chars, photo);
     }

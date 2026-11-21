@@ -217,7 +217,7 @@ public class LibraryActivity extends Activity {
             try {
                 Prefs p = new Prefs(this);
                 JSONObject m = json("init").put("starter", Library.starter(this)).put("shelf", Library.shelf(this)).put("pos", Library.positions(this))
-                        .put("pack", OfflineRead.ready(this)).put("model", p.workshopModel().trim())
+                        .put("pack", OfflineRead.ready(this)).put("model", Library.model(p))
                         .put("prefs", prefs()).put("now", nowLine()).put("ai", Library.running != null ? Library.running.id : "");
                 send(m);
             } catch (Exception ignored) {}
@@ -227,7 +227,7 @@ public class LibraryActivity extends Activity {
     private JSONObject prefs() throws Exception {
         android.content.SharedPreferences s = getSharedPreferences("jarvis_library_ui", MODE_PRIVATE);
         return new JSONObject().put("font", s.getInt("font", 19)).put("night", s.getBoolean("night", false)).put("view", s.getString("view", "sec"))
-                .put("mode", s.getString("mode", "en")).put("rate", ReaderService.mark(this).getFloat("rate", 0f));
+                .put("mode", s.getString("mode", "en")).put("pair", s.getString("pair", "te")).put("rate", ReaderService.mark(this).getFloat("rate", 0f));
     }
 
     private void sendShelf() {
@@ -264,6 +264,8 @@ public class LibraryActivity extends Activity {
             case "word": word(m.optString("w", "")); break;
             case "pack": pack(); break;
             case "quote": quote(id, m.optInt("unit", 0)); break;
+            case "models": listModels(id, m.optInt("unit", 0)); break;
+            case "model_set": setModel(m.optString("model", ""), id, m.optInt("unit", 0)); break;
             case "ai_go": aiGo(id, m.optString("scope", "chapter"), m.optInt("unit", 0)); break;
             case "ai_stop": { Library.AiJob j = Library.running; if (j != null) j.stop = true; Library.AiJob a = addJob; if (a != null) a.stop = true; break; }
             case "fav": io.execute(() -> { Library.flag(this, id, "fav", m.optBoolean("on")); sendShelf(); }); break;
@@ -279,6 +281,7 @@ public class LibraryActivity extends Activity {
                 if (m.has("night")) e.putBoolean("night", m.optBoolean("night"));
                 if (m.has("view")) e.putString("view", "era".equals(m.optString("view")) ? "era" : "sec");
                 if (m.has("mode")) e.putString("mode", m.optString("mode", "en").matches("en|te|ai|both") ? m.optString("mode") : "en");
+                if (m.has("pair")) e.putString("pair", "ai".equals(m.optString("pair")) ? "ai" : "te"); // (రెండూ: English with the phone's Telugu or the AI's)
                 e.apply();
                 break;
             }
@@ -410,6 +413,58 @@ public class LibraryActivity extends Activity {
 
     private void quote(String id, int unit) {
         io.execute(() -> { try { send(Library.quote(this, id, unit)); } catch (Exception e) { say("ఖర్చు లెక్క రాలేదు: " + e.getMessage()); } });
+    }
+
+    /** The models his keys can use, each with this chapter's AI Telugu cost (the keys stay here; the page gets names and ₹ only). */
+    private volatile List<String> offered = new ArrayList<>();
+
+    private void listModels(String id, int unit) {
+        new Thread(() -> {
+            try {
+                Prefs p = new Prefs(this);
+                long chars = 0;
+                try { chars = Library.chars(this, id, unit); } catch (Exception ignored) {}
+                String[] provs = {Prefs.ANTHROPIC, Prefs.GEMINI, Prefs.OPENAI};
+                String[] keys = {p.anthropicKey(), p.geminiKey(), p.openAiKey()};
+                JSONArray list = new JSONArray();
+                List<String> ids = new ArrayList<>();
+                StringBuilder problems = new StringBuilder();
+                int n = 0;
+                for (int i = 0; i < provs.length; i++) {
+                    if (keys[i].trim().isEmpty()) continue;
+                    try {
+                        for (Models.Item it : Models.list(provs[i], keys[i].trim())) {
+                            String mid = it.id.replaceFirst("^models/", "").trim();
+                            if (!Library.goodModel(mid) || ids.contains(mid) || !provs[i].equals(Workshop.provider(mid))) continue;
+                            ids.add(mid);
+                            list.put(new JSONObject().put("id", mid).put("co", Models.company(provs[i])).put("name", it.name == null || it.name.equals(it.id) ? "" : it.name)
+                                    .put("r", Library.cost(mid, chars)).put("known", Usage.knownPrice(mid)).put("n", n++));
+                        }
+                    } catch (Exception e) { problems.append(Models.company(provs[i])).append(": ").append(e.getMessage() == null ? "లిస్ట్ రాలేదు" : e.getMessage()).append('\n'); }
+                }
+                offered = ids;
+                if (ids.isEmpty() && problems.length() == 0) problems.append("⚙️ → Jarvis మెదడు లో ఒక్క AI key కూడా లేదు.");
+                send(json("models").put("id", id).put("unit", unit).put("chars", chars).put("list", list).put("cur", Library.model(p))
+                        .put("lib", p.libraryModel().trim()).put("ws", p.workshopModel().trim()).put("problems", problems.toString().trim()));
+            } catch (Exception e) { say("మోడల్స్ లిస్ట్ రాలేదు: " + e.getMessage()); }
+        }, "jarvis-library-models").start();
+    }
+
+    /** His pick for the library only ("" = back to the workshop's AI, exactly as before); the workshop's choice never changes here. */
+    private void setModel(String mod, String id, int unit) {
+        io.execute(() -> {
+            try {
+                String m2 = mod == null ? "" : mod.trim();
+                if (!m2.isEmpty() && !offered.contains(m2)) { say("ఆ మోడల్ లిస్ట్‌లో లేదు. మళ్ళీ 🤖 మోడల్ మార్చు నొక్కండి."); return; }
+                Prefs p = new Prefs(this);
+                p.setLibraryModel(m2);
+                send(json("model").put("model", Library.model(p)).put("lib", m2));
+                String ws = p.workshopModel().trim();
+                say(m2.isEmpty() ? "↩ లైబ్రరీ ఇక వర్క్‌షాప్ AI నే వాడుతుంది" + (ws.isEmpty() ? "" : " (" + ws + ")") + "."
+                        : "🤖 లైబ్రరీ AI: " + m2 + ". వర్క్‌షాప్ AI మారలేదు.");
+                try { send(Library.quote(this, id, unit)); } catch (Exception ignored) {}
+            } catch (Exception e) { say("మార్చలేకపోయాను: " + e.getMessage()); }
+        });
     }
 
     private void aiGo(String id, String scope, int unit) {

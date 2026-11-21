@@ -340,6 +340,12 @@ final class Prefs {
     String codeModel() { return sp.getString("code_model", ""); }
     /** 🛠️ The AI that builds the workshop's 3D models: his own choice in ⚙️, empty until he picks one (Jarvis never picks). */
     String workshopModel() { return sp.getString("workshop_model", ""); }
+    /** 🎮 ⚡ 📱 📚 A studio's own AI (Workshop.GAMES / LAB / APPS / BOOKS), his pick in ⚙️; empty = the workshop's AI (as before). */
+    String studioModel(String key) { return sp.getString(key, ""); }
+    void setStudioModel(String key, String m) { sp.edit().putString(key, m == null ? "" : m.trim()).apply(); }
+    /** 📚 The library's AI (AI Telugu, Telugu page photos): picked in the library or in ⚙️; empty = the workshop's AI. */
+    String libraryModel() { return studioModel(Workshop.BOOKS); }
+    void setLibraryModel(String m) { setStudioModel(Workshop.BOOKS, m); }
     /** 🛠️ The workshop's spending limit for a month, in rupees (no new build starts once this month's spend reaches it). */
     int workshopLimit() { return sp.getInt("workshop_limit", Workshop.DEFAULT_LIMIT); }
     /** 🖼️ (A4) The image AI that turns a workshop model into a studio / miniature photo: his own choice, empty until he picks. */

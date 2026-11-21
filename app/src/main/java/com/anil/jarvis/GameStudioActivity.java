@@ -457,12 +457,12 @@ public class GameStudioActivity extends Activity {
     }
 
     private void showChip() {
-        String m = p.workshopModel().trim();
+        String m = Workshop.modelFor(p, Workshop.GAMES);
         chip.setText(m.isEmpty() ? "AI ఎంచుకోలేదు" : WorkshopActivity.label(m));
     }
 
     private String estimate() {
-        String m = p.workshopModel().trim();
+        String m = Workshop.modelFor(p, Workshop.GAMES);
         return m.isEmpty() ? "AI ఎంచుకోలేదు" : "సుమారు " + GameStudio.aboutMoney(m);
     }
 
@@ -482,7 +482,7 @@ public class GameStudioActivity extends Activity {
             cardHow.setText(game.how == null || game.how.isEmpty() ? "" : "👆 " + game.how);
             cardHow.setVisibility(game.how == null || game.how.isEmpty() ? View.GONE : View.VISIBLE);
             cardBest.setText(game.best > 0 ? "🏆 బెస్ట్ " + game.best + " · " + game.plays + " సార్లు ఆడారు" : game.plays > 0 ? game.plays + " సార్లు ఆడారు" : "ఆడటానికి ఖర్చు లేదు · నెట్ అక్కర్లేదు");
-            String m = p.workshopModel().trim();
+            String m = Workshop.modelFor(p, Workshop.GAMES);
             fixBtn.setText("🔧 తప్పు సరిచేయి" + (m.isEmpty() ? "" : " (సుమారు " + GameStudio.fixMoney(m) + ")"));
             fixBtn.setVisibility(game.brokenId != null ? View.VISIBLE : View.GONE);
         }

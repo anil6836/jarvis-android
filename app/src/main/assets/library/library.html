@@ -68,9 +68,15 @@
   #reader.night .h { color: var(--gold); }
   #chap { font: inherit; font-size: 14px; max-width: 46vw; color: inherit; background: transparent; border: 1px solid rgba(0,0,0,.2); border-radius: 10px; padding: 5px; }
   #modes { display: flex; gap: 6px; padding: 6px 8px; overflow-x: auto; background: inherit; border-bottom: 1px solid rgba(0,0,0,.12); scrollbar-width: none; }
-  #modes .chip { background: rgba(0,0,0,.06); border-color: rgba(0,0,0,.18); color: inherit; }
-  #reader.night #modes .chip { background: rgba(255,255,255,.06); border-color: #4a3622; }
-  #modes .chip.on { background: #8a5a1c; color: #fff8ea; border-color: #8a5a1c; }
+  #modes .chip, #pairs .chip { background: rgba(0,0,0,.06); border-color: rgba(0,0,0,.18); color: inherit; }
+  #reader.night #modes .chip, #reader.night #pairs .chip { background: rgba(255,255,255,.06); border-color: #4a3622; }
+  #modes .chip.on, #pairs .chip.on { background: #8a5a1c; color: #fff8ea; border-color: #8a5a1c; }
+  #pairs { display: flex; gap: 6px; align-items: center; padding: 4px 8px 6px; overflow-x: auto; border-bottom: 1px solid rgba(0,0,0,.12); scrollbar-width: none; }
+  #pairs .pl { font-size: 13px; opacity: .75; white-space: nowrap; }
+  #pairs .chip { padding: 4px 10px; font-size: 13px; }
+  #text .note { font-family: system-ui, sans-serif; font-size: 14.5px; line-height: 1.5; padding: 8px 10px; margin: 2px 0 10px; border: 1px dashed #b08a4a; border-radius: 10px; }
+  #text .note button { margin-left: 4px; padding: 4px 11px; color: inherit; background: rgba(0,0,0,.06); border-color: rgba(0,0,0,.22); }
+  #reader.night #text .note button { background: rgba(255,255,255,.06); border-color: #4a3622; }
   #text { font-family: "Noto Serif Telugu", "Noto Sans Telugu", Georgia, serif; line-height: 1.7; -webkit-user-select: text; user-select: text; }
   #text .p { padding: 6px 8px; margin: 2px -8px; border-radius: 8px; }
   #text .p.now { background: rgba(232,194,106,.45); }
@@ -90,6 +96,13 @@
   label.l { color: var(--muted); font-size: 13px; }
   .radio { display: block; padding: 8px 10px; margin: 4px 0; border: 1px solid var(--line); border-radius: 12px; }
   .radio.on { border-color: var(--gold); background: rgba(232,194,106,.12); }
+  .mlist { max-height: 36vh; overflow-y: auto; margin: 6px 0 4px; border-top: 1px solid var(--line); }
+  .mlist button.wide { display: block; border-radius: 12px; padding: 9px 11px; margin: 5px 0; }
+  .mlist button.wide.on { border-color: var(--gold); background: rgba(232,194,106,.12); }
+  .mlist .mid { display: block; font-size: 14.5px; word-break: break-all; }
+  .mlist .meta { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .mlist .r { float: right; margin-left: 8px; color: var(--gold); font-weight: 700; font-size: 14.5px; }
+  .mlist .r.guess { color: var(--muted); font-weight: 400; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -118,6 +131,7 @@
 <div id="reader" class="panel" hidden>
   <header><button id="rBack">←</button><span class="h" id="rTitle"></span><select id="chap"></select><button id="rSmall">A−</button><button id="rBig">A+</button><button id="rNight">🌙</button></header>
   <div id="modes"></div>
+  <div id="pairs" hidden></div>
   <div class="body" id="rBody"><div id="text"></div></div>
   <footer><button id="rPrev">◀</button><button id="rPlay">▶ చదువు</button><button id="rSleep">🌙 టైమర్</button><button id="rRate">వేగం 1×</button><button id="rNext">▶▶</button></footer>
 </div>

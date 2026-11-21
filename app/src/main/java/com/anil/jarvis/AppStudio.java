@@ -44,11 +44,11 @@ final class AppStudio {
 
     // ================================================================ which AI, the money (the workshop's)
 
-    /** The workshop's AI (his choice in ⚙️ → 🛠️), with its key; never another model. */
+    /** The app studio's own AI (his pick under 📱 in ⚙️), else the workshop's AI; with its key; never another model. */
     static Workshop.Engine engine(Prefs p) throws Workshop.Problem {
-        if (p.workshopModel().trim().isEmpty())
-            throw new Workshop.Problem("యాప్‌లు కూడా వర్క్‌షాప్ AI తోనే తయారవుతాయి Sir; అది ఇంకా ఎంచుకోలేదు. ⚙️ → 🛠️ వర్క్‌షాప్ లో ఎంచుకోండి.");
-        return Workshop.engine(p);
+        if (Workshop.modelFor(p, Workshop.APPS).isEmpty())
+            throw new Workshop.Problem("యాప్‌లు తయారు చేసే AI ఇంకా ఎంచుకోలేదు Sir. ⚙️ → 🛠️ వర్క్‌షాప్ లో 📱 కింద (లేదా పైన వర్క్‌షాప్ AI) ఎంచుకోండి.");
+        return Workshop.engine(p, Workshop.APPS);
     }
 
     static String overLimit(Context c, Prefs p) {

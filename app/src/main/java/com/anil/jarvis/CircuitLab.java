@@ -50,9 +50,9 @@ final class CircuitLab {
     // ================================================================ which AI, the money (shared with the workshop)
 
     static Workshop.Engine engine(Prefs p) throws Workshop.Problem {
-        if (p.workshopModel().trim().isEmpty())
-            throw new Workshop.Problem("సర్క్యూట్లు కూడా వర్క్‌షాప్ AI తోనే తయారవుతాయి Sir; అది ఇంకా ఎంచుకోలేదు. ⚙️ → 🛠️ వర్క్‌షాప్ లో ఎంచుకోండి. (చేతితో కట్టడం, లెక్కలు, ఛాలెంజ్‌లు: AI లేకుండానే, ₹0.)");
-        return Workshop.engine(p);
+        if (Workshop.modelFor(p, Workshop.LAB).isEmpty())
+            throw new Workshop.Problem("సర్క్యూట్లు గీసే AI ఇంకా ఎంచుకోలేదు Sir. ⚙️ → 🛠️ వర్క్‌షాప్ లో ⚡ కింద (లేదా పైన వర్క్‌షాప్ AI) ఎంచుకోండి. (చేతితో కట్టడం, లెక్కలు, ఛాలెంజ్‌లు: AI లేకుండానే, ₹0.)");
+        return Workshop.engine(p, Workshop.LAB);
     }
 
     /** About what one answer costs on this model: a new board, a change to a board of this size, or a photo. "₹2–9". */

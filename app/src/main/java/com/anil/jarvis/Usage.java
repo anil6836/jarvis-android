@@ -50,9 +50,21 @@ final class Usage {
             {"gpt-4o-mini-transcribe", 1.25, 1.25, 5.00}, {"gpt-", 2.00, 0.20, 10.00}, {"o", 2.00, 0.20, 10.00},
             // Anthropic
             {"claude-fable-5-2", 8.00, 0.20, 40.00}, {"claude-fable-5-1", 10.00, 0.25, 50.00}, {"claude-fable", 10.00, 1.00, 50.00}, {"claude-opus-5-5", 4.00, 0.20, 20.00},
-            {"claude-opus", 5.00, 0.50, 25.00}, {"claude-sonnet-5", 2.00, 0.20, 10.00}, {"claude-sonnet", 3.00, 0.30, 15.00},
-            {"claude-haiku", 1.00, 0.10, 5.00}, {"claude", 3.00, 0.30, 15.00},
+            {"claude-opus-4-1", 15.00, 1.50, 75.00}, {"claude-opus-4-2025", 15.00, 1.50, 75.00},
+            {"claude-opus", 5.00, 0.50, 25.00}, {"claude-sonnet-5-5", 2.00, 0.10, 10.00}, {"claude-sonnet-5", 2.00, 0.20, 10.00}, {"claude-sonnet", 3.00, 0.30, 15.00},
+            // (Haiku 5.5: prompts up to 100K tokens; the library sends small ones. Anthropic's price page, 21 Nov 2026)
+            {"claude-haiku-5-5", 0.10, 0.01, 0.50}, {"claude-haiku-4-5", 1.00, 0.10, 5.00}, {"claude-haiku", 1.00, 0.10, 5.00}, {"claude", 3.00, 0.30, 15.00},
     };
+
+    /** The price lines that stand for a whole company or family (a guess for a model not listed by name). */
+    private static final java.util.List<String> FAMILY = java.util.Arrays.asList("gemini", "gpt-", "o", "claude", "claude-fable", "claude-opus", "claude-sonnet", "claude-haiku");
+
+    /** True when this model has its own line in the price list (not a company's middle price or the unknown one). */
+    static boolean knownPrice(String model) {
+        String m = model == null ? "" : model.toLowerCase(Locale.ROOT).replaceFirst("^models/", "");
+        for (Object[] p : PRICES) if (m.startsWith((String) p[0])) return !FAMILY.contains((String) p[0]);
+        return false;
+    }
 
     private static double[] price(String model) {
         String m = model == null ? "" : model.toLowerCase(Locale.ROOT).replaceFirst("^models/", "");

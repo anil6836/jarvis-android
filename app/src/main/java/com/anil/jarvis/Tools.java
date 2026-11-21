@@ -6456,7 +6456,7 @@ final class Tools {
                 i.putExtra(AppStudioActivity.EXTRA_CHANGE, change.trim()).putExtra(AppStudioActivity.EXTRA_SAID, true);
                 startIn(i);
                 return ok().put("app", a.title).put("next", "Say only: '" + a.title + " మారుస్తున్నాను Sir, సుమారు "
-                        + AppStudio.changeMoney(p.workshopModel().trim(), a.codeSize()) + ".' The studio shows each part and says the cost when it is done.").toString();
+                        + AppStudio.changeMoney(Workshop.modelFor(p, Workshop.APPS), a.codeSize()) + ".' The studio shows each part and says the cost when it is done.").toString();
             }
             if (!"open".equals(act)) i.putExtra(AppStudioActivity.EXTRA_ACTION, act);
             if ("build".equals(act) && p.githubToken().trim().isEmpty()) return err("no_github_token", "Putting the app on his phone needs his GitHub token (the APK is built there). " + GITHUB_HELP);

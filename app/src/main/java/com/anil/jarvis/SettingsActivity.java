@@ -113,6 +113,7 @@ public class SettingsActivity extends Activity {
     private Spinner voicePick;
     private EditText realtimeModel, codeModel, githubToken, geminiKey, geminiModel;
     private EditText workshopModel, workshopLimit, workshopImageModel; // 🛠️
+    private EditText gameModel, labModel, appModel, libModel; // 🎮 ⚡ 📱 📚 each studio's own AI (empty = the workshop's, as before)
     private TextView wsSpent; // (this month's workshop spend: shown again after 🧪 and when he comes back)
     private TextView voiceInfo, notifyInfo, checkInfo, crashInfo, crashCopy, crashClear;
     private TextView backupInfo, backupSetBtn;
@@ -584,22 +585,24 @@ public class SettingsActivity extends Activity {
         wsOpen.setOnClickListener(v -> { autosave(); WorkshopActivity.open(this, null, null, false); });
         box.addView(wsOpen);
         // 🎮 the game studio uses this same AI and this same monthly limit (his choice, 16 Nov)
-        note("🎮 గేమ్ స్టూడియో కూడా ఇదే AI తో ఆటలు తయారు చేస్తుంది; ఖర్చు ఇదే నెల హద్దులో కలుస్తుంది (పైన 🛠️ / 🎮 విడివిడిగా కనిపిస్తాయి). "
+        note("🎮 గేమ్ స్టూడియో కింద ఎంచుకున్న AI తో (ఖాళీ అయితే పైన 🛠️ AI తో) ఆటలు తయారు చేస్తుంది; ఖర్చు ఇదే నెల హద్దులో కలుస్తుంది (పైన 🛠️ / 🎮 విడివిడిగా కనిపిస్తాయి). "
                 + "ఒక ఆట ఖర్చు మొదలుపెట్టే ముందే చూపిస్తుంది (Fable 5.2 లో సుమారు ₹15–55; చౌక మోడల్ అయితే తక్కువ). "
                 + "తయారయ్యాక ఆడటానికి ఖర్చు లేదు, నెట్ అక్కర్లేదు.");
         TextView gsOpen = Ui.text(this, "🎮 గేమ్ స్టూడియో తెరువు →", 15, accent);
         gsOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         gsOpen.setOnClickListener(v -> { autosave(); GameStudioActivity.open(this, null, null, false); });
         box.addView(gsOpen);
+        gameModel = studioModelBox("🎮 ఆటలు తయారు చేసే AI (ఖాళీ = పైన 🛠️ వర్క్‌షాప్ AI)", Workshop.GAMES);
         // ⚡ the circuit lab draws boards with this same AI, in this same monthly limit (16 Nov)
-        note("⚡ సర్క్యూట్ ల్యాబ్ కూడా మాటలు / ఫోటో నుంచి బోర్డ్ గీయడానికి ఇదే AI వాడుతుంది (Fable 5.2 లో ఒక కొత్త బోర్డ్ సుమారు ₹3–15, మార్పు / ఫోటో ₹4–20; చౌక మోడల్ అయితే తక్కువ; ఇదే నెల హద్దులో; ఖర్చు ముందే చూపిస్తుంది). "
+        note("⚡ సర్క్యూట్ ల్యాబ్ మాటలు / ఫోటో నుంచి బోర్డ్ గీయడానికి కింద ఎంచుకున్న AI (ఖాళీ అయితే పైన 🛠️ AI) వాడుతుంది (Fable 5.2 లో ఒక కొత్త బోర్డ్ సుమారు ₹3–15, మార్పు / ఫోటో ₹4–20; చౌక మోడల్ అయితే తక్కువ; ఇదే నెల హద్దులో; ఖర్చు ముందే చూపిస్తుంది). "
                 + "చేతితో కట్టడం, కరెంట్ చూడటం, బ్యాకప్ / బిల్ లెక్కలు, ఛాలెంజ్‌లు, \"బల్బ్ 2 ఆపు\" లాంటి మాటలు: AI లేకుండా, ₹0.");
         TextView clOpen = Ui.text(this, "⚡ సర్క్యూట్ ల్యాబ్ తెరువు →", 15, accent);
         clOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         clOpen.setOnClickListener(v -> { autosave(); CircuitLabActivity.open(this, null, null, false); });
         box.addView(clOpen);
+        labModel = studioModelBox("⚡ సర్క్యూట్ బోర్డ్‌లు గీసే AI (ఖాళీ = పైన 🛠️ వర్క్‌షాప్ AI)", Workshop.LAB);
         // 📱 the app studio: a plan first, this same AI and this same monthly limit (18 Nov)
-        note("📱 యాప్ స్టూడియో: మీరు చెప్పిన యాప్‌కి ముందు తెలుగులో ప్లాన్ (ఇదే AI, సుమారు ₹2–10), మీరు సరే అన్నాకే తయారీ (ఖర్చు ముందే చూపిస్తుంది; ఇదే నెల హద్దులో). "
+        note("📱 యాప్ స్టూడియో: మీరు చెప్పిన యాప్‌కి ముందు తెలుగులో ప్లాన్ (కింద ఎంచుకున్న AI, సుమారు ₹2–10), మీరు సరే అన్నాకే తయారీ (ఖర్చు ముందే చూపిస్తుంది; ఇదే నెల హద్దులో). "
                 + "తయారైన యాప్ తనంతట తానే పరీక్షించుకుంటుంది, ప్రివ్యూలో వాడి చూడొచ్చు; 📲 ఫోన్‌లో పెట్టడం (మీ GitHub లో ప్రైవేట్ repo లో APK) ₹0. ఏ యాప్ అయినా తర్వాత మార్చొచ్చు. "
                 + "📦 5 రెడీ యాప్‌లు ₹0; యాప్‌లకు 🔔 రిమైండర్, 📷 ఫోటో, 📍 చోటు, 📤 షేర్, 📄 PDF, 🗣️ మాట, 📲 విడ్జెట్ (వాడిన వాటికే అనుమతి); "
                 + "🗣️ Jarvis తో యాప్‌లో రాయడం; ↩️ పాత వెర్షన్లు; 📤 కుటుంబానికి APK (మీరు నొక్కితేనే).");
@@ -607,6 +610,7 @@ public class SettingsActivity extends Activity {
         asOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         asOpen.setOnClickListener(v -> { autosave(); AppStudioActivity.open(this, null, null, false); });
         box.addView(asOpen);
+        appModel = studioModelBox("📱 యాప్‌లు తయారు చేసే AI (ఖాళీ = పైన 🛠️ వర్క్‌షాప్ AI)", Workshop.APPS);
         // 📐 room measuring: the camera (AR) and the numbers only, no AI (17 Nov)
         note("📐 ఇంటి కొలతలు: వెనక కెమెరా (AR) తో పొడవు, గది ప్లాన్ (విస్తీర్ణం, పెయింట్, టైల్స్, PDF), మంచం / బీరువా సరిపోతుందా. AI లేదు, ₹0; కెమెరా బొమ్మ ఎక్కడికీ వెళ్ళదు, దాచను.");
         TextView rmOpen = Ui.text(this, "📐 ఇంటి కొలతలు తెరువు →", 15, accent);
@@ -615,12 +619,14 @@ public class SettingsActivity extends Activity {
         box.addView(rmOpen);
         // 📚 the book library: free books and his own, read aloud; Telugu by the phone (₹0) or this same AI in this same limit (20 Nov)
         note("📚 పుస్తకాల లైబ్రరీ: చెక్క రాక్‌లలో ఉచిత పుస్తకాలు (Project Gutenberg, తెలుగు వికీసోర్స్), మీ PDF / EPUB / TXT / పేజీల ఫోటోలు. "
-                + "చదివి వినిపించడం, ఫోన్ తెలుగు అనువాదం (ఒకసారి 30 MB ప్యాక్) ₹0. ✨ AI తెలుగు, తెలుగు పేజీల ఫోటోలు చదవడం: ఇదే AI, ఇదే నెల హద్దు; "
+                + "చదివి వినిపించడం, ఫోన్ తెలుగు అనువాదం (ఒకసారి 30 MB ప్యాక్) ₹0. ✨ AI తెలుగు, తెలుగు పేజీల ఫోటోలు చదవడం: కింద ఎంచుకున్న AI (ఖాళీ అయితే పైన 🛠️ AI), ఇదే నెల హద్దు; "
                 + "ఖర్చు ముందే చూపిస్తుంది, మీరు నొక్కితేనే. కాపీరైట్ ఉన్న పుస్తకాలకి వివరాలు మాత్రమే.");
         TextView lbOpen = Ui.text(this, "📚 లైబ్రరీ తెరువు →", 15, accent);
         lbOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         lbOpen.setOnClickListener(v -> { autosave(); LibraryActivity.open(this, null, null); });
         box.addView(lbOpen);
+        libModel = studioModelBox("📚 లైబ్రరీ AI: ✨ AI తెలుగు, 📸 తెలుగు పేజీ ఫోటోలు (ఖాళీ = పైన 🛠️ వర్క్‌షాప్ AI)", Workshop.BOOKS);
+        note("📚 ప్రతి AI తో ఒక అధ్యాయం ఖర్చు ఎంతో లైబ్రరీలోనే కనిపిస్తుంది: పుస్తకం తెరిచి ✨ AI తెలుగు → 🤖 మోడల్ మార్చు. అక్కడ ఎంచుకున్నా ఇక్కడ ఈ పెట్టెలో కనిపిస్తుంది.");
         }
 
         // ---- voice
@@ -2490,6 +2496,10 @@ public class SettingsActivity extends Activity {
         e.putString("code_model", codeModel.getText().toString().trim());
         if (workshopModel != null) e.putString("workshop_model", workshopModel.getText().toString().trim().replaceFirst("^models/", ""));
         if (workshopImageModel != null) e.putString("workshop_image_model", workshopImageModel.getText().toString().trim().replaceFirst("^models/", ""));
+        if (gameModel != null) e.putString(Workshop.GAMES, gameModel.getText().toString().trim().replaceFirst("^models/", ""));
+        if (labModel != null) e.putString(Workshop.LAB, labModel.getText().toString().trim().replaceFirst("^models/", ""));
+        if (appModel != null) e.putString(Workshop.APPS, appModel.getText().toString().trim().replaceFirst("^models/", ""));
+        if (libModel != null) e.putString(Workshop.BOOKS, libModel.getText().toString().trim().replaceFirst("^models/", ""));
         if (workshopLimit != null) {
             int lim = Workshop.DEFAULT_LIMIT;
             try { lim = Math.max(0, Math.min(1000000, Integer.parseInt(workshopLimit.getText().toString().trim()))); } catch (Exception ignored) {}
@@ -6509,6 +6519,29 @@ public class SettingsActivity extends Activity {
                 new String[]{provider}, new String[]{keyField.getText().toString()},
                 into.getText().toString(), it -> chose(into, pref, it.id)));
         boxOf(into).addView(t);
+    }
+
+    /** 🎮 ⚡ 📱 📚 A studio's own AI, under that studio: the box, 📋 every company's models, ↩ empty again (the workshop's AI, as before). */
+    private EditText studioModelBox(String label, String key) {
+        EditText f = field(label, prefs.studioModel(key), false);
+        f.setHint("ఖాళీ = పైన 🛠️ వర్క్‌షాప్ AI");
+        TextView all = Ui.text(this, "📋 అన్ని కంపెనీల మోడల్స్ చూపించు, ఎంచుకో (Claude, Gemini, OpenAI)", 14.5f, Ui.CYAN);
+        all.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 4));
+        all.setOnClickListener(v -> Models.pick(this, Workshop.studioName(key) + " AI ఎంచుకోండి",
+                new String[]{Prefs.OPENAI, Prefs.ANTHROPIC, Prefs.GEMINI},
+                new String[]{openAiKey.getText().toString(), anthropicKey.getText().toString(), geminiKey.getText().toString()},
+                f.getText().toString(), it -> chose(f, key, it.id)));
+        boxOf(f).addView(all);
+        TextView back = Ui.text(this, "↩ ఖాళీ చేయి (పైన 🛠️ వర్క్‌షాప్ AI నే వాడు)", 14, Ui.CYAN);
+        back.setPadding(0, Ui.dp(this, 2), 0, Ui.dp(this, 8));
+        back.setOnClickListener(v -> {
+            f.setText("");
+            prefs.sp.edit().putString(key, "").apply();
+            String ws = prefs.workshopModel().trim();
+            Toast.makeText(this, "↩ " + Workshop.studioName(key) + " ఇక పైన వర్క్‌షాప్ AI" + (ws.isEmpty() ? "" : " (" + ws + ")") + " నే వాడుతుంది", Toast.LENGTH_SHORT).show();
+        });
+        boxOf(f).addView(back);
+        return f;
     }
 
     private void chose(EditText into, String pref, String model) {

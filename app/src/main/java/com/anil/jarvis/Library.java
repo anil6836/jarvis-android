@@ -664,7 +664,7 @@ final class Library {
         ParcelFileDescriptor fd = null;
         PdfRenderer r = null;
         TextRecognizer rec = "en".equals(lang) ? OfflineRead.recognizer() : null;
-        Workshop.Engine e = "te".equals(lang) ? Workshop.engine(new Prefs(c)) : null;
+        Workshop.Engine e = "te".equals(lang) ? engine(new Prefs(c)) : null;
         try {
             int n;
             if (photos == null) { fd = c.getContentResolver().openFileDescriptor(pdf, "r"); r = new PdfRenderer(fd); n = r.getPageCount(); }
@@ -736,7 +736,7 @@ final class Library {
 
     /** ₹ for reading that many Telugu page photos with his AI (approximate). */
     static double pagesQuote(Prefs p, int pages) {
-        String m = p.workshopModel().trim();
+        String m = model(p);
         return m.isEmpty() ? 0 : pages * Workshop.rupees(m, 1750, 0, 900);
     }
 
@@ -835,11 +835,24 @@ final class Library {
             + "listener. Keep the meaning, the names, the story and the tone; do not add, explain or leave out anything. "
             + "Write each numbered line's Telugu on one line, in the same form: [n] Telugu text. Output nothing else.";
 
-    /** The cost before AI Telugu: {model, chapter: {chars, rupees, done}, book: {chapters, left, chars, rupees}, used, limit}. */
+    /** The library's AI: his choice in the library, else the workshop's AI (also his choice); "" when neither is picked (Jarvis never picks). */
+    static String model(Prefs p) { return Workshop.modelFor(p, Workshop.BOOKS); }
+
+    /** The library's AI with its key; an honest reason when it can't be used (never another model). */
+    static Workshop.Engine engine(Prefs p) throws Workshop.Problem { return Workshop.engine(p, Workshop.BOOKS); }
+
+    /** A model name he can pick (the companies' own ids: letters, digits, . - _ : /). */
+    static boolean goodModel(String m) { return m != null && m.matches("[A-Za-z0-9._:\\-/]{1,100}"); }
+
+    /** Letters in one chapter (for the cost of each model). */
+    static long chars(Context c, String id, int unit) throws IOException { return chapter(c, id, unit).length(); }
+
+    /** The cost before AI Telugu: {model, lib, ws, chapter: {chars, rupees, done, ws}, book: {chapters, left, chars, rupees}, used, limit}. */
     static JSONObject quote(Context c, String id, int unit) throws Exception {
         Prefs p = new Prefs(c);
-        String m = p.workshopModel().trim();
+        String m = model(p), ws = p.workshopModel().trim().replaceFirst("^models/", "");
         JSONObject o = new JSONObject().put("t", "quote").put("id", id).put("unit", unit).put("model", m)
+                .put("lib", p.libraryModel().trim()).put("ws", ws).put("known", !m.isEmpty() && Usage.knownPrice(m))
                 .put("used", Math.round(Workshop.spent(c))).put("limit", p.workshopLimit());
         int n = count(c, id);
         long all = 0, left = 0, here = 0;
@@ -853,9 +866,10 @@ final class Library {
             if (!d) { left += text.length(); leftN++; }
             if (u == unit) { here = text.length(); hereDone = d; }
         }
-        o.put("chapter", new JSONObject().put("chars", here).put("done", hereDone).put("rupees", m.isEmpty() ? 0 : cost(m, here)));
+        o.put("chapter", new JSONObject().put("chars", here).put("done", hereDone).put("rupees", m.isEmpty() ? 0 : cost(m, here))
+                .put("ws", ws.isEmpty() || ws.equals(m) ? 0 : cost(ws, here)));
         o.put("book", new JSONObject().put("chapters", n).put("left", leftN).put("chars", left).put("rupees", m.isEmpty() ? 0 : cost(m, left)));
-        if (m.isEmpty()) o.put("why", "వర్క్‌షాప్ AI ఇంకా ఎంచుకోలేదు Sir. ⚙️ → 🛠️ వర్క్‌షాప్ లో మోడల్ ఎంచుకుంటే (చౌక మోడల్ అయితే ఖర్చు తక్కువ) ✨ పనిచేస్తుంది.");
+        if (m.isEmpty()) o.put("why", "లైబ్రరీకి AI ఇంకా ఎంచుకోలేదు Sir. కింద 🤖 మోడల్ ఎంచుకోండి (చౌక మోడల్ అయితే ఖర్చు తక్కువ).");
         String over = Workshop.overLimit(c, p);
         if (over != null) o.put("why", over);
         return o;
@@ -880,7 +894,7 @@ final class Library {
         int missing = 0;
         try {
             Prefs p = new Prefs(c);
-            Workshop.Engine e = Workshop.engine(p);
+            Workshop.Engine e = engine(p);
             for (int u : j.units) {
                 if (j.stop) break;
                 String text = chapter(c, j.id, u);

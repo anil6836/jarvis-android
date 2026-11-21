@@ -79,6 +79,31 @@ final class Workshop {
         return new Engine(prov, m, key);
     }
 
+    /** ⚙️ keys of each studio's own AI (his pick under that studio in ⚙️ → 🛠️; 📚 also inside the library). Empty = the workshop's AI, as before. */
+    static final String GAMES = "game_model", LAB = "circuit_model", APPS = "app_model", BOOKS = "library_model";
+
+    /** The AI for that studio: its own pick, else the workshop's (both his choices); "" when neither is picked (Jarvis never picks). */
+    static String modelFor(Prefs p, String which) {
+        String m = which == null ? "" : p.studioModel(which).trim().replaceFirst("^models/", "");
+        return m.isEmpty() ? p.workshopModel().trim().replaceFirst("^models/", "") : m;
+    }
+
+    static String studioName(String which) {
+        return GAMES.equals(which) ? "🎮 గేమ్ స్టూడియో" : LAB.equals(which) ? "⚡ సర్క్యూట్ ల్యాబ్" : APPS.equals(which) ? "📱 యాప్ స్టూడియో" : BOOKS.equals(which) ? "📚 లైబ్రరీ" : "🛠️ వర్క్‌షాప్";
+    }
+
+    /** That studio's AI with its key; an honest reason when it can't be used (never another model). */
+    static Engine engine(Prefs p, String which) throws Problem {
+        if (which == null) return engine(p);
+        String m = modelFor(p, which);
+        if (m.isEmpty()) throw new Problem(studioName(which) + " కి AI ఇంకా ఎంచుకోలేదు Sir. ⚙️ → 🛠️ వర్క్‌షాప్ లో " + studioName(which) + " కింద ఎంచుకోండి"
+                + (BOOKS.equals(which) ? " (లేదా లైబ్రరీలో ✨ AI తెలుగు → 🤖 మోడల్ మార్చు)." : "."));
+        String prov = provider(m);
+        String key = (Prefs.ANTHROPIC.equals(prov) ? p.anthropicKey() : Prefs.GEMINI.equals(prov) ? p.geminiKey() : p.openAiKey()).trim();
+        if (key.isEmpty()) throw new Problem(m + " కి " + company(prov) + " API key లేదు Sir. ⚙️ → Jarvis మెదడు లో ఆ key పెట్టండి, లేదా " + studioName(which) + " AI మార్చండి.");
+        return new Engine(prov, m, key);
+    }
+
     // ================================================================ money
 
     private static SharedPreferences sp(Context c) { return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE); }

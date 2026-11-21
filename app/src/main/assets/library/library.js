@@ -21,7 +21,7 @@ window.addEventListener('message', (e) => {
 // ================================================================ state
 const S = {
   starter: [], shelf: [], pos: {}, books: [], byId: {}, view: 'sec', rack: 'fic', pack: false, model: '', ai: '',
-  prefs: { font: 19, night: false, view: 'sec', mode: 'en', rate: 0 }, now: null, sel: null, results: [], busy: {},
+  prefs: { font: 19, night: false, view: 'sec', mode: 'en', pair: 'te', rate: 0 }, now: null, sel: null, results: [], busy: {},
   reader: { id: '', unit: 0, n: 0, parts: [], te: null, ai: null, titles: [], mode: 'en', follow: true, scrolledAt: 0 },
   addInfo: null, ready: false,
 };
@@ -750,15 +750,78 @@ function quoteSheet(m) {
   q.appendChild(el('h2', '', '✨ AI తెలుగు'));
   const b = S.byId[m.id] || {};
   q.appendChild(el('div', 'sub', b.t || ''));
-  if (m.why) { q.appendChild(el('p', '', m.why)); return; }
+  // 🤖 the library's own AI (his pick; the workshop's AI stays as it is)
+  const mrow = el('div', 'row');
+  mrow.appendChild(btn('🤖 మోడల్ మార్చు · ప్రతి మోడల్ ధర చూడు', 'wide', () => {
+    q.textContent = '';
+    q.appendChild(btn('✕', 'x', () => { q.hidden = true; }));
+    q.appendChild(el('h2', '', '🤖 లైబ్రరీ AI మోడల్'));
+    q.appendChild(el('p', 'muted', 'మీ keys తో వాడగలిగే మోడల్స్ లిస్ట్ తెస్తున్నాను…'));
+    post({ t: 'models', id: m.id, unit: m.unit });
+  }));
+  if (m.why) { q.appendChild(el('p', '', m.why)); q.appendChild(mrow); return; }
   q.appendChild(el('p', '', 'మీ AI ఇంగ్లీష్‌ని సహజమైన తెలుగులోకి మారుస్తుంది (ఫోన్ అనువాదం కంటే చాలా బాగుంటుంది). ఒకసారి చేసినది దాచుకుంటాను: మళ్ళీ వింటే ₹0.'));
-  q.appendChild(el('p', 'muted', 'మోడల్: ' + (m.model || '') + ' · ఈ నెల ₹' + m.used + ' వాడింది / హద్దు ₹' + m.limit + ' · అంకెలు సుమారు'));
+  q.appendChild(el('p', 'muted', '🤖 మోడల్: ' + (m.model || '') + (m.lib ? ' (లైబ్రరీ కోసం మీరు ఎంచుకున్నది)' : ' (వర్క్‌షాప్ AI)')
+    + ' · ఈ నెల ₹' + m.used + ' వాడింది / హద్దు ₹' + m.limit + ' · అంకెలు సుమారు' + (m.known === false ? ' · ఈ మోడల్ ధర అంచనా మాత్రమే' : '')));
+  if (m.chapter && !m.chapter.done && m.chapter.ws > 0) q.appendChild(el('p', 'muted', 'వర్క్‌షాప్ AI (' + m.ws + ') తో అయితే ఇదే అధ్యాయానికి సుమారు ' + K.money(m.chapter.ws)));
+  q.appendChild(mrow);
   const row = el('div', 'row');
   if (m.chapter && !m.chapter.done) row.appendChild(btn('✨ ఈ అధ్యాయం (అధ్యాయం ' + (m.unit + 1) + ') · సుమారు ' + K.money(m.chapter.rupees), 'gold wide', () => { q.hidden = true; post({ t: 'ai_go', id: m.id, scope: 'chapter', unit: m.unit }); }));
   else if (m.chapter && m.chapter.done) row.appendChild(el('p', 'muted', '✅ అధ్యాయం ' + (m.unit + 1) + ' కి AI తెలుగు ఇప్పటికే ఉంది.'));
   if (m.book && m.book.left > 0) row.appendChild(btn('✨ మిగిలిన పుస్తకం మొత్తం (' + m.book.left + ' అధ్యాయాలు) · సుమారు ' + K.money(m.book.rupees), 'wide', () => { q.hidden = true; post({ t: 'ai_go', id: m.id, scope: 'book', unit: m.unit }); }));
   row.appendChild(btn('వద్దు', 'wide', () => { q.hidden = true; }));
   q.appendChild(row);
+}
+/** 🤖 Every model his keys can use, with this chapter's AI Telugu cost; tapping one makes it the library's AI. */
+function modelSheet(m) {
+  const q = $('quote');
+  q.textContent = '';
+  q.hidden = false;
+  q.appendChild(btn('✕', 'x', () => { q.hidden = true; }));
+  q.appendChild(el('h2', '', '🤖 లైబ్రరీ AI మోడల్'));
+  q.appendChild(el('div', 'sub', 'అధ్యాయం ' + (m.unit + 1) + ' · ' + Number(m.chars || 0).toLocaleString('en-IN') + ' అక్షరాలు · ప్రతి మోడల్‌తో AI తెలుగు సుమారు ఖర్చు'));
+  q.appendChild(el('p', 'muted', 'ఇక్కడ ఎంచుకున్నది లైబ్రరీకి మాత్రమే (✨ AI తెలుగు, 📸 తెలుగు పేజీ ఫోటోలు); వర్క్‌షాప్ AI మారదు. '
+    + 'చౌక మోడల్ తెలుగు కొంచెం తక్కువ బాగుండొచ్చు: ముందు ఒక్క అధ్యాయం చేయించి చూడండి. "అంచనా" అంటే ఆ మోడల్ ధర నా లిస్ట్‌లో లేదు.'));
+  if (m.problems) q.appendChild(el('p', 'muted', '⚠ ' + m.problems));
+  const pick = (id) => {
+    q.textContent = '';
+    q.appendChild(el('p', 'muted', '…'));
+    post({ t: 'model_set', model: id, id: m.id, unit: m.unit });
+  };
+  if (m.lib) q.appendChild(btn(m.ws ? '↩ వర్క్‌షాప్ AI నే వాడు (' + m.ws + ')' : '↩ నా ఎంపిక తీసేయి', 'wide', () => pick('')));
+  const list = m.list || [];
+  if (!list.length) { q.appendChild(btn('సరే', 'wide', () => { q.hidden = true; })); return; }
+  let order = 'cheap';
+  const sorts = el('div', 'row');
+  const cC = btn('చౌక మొదట', 'chip on', () => { order = 'cheap'; cC.className = 'chip on'; cN.className = 'chip'; draw(); });
+  const cN = btn('కొత్తవి మొదట', 'chip', () => { order = 'new'; cN.className = 'chip on'; cC.className = 'chip'; draw(); });
+  sorts.appendChild(cC); sorts.appendChild(cN);
+  q.appendChild(sorts);
+  const box = el('input', 'f');
+  box.type = 'search';
+  box.placeholder = 'వెతకండి (ఉదా: haiku, flash, mini, sonnet)';
+  q.appendChild(box);
+  const ml = el('div', 'mlist');
+  q.appendChild(ml);
+  function draw() {
+    const w = box.value.trim().toLowerCase();
+    const shown = list.filter((x) => !w || (x.id + ' ' + x.co + ' ' + (x.name || '')).toLowerCase().includes(w));
+    if (order === 'cheap') shown.sort((a, b) => (a.known === b.known ? 0 : a.known ? -1 : 1) || a.r - b.r || a.n - b.n);
+    else shown.sort((a, b) => a.n - b.n);
+    ml.textContent = '';
+    shown.forEach((x) => {
+      const on = x.id === m.cur;
+      const b = el('button', 'wide' + (on ? ' on' : ''));
+      b.appendChild(el('span', 'r' + (x.known ? '' : ' guess'), K.money(x.r) + (x.known ? '' : ' (అంచనా)')));
+      b.appendChild(el('span', 'mid', (on ? '✓ ' : '') + x.id));
+      b.appendChild(el('span', 'meta', x.co + (x.name ? ' · ' + x.name : '') + (on ? ' · ఇప్పుడు ఇదే' : '')));
+      b.onclick = (ev) => { ev.stopPropagation(); if (!on) pick(x.id); };
+      ml.appendChild(b);
+    });
+    if (!shown.length) ml.appendChild(el('p', 'muted', 'ఆ పేరుతో మోడల్ లేదు.'));
+  }
+  box.addEventListener('input', draw);
+  draw();
 }
 function packSheet() {
   const q = $('quote');
@@ -795,6 +858,11 @@ function applyReaderLook() {
   const r = S.prefs.rate || 0;
   $('rRate').textContent = 'వేగం ' + (r > 0 ? r : 1) + '×';
 }
+function pairOf() { return S.prefs.pair === 'ai' ? 'ai' : 'te'; }
+/** The phone's Telugu is on the screen (alone, or under the English). */
+function wantsPhoneTe() { return R.mode === 'te' || (R.mode === 'both' && pairOf() === 'te'); }
+/** The AI's Telugu is on the screen (alone, or under the English). */
+function showsAi() { return R.mode === 'ai' || (R.mode === 'both' && pairOf() === 'ai'); }
 function gotChapter(m) {
   if (m.id !== R.id) return;
   R.unit = m.unit; R.n = m.n; R.parts = m.parts || []; R.te = m.te || null; R.ai = m.ai || null;
@@ -805,7 +873,7 @@ function gotChapter(m) {
   modesBar();
   renderText();
   $('rBody').scrollTop = 0;
-  if (R.mode === 'te' || R.mode === 'both') needTe();
+  if (wantsPhoneTe()) needTe();
 }
 function modesBar() {
   const b = S.byId[R.id] || {};
@@ -818,9 +886,25 @@ function modesBar() {
       if (k === 'ai' && !R.ai) { post({ t: 'quote', id: R.id, unit: R.unit }); return; }
       R.mode = k; S.prefs.mode = k; post({ t: 'prefs', mode: k });
       modesBar(); renderText();
-      if (k === 'te' || k === 'both') needTe();
+      if (wantsPhoneTe()) needTe();
     };
     m.appendChild(c);
+  });
+  // రెండూ: which Telugu goes under the English (his pick, kept)
+  const pr = $('pairs');
+  pr.textContent = '';
+  pr.hidden = !(R.mode === 'both' && b.lang !== 'te');
+  if (pr.hidden) return;
+  pr.appendChild(el('span', 'pl', 'ఇంగ్లీష్ తో పాటు:'));
+  [['te', '📱 ఫోన్ తెలుగు'], ['ai', R.ai ? '✨ AI తెలుగు' : '✨ AI తెలుగు (చేయించాలి)']].forEach(([k, n]) => {
+    const c = el('button', 'chip' + (pairOf() === k ? ' on' : ''), n);
+    c.onclick = () => {
+      S.prefs.pair = k; post({ t: 'prefs', pair: k });
+      modesBar(); renderText();
+      if (k === 'te') needTe();
+      else if (!R.ai) post({ t: 'quote', id: R.id, unit: R.unit });
+    };
+    pr.appendChild(c);
   });
 }
 function needTe() {
@@ -828,15 +912,22 @@ function needTe() {
   if (!S.pack) { packSheet(); return; }
   post({ t: 'te_phone', id: R.id, unit: R.unit });
 }
-function teOf(i) { return R.mode === 'ai' ? (R.ai && R.ai[i]) : (R.te && R.te[i]); }
+function teOf(i) { return showsAi() ? (R.ai && R.ai[i]) : (R.te && R.te[i]); }
 function renderText() {
   const t = $('text');
   t.textContent = '';
+  const noAi = R.mode === 'both' && pairOf() === 'ai' && !R.ai;
+  if (noAi && R.parts.length) { // (English with the AI's Telugu, but this chapter has none yet: said, never filled with the phone's)
+    const n = el('div', 'note');
+    n.appendChild(document.createTextNode('✨ ఈ అధ్యాయానికి AI తెలుగు ఇంకా చేయించలేదు.'));
+    n.appendChild(btn('ఖర్చు చూడు', '', () => post({ t: 'quote', id: R.id, unit: R.unit })));
+    t.appendChild(n);
+  }
   R.parts.forEach((p, i) => {
     const d = el('div', 'p');
     d.dataset.i = String(i);
     if (R.mode === 'en') d.textContent = p;
-    else if (R.mode === 'both') { d.appendChild(document.createTextNode(p)); const s = el('span', 'te' + (teOf(i) ? '' : ' wait'), teOf(i) || '…'); d.appendChild(s); }
+    else if (R.mode === 'both') { d.appendChild(document.createTextNode(p)); if (!noAi) { const s = el('span', 'te' + (teOf(i) ? '' : ' wait'), teOf(i) || '…'); d.appendChild(s); } }
     else { const tx = teOf(i); if (tx) d.textContent = tx; else { d.textContent = p; d.classList.add('wait'); } }
     t.appendChild(d);
   });
@@ -848,14 +939,14 @@ function gotTe(m) {
   if (m.id !== R.id || m.unit !== R.unit) return;
   if (!R.te) R.te = new Array(R.parts.length).fill(null);
   (m.list || []).forEach((x, k) => { R.te[m.from + k] = x; });
-  if (R.mode === 'te' || R.mode === 'both') renderText();
+  if (wantsPhoneTe()) renderText();
 }
 function markNow(scroll) {
   const n = S.now;
   const on = n && n.on && n.id === R.id && n.unit === R.unit;
   [...$('text').children].forEach((d) => d.classList.toggle('now', !!on && Number(d.dataset.i) === n.part));
   if (on && scroll && R.follow && Date.now() - R.scrolledAt > 6000) {
-    const d = $('text').children[n.part];
+    const d = $('text').querySelector('.p[data-i="' + n.part + '"]');
     if (d) d.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }
 }
@@ -868,7 +959,8 @@ function readLang() {
   const b = S.byId[R.id] || {};
   if (b.lang === 'te' || R.mode === 'en') return 'en';
   if (R.mode === 'ai') return 'ai';
-  return R.ai && R.ai.every((x) => x !== null) && R.mode === 'both' ? 'ai' : 'te';
+  if (R.mode === 'both' && pairOf() === 'ai') return R.ai ? 'ai' : 'en'; // (read what is on the screen)
+  return 'te';
 }
 $('rBody').addEventListener('scroll', () => { R.scrolledAt = Date.now(); });
 $('text').addEventListener('click', (e) => {
@@ -1016,8 +1108,10 @@ function onJarvis(m) {
     case 'chapter': gotChapter(m); break;
     case 'te': gotTe(m); break;
     case 'need_pack': packSheet(); break;
-    case 'pack': S.pack = !!m.ok; toast(m.s, 5000); if (m.ok && !$('reader').hidden && (R.mode === 'te' || R.mode === 'both')) needTe(); break;
+    case 'pack': S.pack = !!m.ok; toast(m.s, 5000); if (m.ok && !$('reader').hidden && wantsPhoneTe()) needTe(); break;
     case 'quote': quoteSheet(m); break;
+    case 'models': modelSheet(m); break;
+    case 'model': S.model = m.model || ''; break;
     case 'ai_on': S.ai = m.id; toast('✨ AI తెలుగు మొదలుపెట్టాను. అయిన భాగాలు వెంటనే దాచుకుంటాను; ఆపాలంటే ⏹.'); break;
     case 'aiprog': {
       S.busy[m.id] = m.s;
