@@ -822,6 +822,9 @@ final class Library {
         volatile boolean stop;
         volatile double rupees;
         volatile int done;
+        /** Where it is now (for the live bar and the notification): the chapter, its lines done / all, which chapter of the job. */
+        volatile int unit = -1, k, n, ci;
+        volatile String title = "";
         AiJob(String id, List<Integer> units) { this.id = id; this.units = units; }
     }
 
@@ -892,15 +895,20 @@ final class Library {
     private static void aiRun(Context c, AiJob j) {
         String said;
         int missing = 0;
+        double noted = 0;
         try {
             Prefs p = new Prefs(c);
             Workshop.Engine e = engine(p);
+            JSONObject bk = book(c, j.id);
+            j.title = bk == null ? "" : bk.optString("t");
             for (int u : j.units) {
                 if (j.stop) break;
                 String text = chapter(c, j.id, u);
                 List<String> parts = ReaderService.split(text);
                 String[] s = kept(c, j.id, "ai", u, parts.size());
                 if (s == null) s = new String[parts.size()];
+                j.unit = u; j.ci++; j.n = parts.size(); j.k = doneCount(s);
+                aiNotice(c, j);
                 int k = 0;
                 while (k < parts.size() && !j.stop) {
                     if (s[k] != null) { k++; continue; }
@@ -923,6 +931,9 @@ final class Library {
                     for (int q = 0; q < idx.size(); q++) { s[idx.get(q)] = got[q]; if (got[q] == null) missing++; }
                     keep(c, j.id, "ai", u, s);
                     k = idx.get(idx.size() - 1) + 1;
+                    j.k = doneCount(s);
+                    noted = aiTally(c, j, u, s, parts, noted); // (the book's ✨ count, letters and ₹, kept on its shelf entry)
+                    aiNotice(c, j);
                     AiWatch w = aiWatch;
                     if (w != null) w.progress(j, "✨ అధ్యాయం " + (u + 1) + ": " + k + " / " + parts.size() + " · " + Workshop.money(j.rupees));
                 }
@@ -938,10 +949,120 @@ final class Library {
         } catch (Exception e) {
             said = "✨ AI తెలుగు ఆగిపోయింది Sir: " + (e.getMessage() == null ? "సమస్య" : e.getMessage()) + ". ఖర్చు " + Workshop.money(j.rupees) + "; అయిన భాగాలు దాచాను.";
         }
+        if (j.rupees > noted) aiNote(c, j.id, -1, 0, 0, j.rupees - noted); // (a batch that cost and then failed: still in the book's ₹)
         running = null;
+        try { c.getSystemService(NotificationManager.class).cancel(195); } catch (Exception ignored) {}
         AiWatch w = aiWatch;
         if (w != null) w.finished(j, said);
-        else notifyDone(c, said);
+        if (w == null || !LibraryActivity.front) notifyDone(c, said); // (the library not in front: the end is told in a notification too)
+    }
+
+    // ---- ✨ how far each book's AI Telugu is: kept on its shelf entry, shown on the card, the spine, the reader, the ✨ page
+
+    private static int doneCount(String[] s) { int d = 0; for (String x : s) if (x != null) d++; return d; }
+
+    /** One chapter's state after a batch → the book's entry; returns the job's rupees noted so far. */
+    private static double aiTally(Context c, AiJob j, int unit, String[] s, List<String> parts, double noted) {
+        int d = 0;
+        long ch = 0;
+        for (int q = 0; q < s.length; q++) if (s[q] != null) { d++; ch += parts.get(q).length(); }
+        int pct = s.length == 0 ? 0 : d == s.length ? 100 : Math.min(99, d * 100 / s.length);
+        aiNote(c, j.id, unit, pct, ch, Math.max(0, j.rupees - noted));
+        return j.rupees;
+    }
+
+    /** ai_u: chapter → % of its lines in AI Telugu; ai_cc: chapter → letters done; ai_rs: ₹ spent on this book (unit < 0: only ₹). */
+    static synchronized void aiNote(Context c, String id, int unit, int pct, long chars, double rupees) {
+        JSONObject b = book(c, id);
+        if (b == null) return;
+        try {
+            if (unit >= 0) {
+                JSONObject u = b.optJSONObject("ai_u"), cc = b.optJSONObject("ai_cc");
+                if (u == null) u = new JSONObject();
+                if (cc == null) cc = new JSONObject();
+                u.put(String.valueOf(unit), pct);
+                cc.put(String.valueOf(unit), chars);
+                b.put("ai_u", u).put("ai_cc", cc);
+            }
+            if (rupees > 0) b.put("ai_rs", Math.round((b.optDouble("ai_rs", 0) + rupees) * 100) / 100.0);
+            b.put("ai_v", 1);
+        } catch (Exception ignored) {}
+        put(c, b);
+    }
+
+    /** Books whose AI Telugu was made before this tally existed: counted once from their kept files (₹ unknown for those). */
+    static void aiScan(Context c) {
+        JSONArray sh = shelf(c);
+        for (int i = 0; i < sh.length(); i++) {
+            JSONObject b = sh.optJSONObject(i);
+            if (b == null || b.has("ai_v") || !"ready".equals(b.optString("state"))) continue;
+            String id = b.optString("id");
+            File[] fs = LibText.goodId(id) ? new File(bookDir(c, id), "tr").listFiles() : null;
+            boolean any = false;
+            for (int q = 0; fs != null && q < fs.length; q++) {
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("^ai_(\\d{1,4})\\.json$").matcher(fs[q].getName());
+                if (!m.find()) continue;
+                try {
+                    int u = Integer.parseInt(m.group(1));
+                    List<String> parts = ReaderService.split(chapter(c, id, u));
+                    String[] s = kept(c, id, "ai", u, parts.size());
+                    if (s == null) continue;
+                    int d = 0;
+                    long ch = 0;
+                    for (int k = 0; k < s.length; k++) if (s[k] != null) { d++; ch += parts.get(k).length(); }
+                    aiNote(c, id, u, s.length == 0 ? 0 : d == s.length ? 100 : Math.min(99, d * 100 / s.length), ch, 0);
+                    any = true;
+                } catch (Exception ignored) {}
+            }
+            if (!any) { JSONObject x = book(c, id); if (x != null) { try { x.put("ai_v", 1); put(c, x); } catch (Exception ignored) {} } }
+        }
+    }
+
+    /** ₹ for one letter of AI Telugu on the library's AI (the page works out "the rest ≈ ₹…" from it); 0 without an AI. */
+    static double rate(Prefs p) {
+        String m = model(p);
+        return m.isEmpty() ? 0 : cost(m, 100_000) / 100_000.0;
+    }
+
+    /** The running job, for the live bar: {id, title, unit, k, n, ci, cn, rs, pct (of the whole book), ai fields}; null when none. */
+    static JSONObject aiNow(Context c) {
+        AiJob j = running;
+        if (j == null) return null;
+        try {
+            JSONObject b = book(c, j.id), o = new JSONObject().put("id", j.id).put("title", j.title).put("unit", j.unit).put("k", j.k).put("n", j.n)
+                    .put("ci", j.ci).put("cn", j.units.size()).put("rs", Math.round(j.rupees * 100) / 100.0);
+            if (b != null) {
+                long all = b.optLong("chars", 0), done = 0;
+                JSONObject cc = b.optJSONObject("ai_cc");
+                if (cc != null) for (java.util.Iterator<String> it = cc.keys(); it.hasNext(); ) done += cc.optLong(it.next());
+                o.put("pct", all > 0 ? Math.min(100, (int) (done * 100 / all)) : 0);
+                JSONObject ai = new JSONObject();
+                for (String k : new String[]{"ai_u", "ai_cc", "ai_rs"}) if (b.has(k)) ai.put(k, b.get(k));
+                o.put("ai", ai);
+            }
+            return o;
+        } catch (Exception e) { return null; }
+    }
+
+    /** The phone's notification while AI Telugu runs: a % bar; a tap opens the ✨ page, ⏹ stops it (its done lines stay). */
+    private static void aiNotice(Context c, AiJob j) {
+        try {
+            NotificationManager nm = c.getSystemService(NotificationManager.class);
+            nm.createNotificationChannel(new NotificationChannel("jarvis_library", "📚 లైబ్రరీ", NotificationManager.IMPORTANCE_LOW));
+            int pct = j.n == 0 ? 0 : j.k * 100 / j.n;
+            android.content.Intent open = new android.content.Intent(c, LibraryActivity.class).putExtra(LibraryActivity.EXTRA_VIEW, "tr")
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP | android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+            android.content.Intent stop = new android.content.Intent(c, LibraryActivity.class).putExtra(LibraryActivity.EXTRA_STOP_AI, true).putExtra(LibraryActivity.EXTRA_VIEW, "tr")
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP | android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+            int fl = android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT;
+            String line = "అధ్యాయం " + (j.unit + 1) + (j.units.size() > 1 ? " (" + j.ci + " / " + j.units.size() + ")" : "") + " · " + j.k + " / " + j.n + " వాక్యాలు · " + Workshop.money(j.rupees);
+            nm.notify(195, new Notification.Builder(c, "jarvis_library").setSmallIcon(android.R.drawable.ic_menu_agenda)
+                    .setContentTitle("✨ AI తెలుగు · " + LibText.cut(j.title, 60)).setContentText(line)
+                    .setProgress(100, pct, false).setOngoing(true).setOnlyAlertOnce(true)
+                    .setContentIntent(android.app.PendingIntent.getActivity(c, 195, open, fl))
+                    .addAction(new Notification.Action.Builder(null, "⏹ ఆపు", android.app.PendingIntent.getActivity(c, 196, stop, fl)).build())
+                    .build());
+        } catch (Exception ignored) {}
     }
 
     private static String[] translateBatch(Context c, Workshop.Engine e, List<String> parts, List<Integer> idx, AiJob j) throws Exception {

@@ -20,7 +20,7 @@ window.addEventListener('message', (e) => {
 
 // ================================================================ state
 const S = {
-  starter: [], shelf: [], pos: {}, books: [], byId: {}, view: 'sec', rack: 'fic', pack: false, model: '', ai: '',
+  starter: [], shelf: [], pos: {}, books: [], byId: {}, view: 'sec', rack: 'fic', pack: false, model: '', ai: '', aiNow: null, rate: 0, month: null,
   prefs: { font: 19, night: false, view: 'sec', mode: 'en', pair: 'te', rate: 0 }, now: null, sel: null, results: [], busy: {},
   reader: { id: '', unit: 0, n: 0, parts: [], te: null, ai: null, titles: [], mode: 'en', follow: true, scrolledAt: 0 },
   addInfo: null, ready: false,
@@ -202,11 +202,115 @@ function drawSpine(sl, b) {
     g.fillText(an, h - 84, 0);
   }
   g.restore();
+  // ✨ AI Telugu made for it (some or all): a small gold sparkle at the head
+  if (aiInfo(b).any) sparkle(g, sl.x + w / 2, sl.y + 17, Math.min(12, w * 0.24));
   // ✓ on the phone (a small gold dot at the foot), 🔖 a wish
   if (b.state === 'ready' || b.wish) {
     g.fillStyle = b.wish ? '#9cc8ff' : '#8fd6a0';
     g.beginPath(); g.arc(sl.x + w / 2, sl.y + h - 22, Math.min(9, w * 0.18), 0, Math.PI * 2); g.fill();
   }
+}
+
+function sparkle(g, x, y, r) {
+  g.save();
+  g.fillStyle = '#ffe29a';
+  g.beginPath();
+  for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, d = i % 2 ? r * 0.3 : r; g.lineTo(x + Math.cos(a - Math.PI / 2) * d, y + Math.sin(a - Math.PI / 2) * d); }
+  g.closePath(); g.fill();
+  g.restore();
+}
+
+// ================================================================ ✨ how far a book's AI Telugu is (from its shelf entry)
+/** {any, done (chapters fully), part (chapters begun), n, pct (of the book's letters), rs (₹ spent; null = not counted), left (letters), leftRs} */
+function aiInfo(b) {
+  const u = (b && b.ai_u) || {}, cc = (b && b.ai_cc) || {};
+  const ks = Object.keys(u);
+  let done = 0, part = 0, ch = 0;
+  ks.forEach((k) => { const v = Number(u[k]) || 0; if (v >= 100) done++; else if (v > 0) part++; });
+  Object.keys(cc).forEach((k) => { ch += Number(cc[k]) || 0; });
+  const all = Number(b && b.chars) || 0;
+  const left = Math.max(0, all - ch);
+  return { any: done + part > 0, done, part, n: Number(b && b.n) || 0, pct: all ? Math.min(100, Math.floor(ch * 100 / all)) : 0,
+    rs: b && b.ai_rs !== undefined ? Number(b.ai_rs) : null, left, leftRs: S.rate > 0 ? left * S.rate : null };
+}
+/** The chapter's ✨ in the reader's list: done, or how far. */
+function aiMark(b, i) {
+  const v = Number(((b && b.ai_u) || {})[String(i)]) || 0;
+  return v >= 100 ? ' ✨' : v > 0 ? ' ✨' + v + '%' : '';
+}
+/** A running job's numbers merged into the page's copy of that book (no racks rebuilt while it runs). */
+function aiMerge(id, ai) {
+  if (!id || !ai) return;
+  const s = S.shelf.find((x) => x && x.id === id);
+  if (s) Object.assign(s, ai);
+  if (S.byId[id] && S.byId[id] !== s) Object.assign(S.byId[id], ai);
+}
+function aiLine(n) {
+  if (!n) return '';
+  return '✨ ' + (n.title || (S.byId[n.id] || {}).t || '') + ' · అధ్యాయం ' + (Number(n.unit) + 1) + (n.cn > 1 ? ' (' + n.ci + '/' + n.cn + ')' : '') + ' · '
+    + (n.n ? Math.floor(n.k * 100 / n.n) : 0) + '% · ' + K.money(n.rs || 0);
+}
+/** The live bar: over the racks, and a row in the reader; tap → the ✨ page, ⏹ stops (the done lines stay). */
+function aiBars() {
+  const n = S.ai ? S.aiNow : null;
+  const bar = $('aibar'), r = $('rAi');
+  [bar, r].forEach((x) => { x.textContent = ''; x.hidden = !n; });
+  if (!n) return;
+  const pc = n.n ? Math.floor(n.k * 100 / n.n) : 0;
+  bar.appendChild(el('span', 't', aiLine(n)));
+  bar.appendChild(btn('⏹', '', () => post({ t: 'ai_stop' })));
+  const b1 = el('div', 'bar'); const f1 = el('i'); f1.style.width = pc + '%'; b1.appendChild(f1); bar.appendChild(b1);
+  bar.onclick = () => openTrs();
+  r.appendChild(el('span', 't', aiLine(n)));
+  r.appendChild(btn('⏹ ఆపు', '', () => post({ t: 'ai_stop' })));
+  r.onclick = () => openTrs();
+}
+
+// ================================================================ ✨ the translations page
+function openTrs() {
+  $('bubble').hidden = true;
+  if (S.sel) closeBook(true);
+  $('trs').hidden = false;
+  renderTrs();
+  post({ t: 'trs' });
+}
+function renderTrs() {
+  const body = $('tBody');
+  if ($('trs').hidden) return;
+  body.textContent = '';
+  const books = S.shelf.filter((b) => b && b.state === 'ready' && (aiInfo(b).any || S.ai === b.id));
+  const m = S.month;
+  let chs = 0; books.forEach((b) => { chs += aiInfo(b).done; });
+  body.appendChild(el('p', 'tsum', books.length
+    ? books.length + ' పుస్తకాలు · ' + chs + ' అధ్యాయాలు పూర్తిగా తెలుగులో' + (m ? ' · ఈ నెల 📚 ' + K.money(m.books) + ' · మొత్తం ₹' + m.used + ' / హద్దు ₹' + m.limit + ' (మిగిలింది ₹' + Math.max(0, m.limit - m.used) + ')' : '')
+      + (S.model ? ' · లైబ్రరీ AI: ' + S.model : '')
+    : 'ఇంకా ఏ పుస్తకానికీ AI తెలుగు చేయించలేదు. పుస్తకం తెరిచి ✨ AI తెలుగు నొక్కండి: ఖర్చు ముందే చూపిస్తాను.'));
+  const order = (b) => (S.ai === b.id ? 0 : aiInfo(b).pct < 100 ? 1 : 2);
+  books.sort((a, b) => order(a) - order(b) || String(a.t).localeCompare(String(b.t)));
+  books.forEach((b) => {
+    const i = aiInfo(b), run = S.ai === b.id;
+    const row = el('div', 'trow' + (run ? ' run' : ''));
+    row.appendChild(el('h3', '', (b.tt && b.tt !== b.t ? b.tt + ' · ' : '') + b.t));
+    row.appendChild(el('div', 'n', '✨ ' + i.done + ' / ' + i.n + ' అధ్యాయాలు పూర్తి' + (i.part ? ' · ' + i.part + ' సగంలో' : '') + ' · పుస్తకంలో ' + i.pct + '%'));
+    const bar = el('div', 'bar'); const f = el('i'); f.style.width = i.pct + '%'; bar.appendChild(f); row.appendChild(bar);
+    const money = [];
+    if (i.rs !== null && i.rs > 0) money.push('ఇప్పటిదాకా ఖర్చు ' + K.money(i.rs));
+    else if (i.rs === null) money.push('ఇంతకుముందు చేసినదాని ఖర్చు లెక్కలో లేదు');
+    if (i.left > 0 && i.leftRs !== null) money.push('మిగిలినవి సుమారు ' + K.money(i.leftRs) + (S.model ? ' (' + S.model + ')' : ''));
+    if (i.left === 0) money.push('✅ మొత్తం పుస్తకం తెలుగులో');
+    if (money.length) row.appendChild(el('div', 'n', money.join(' · ')));
+    if (run && S.aiNow) row.appendChild(el('div', 'live', aiLine(S.aiNow)));
+    const r = el('div', 'row');
+    const firstDone = Object.keys(b.ai_u || {}).map(Number).filter((k) => b.ai_u[k] > 0).sort((x, y) => x - y)[0];
+    if (firstDone !== undefined) r.appendChild(btn('📖 చదువు', 'gold', () => { $('trs').hidden = true; S.prefs.mode = 'ai'; post({ t: 'prefs', mode: 'ai' }); openReader(b.id, firstDone); }));
+    if (run) r.appendChild(btn('⏹ ఆపు', '', () => post({ t: 'ai_stop' })));
+    else if (i.done < i.n) {
+      let next = 0; while (next < i.n && Number((b.ai_u || {})[String(next)]) >= 100) next++;
+      r.appendChild(btn('✨ మిగిలినవి చేయించు', '', () => post({ t: 'quote', id: b.id, unit: Math.min(next, Math.max(0, i.n - 1)) })));
+    }
+    row.appendChild(r);
+    body.appendChild(row);
+  });
 }
 
 // ---------------------------------------------------------------- building the racks
@@ -602,6 +706,13 @@ function showCard(b) {
   const at = S.pos[b.id];
   if (ready && at && !b.done) marks.appendChild(el('span', 'pill', '🔖 అధ్యాయం ' + (at[0] + 1) + ' దగ్గర ఆగారు'));
   if (b.done) marks.appendChild(el('span', 'pill ok', '✓ పూర్తయింది'));
+  const ai = aiInfo(b);
+  if (ready && b.lang !== 'te' && ai.any) {
+    const pl = el('span', 'pill ok', '✨ AI తెలుగు: ' + ai.done + ' / ' + ai.n + ' అధ్యాయాలు' + (ai.part ? ' (+' + ai.part + ' సగం)' : '') + ' · ' + ai.pct + '%');
+    pl.onclick = (ev) => { ev.stopPropagation(); openTrs(); };
+    marks.appendChild(pl);
+    if (ai.left > 0 && ai.leftRs !== null) marks.appendChild(el('span', 'pill', 'మిగిలినవి సుమారు ' + K.money(ai.leftRs)));
+  }
   c.appendChild(marks);
   const prog = el('div', 'prog', S.busy[b.id] || '');
   prog.id = 'cardProg';
@@ -858,6 +969,11 @@ function applyReaderLook() {
   const r = S.prefs.rate || 0;
   $('rRate').textContent = 'వేగం ' + (r > 0 ? r : 1) + '×';
 }
+function chapList() {
+  const sel = $('chap'), b = S.byId[R.id] || {};
+  sel.textContent = '';
+  for (let i = 0; i < R.n; i++) { const o = el('option', '', (i + 1) + '. ' + (R.titles[i] || 'అధ్యాయం ' + (i + 1)) + (b.lang === 'te' ? '' : aiMark(b, i))); o.value = String(i); if (i === R.unit) o.selected = true; sel.appendChild(o); }
+}
 function pairOf() { return S.prefs.pair === 'ai' ? 'ai' : 'te'; }
 /** The phone's Telugu is on the screen (alone, or under the English). */
 function wantsPhoneTe() { return R.mode === 'te' || (R.mode === 'both' && pairOf() === 'te'); }
@@ -869,7 +985,7 @@ function gotChapter(m) {
   if (m.titles && m.titles.length) R.titles = m.titles;
   const sel = $('chap');
   sel.textContent = '';
-  for (let i = 0; i < R.n; i++) { const o = el('option', '', (i + 1) + '. ' + (R.titles[i] || 'అధ్యాయం ' + (i + 1))); o.value = String(i); if (i === R.unit) o.selected = true; sel.appendChild(o); }
+  chapList();
   modesBar();
   renderText();
   $('rBody').scrollTop = 0;
@@ -1023,6 +1139,8 @@ $('nowS').onclick = sleepNext;
 // ================================================================ the top buttons
 $('bClose').onclick = () => post({ t: 'close' });
 $('bSearch').onclick = () => openSearch();
+$('bTr').onclick = () => openTrs();
+$('tBack').onclick = () => { $('trs').hidden = true; };
 $('bAdd').onclick = openAdd;
 $('bView').onclick = () => { closeBook(true); S.view = S.view === 'era' ? 'sec' : 'era'; post({ t: 'prefs', view: S.view }); rebuild(); goRack(S.view === 'era' ? 'universe' : 'fic', true); };
 $('sBack').onclick = () => { $('search').hidden = true; };
@@ -1046,6 +1164,7 @@ function show(id) {
 function back() {
   if (!$('bubble').hidden) { $('bubble').hidden = true; return; }
   if (!$('quote').hidden) { $('quote').hidden = true; return; }
+  if (!$('trs').hidden) { $('trs').hidden = true; return; }
   if (!$('add').hidden) { closeAdd(); return; }
   if (!$('reader').hidden) { closeReader(); return; }
   if (!$('search').hidden) { $('search').hidden = true; return; }
@@ -1059,10 +1178,12 @@ function onJarvis(m) {
     case 'init':
       S.starter = m.starter || []; S.shelf = m.shelf || []; S.pos = m.pos || {}; S.pack = !!m.pack; S.model = m.model || '';
       S.prefs = Object.assign(S.prefs, m.prefs || {}); S.view = S.prefs.view === 'era' ? 'era' : 'sec'; S.now = m.now || null; S.ai = m.ai || '';
+      S.rate = Number(m.rate) || 0; S.aiNow = m.ainow || null; if (S.aiNow && !S.ai) S.ai = S.aiNow.id;
       rebuild();
       { const reading = K.myShelves(S.books, S.pos).reading.length > 0; goRack(reading ? 'my' : (S.view === 'era' ? 'universe' : 'fic'), true); }
       S.ready = true;
       nowBar();
+      aiBars();
       break;
     case 'shelf': {
       S.shelf = m.shelf || []; S.pos = m.pos || S.pos;
@@ -1111,16 +1232,22 @@ function onJarvis(m) {
     case 'pack': S.pack = !!m.ok; toast(m.s, 5000); if (m.ok && !$('reader').hidden && wantsPhoneTe()) needTe(); break;
     case 'quote': quoteSheet(m); break;
     case 'models': modelSheet(m); break;
-    case 'model': S.model = m.model || ''; break;
-    case 'ai_on': S.ai = m.id; toast('✨ AI తెలుగు మొదలుపెట్టాను. అయిన భాగాలు వెంటనే దాచుకుంటాను; ఆపాలంటే ⏹.'); break;
+    case 'model': S.model = m.model || ''; S.rate = Number(m.rate) || 0; break;
+    case 'ai_on': S.ai = m.id; S.aiNow = { id: m.id, title: (S.byId[m.id] || {}).t || '', unit: 0, k: 0, n: 0, ci: 1, cn: 1, rs: 0 }; aiBars(); toast('✨ AI తెలుగు మొదలుపెట్టాను. అయిన భాగాలు వెంటనే దాచుకుంటాను; ఆపాలంటే ⏹.'); break;
+    case 'trs': S.month = m; S.rate = Number(m.rate) || S.rate; if (m.model) S.model = m.model;
+      if (m.shelf) { (m.shelf || []).forEach((x) => { if (x && x.ai_u) aiMerge(x.id, { ai_u: x.ai_u, ai_cc: x.ai_cc, ai_rs: x.ai_rs }); }); }
+      if (m.ainow) { S.aiNow = m.ainow; S.ai = m.ainow.id; } renderTrs(); aiBars(); break;
     case 'aiprog': {
+      S.ai = m.id; S.aiNow = m; aiMerge(m.id, m.ai);
+      aiBars(); renderTrs();
+      if (!$('reader').hidden && R.id === m.id) chapList();
       S.busy[m.id] = m.s;
       const a = $('cardProg');
       if (a && S.sel && S.sel.b.id === m.id) { a.textContent = m.s + ' '; a.appendChild(btn('⏹ ఆపు', '', () => post({ t: 'ai_stop' }))); }
       break;
     }
     case 'aidone':
-      S.ai = ''; delete S.busy[m.id];
+      S.ai = ''; S.aiNow = null; delete S.busy[m.id]; aiBars(); renderTrs();
       toast(m.s, 7000);
       if (!$('reader').hidden && R.id === m.id) post({ t: 'chapter', id: R.id, unit: R.unit });
       { const a = $('cardProg'); if (a) a.textContent = ''; }
@@ -1141,6 +1268,7 @@ function onJarvis(m) {
     case 'view':
       if (!S.ready) { setTimeout(() => onJarvis(m), 300); break; }
       if (m.v === 'add') { openAdd(); break; }
+      if (m.v === 'tr') { closeBook(true); openTrs(); break; }
       if (m.v === 'era' || m.v === 'sec') { closeBook(true); S.view = m.v; post({ t: 'prefs', view: S.view }); rebuild(); goRack(m.v === 'era' ? 'universe' : 'fic', true); }
       break;
     case 'addinfo': addForm(m); break;

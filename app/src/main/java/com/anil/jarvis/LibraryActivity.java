@@ -59,6 +59,8 @@ import java.util.concurrent.Executors;
  */
 public class LibraryActivity extends Activity {
     static final String EXTRA_BOOK = "lib_book", EXTRA_SEARCH = "lib_search", EXTRA_VIEW = "lib_view";
+    /** From the AI Telugu notification's ⏹: stop the running job (the lines done stay kept). */
+    static final String EXTRA_STOP_AI = "lib_stop_ai";
     private static final String HOST = "appassets.androidplatform.net";
     private static final String PATH = "/assets/library/";
     private static final String PAGE = "https://" + HOST + PATH + "library.html";
@@ -101,6 +103,11 @@ public class LibraryActivity extends Activity {
 
     private void goTo(Intent i) {
         if (i == null) return;
+        if (i.getBooleanExtra(EXTRA_STOP_AI, false)) {
+            i.removeExtra(EXTRA_STOP_AI);
+            Library.AiJob j = Library.running;
+            if (j != null) { j.stop = true; say("⏹ AI తెలుగు ఆపుతున్నాను… అయిన వాక్యాలు దాచుకుంటాను."); }
+        }
         try {
             if (i.getStringExtra(EXTRA_BOOK) != null) send(json("show").put("id", i.getStringExtra(EXTRA_BOOK)));
             else if (i.getStringExtra(EXTRA_SEARCH) != null) send(json("search_open").put("q", Workshop.cap(i.getStringExtra(EXTRA_SEARCH), 120)));
@@ -216,8 +223,10 @@ public class LibraryActivity extends Activity {
         io.execute(() -> {
             try {
                 Prefs p = new Prefs(this);
+                try { Library.aiScan(this); } catch (Exception ignored) {} // (books translated before the ✨ tally: counted once)
+                JSONObject now = Library.aiNow(this);
                 JSONObject m = json("init").put("starter", Library.starter(this)).put("shelf", Library.shelf(this)).put("pos", Library.positions(this))
-                        .put("pack", OfflineRead.ready(this)).put("model", Library.model(p))
+                        .put("pack", OfflineRead.ready(this)).put("model", Library.model(p)).put("rate", Library.rate(p)).put("ainow", now == null ? JSONObject.NULL : now)
                         .put("prefs", prefs()).put("now", nowLine()).put("ai", Library.running != null ? Library.running.id : "");
                 send(m);
             } catch (Exception ignored) {}
@@ -265,6 +274,15 @@ public class LibraryActivity extends Activity {
             case "pack": pack(); break;
             case "quote": quote(id, m.optInt("unit", 0)); break;
             case "models": listModels(id, m.optInt("unit", 0)); break;
+            case "trs": io.execute(() -> { // ✨ the translations page: this month's money (the books' tallies are in the shelf)
+                try {
+                    Prefs p = new Prefs(this);
+                    try { Library.aiScan(this); } catch (Exception ignored) {}
+                    JSONObject now = Library.aiNow(this);
+                    send(json("trs").put("used", Math.round(Workshop.spent(this))).put("limit", p.workshopLimit()).put("books", Math.round(Workshop.booksSpent(this) * 100) / 100.0)
+                            .put("model", Library.model(p)).put("rate", Library.rate(p)).put("shelf", Library.shelf(this)).put("ainow", now == null ? JSONObject.NULL : now));
+                } catch (Exception e) { say("లెక్క రాలేదు: " + e.getMessage()); }
+            }); break;
             case "model_set": setModel(m.optString("model", ""), id, m.optInt("unit", 0)); break;
             case "ai_go": aiGo(id, m.optString("scope", "chapter"), m.optInt("unit", 0)); break;
             case "ai_stop": { Library.AiJob j = Library.running; if (j != null) j.stop = true; Library.AiJob a = addJob; if (a != null) a.stop = true; break; }
@@ -458,7 +476,7 @@ public class LibraryActivity extends Activity {
                 if (!m2.isEmpty() && !offered.contains(m2)) { say("ఆ మోడల్ లిస్ట్‌లో లేదు. మళ్ళీ 🤖 మోడల్ మార్చు నొక్కండి."); return; }
                 Prefs p = new Prefs(this);
                 p.setLibraryModel(m2);
-                send(json("model").put("model", Library.model(p)).put("lib", m2));
+                send(json("model").put("model", Library.model(p)).put("lib", m2).put("rate", Library.rate(p)));
                 String ws = p.workshopModel().trim();
                 say(m2.isEmpty() ? "↩ లైబ్రరీ ఇక వర్క్‌షాప్ AI నే వాడుతుంది" + (ws.isEmpty() ? "" : " (" + ws + ")") + "."
                         : "🤖 లైబ్రరీ AI: " + m2 + ". వర్క్‌షాప్ AI మారలేదు.");
@@ -598,18 +616,28 @@ public class LibraryActivity extends Activity {
             }
         };
         Library.aiWatch = new Library.AiWatch() {
-            @Override public void progress(Library.AiJob j, String line) { try { send(json("aiprog").put("id", j.id).put("s", line)); } catch (Exception ignored) {} }
+            @Override public void progress(Library.AiJob j, String line) {
+                try {
+                    JSONObject o = Library.aiNow(getApplicationContext());
+                    if (o == null) o = new JSONObject().put("id", j.id);
+                    send(o.put("t", "aiprog").put("s", line));
+                } catch (Exception ignored) {}
+            }
             @Override public void finished(Library.AiJob j, String said) {
                 try { send(json("aidone").put("id", j.id).put("s", said)); } catch (Exception ignored) {}
+                sendShelf(); // (the ✨ on its spine, the counts on its card)
             }
         };
     }
 
     // ================================================================ in front, behind, gone
 
-    @Override protected void onResume() { super.onResume(); JarvisAccessibility.bubbleAside(true); }
+    /** The library is on the screen now (an AI Telugu job that ends while it isn't also says so in a notification). */
+    static volatile boolean front;
 
-    @Override protected void onPause() { super.onPause(); JarvisAccessibility.bubbleAside(false); }
+    @Override protected void onResume() { super.onResume(); front = true; JarvisAccessibility.bubbleAside(true); }
+
+    @Override protected void onPause() { super.onPause(); front = false; JarvisAccessibility.bubbleAside(false); }
 
     @Override public void onBackPressed() { send(json("back")); }
 

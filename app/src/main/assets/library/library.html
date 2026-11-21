@@ -103,6 +103,26 @@
   .mlist .meta { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
   .mlist .r { float: right; margin-left: 8px; color: var(--gold); font-weight: 700; font-size: 14.5px; }
   .mlist .r.guess { color: var(--muted); font-weight: 400; }
+  /* ✨ AI Telugu: the live bar, the translations page */
+  #aibar { position: absolute; left: 8px; right: 8px; top: 92px; z-index: 4; display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 11px;
+           border-radius: 14px; background: rgba(29,20,13,.95); border: 1px solid var(--gold2); font-size: 13px; }
+  #aibar .t, #rAi .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #aibar button, #rAi button { padding: 4px 10px; font-size: 13px; }
+  .bar { position: relative; height: 6px; border-radius: 99px; background: rgba(255,255,255,.12); overflow: hidden; margin-top: 4px; }
+  .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--gold); border-radius: 99px; }
+  #aibar .bar { position: absolute; left: 11px; right: 11px; bottom: 2px; height: 2px; margin: 0; }
+  #rAi { display: flex; align-items: center; gap: 8px; padding: 5px 8px; font-size: 13px; border-bottom: 1px solid rgba(0,0,0,.12); background: rgba(232,194,106,.18); }
+  #reader.night #rAi { background: rgba(168,130,46,.16); }
+  #rAi button { color: inherit; background: rgba(0,0,0,.06); border-color: rgba(0,0,0,.2); }
+  #reader.night #rAi button { background: rgba(255,255,255,.06); border-color: #4a3622; }
+  .tsum { font-size: 14px; line-height: 1.55; color: var(--muted); margin: 2px 0 10px; }
+  .trow { border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; margin: 8px 0; background: var(--card); }
+  .trow.run { border-color: var(--gold2); }
+  .trow h3 { margin: 0; font-size: 16px; color: var(--text); line-height: 1.35; }
+  .trow .n { font-size: 13.5px; color: var(--muted); margin-top: 3px; line-height: 1.5; }
+  .trow .live { font-size: 13.5px; color: var(--gold); margin-top: 4px; }
+  .trow .row { margin: 8px 0 0; }
+  .trow .row button { padding: 6px 11px; font-size: 13.5px; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -112,11 +132,13 @@
   <button id="bClose" aria-label="మూసేయి">✕</button>
   <div id="ttl">📚 Jarvis గ్రంథాలయం</div>
   <button id="bView">🕰️ కాలం</button>
+  <button id="bTr" aria-label="అనువాదాలు">✨</button>
   <button id="bSearch" aria-label="వెతుకు">🔍</button>
   <button id="bAdd" aria-label="పుస్తకం పెట్టు">➕</button>
 </div>
 <div id="chips"></div>
 <div id="hint">పుస్తకం మీద నొక్కండి · వేలితో జరపండి · రెండు వేళ్ళతో దగ్గరగా / దూరంగా</div>
+<div id="aibar" hidden></div>
 <div id="nowbar" hidden><span>🔊</span><span class="t" id="nowT"></span><button id="nowP">⏸</button><button id="nowR">📖</button><button id="nowS">🌙</button></div>
 
 <div id="card" class="sheet" hidden></div>
@@ -128,10 +150,16 @@
   <div class="body" id="sBody"><p class="muted">ప్రపంచంలోని ఏ పుస్తకం అయినా వెతకండి. ఉచితంగా దొరికేవి (✅) రాక్‌లోకి దించుకోవచ్చు; కాపీరైట్ ఉన్నవాటికి వివరాలు మాత్రమే.</p></div>
 </div>
 
+<div id="trs" class="panel" hidden>
+  <header><button id="tBack">←</button><span class="h">✨ అనువాదాలు (AI తెలుగు)</span></header>
+  <div class="body" id="tBody"></div>
+</div>
+
 <div id="reader" class="panel" hidden>
   <header><button id="rBack">←</button><span class="h" id="rTitle"></span><select id="chap"></select><button id="rSmall">A−</button><button id="rBig">A+</button><button id="rNight">🌙</button></header>
   <div id="modes"></div>
   <div id="pairs" hidden></div>
+  <div id="rAi" hidden></div>
   <div class="body" id="rBody"><div id="text"></div></div>
   <footer><button id="rPrev">◀</button><button id="rPlay">▶ చదువు</button><button id="rSleep">🌙 టైమర్</button><button id="rRate">వేగం 1×</button><button id="rNext">▶▶</button></footer>
 </div>
