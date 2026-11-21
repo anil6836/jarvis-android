@@ -62,6 +62,24 @@ final class OfflineRead {
         }
     }
 
+    /**
+     * 📚 🎤 Telugu → English on the phone (background thread), for a search said in Telugu about an English book
+     * ("షెర్లాక్ హోమ్స్ కథలు" → "Sherlock Holmes stories"): the same downloaded Telugu pack, ₹0, nothing sent anywhere.
+     * null when the pack isn't on the phone or it failed (nothing is downloaded from here).
+     */
+    static String toEnglish(Context c, String telugu) {
+        if (!ready(c) || telugu == null || telugu.trim().isEmpty()) return null;
+        Translator t = Translation.getClient(new TranslatorOptions.Builder().setSourceLanguage(TranslateLanguage.TELUGU).setTargetLanguage(TranslateLanguage.ENGLISH).build());
+        try {
+            String en = Tasks.await(t.translate(telugu.trim()), 10, TimeUnit.SECONDS);
+            return en == null || en.trim().isEmpty() ? null : en.trim();
+        } catch (Exception e) {
+            return null;
+        } finally {
+            try { t.close(); } catch (Exception ignored) {}
+        }
+    }
+
     /** The printed text in the picture (background thread); "" when none. */
     static String text(Bitmap pic) {
         TextRecognizer r = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);

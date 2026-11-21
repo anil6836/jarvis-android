@@ -279,14 +279,20 @@ final class Library {
         String query = q == null ? "" : q.trim();
         try {
             if (query.isEmpty()) return out.put("results", res);
+            // (🎤 said in Telugu about an English book: the phone's Telugu pack gives the English words too, ₹0, offline)
+            String en = telugu(query) ? OfflineRead.toEnglish(c, query) : null;
+            if (en != null && (en.equalsIgnoreCase(query) || telugu(en))) en = null;
+            if (en != null) out.put("en", en);
             // 1. on our racks already
             JSONArray st = starter(c);
             for (int i = 0; i < st.length(); i++) {
                 JSONObject b = st.optJSONObject(i);
                 if (b == null) continue;
                 double s = Math.max(LibText.score(query, b.optString("t") + " " + b.optString("tt"), b.optString("a")), LibText.score(query, b.optString("tt"), ""));
+                if (en != null) s = Math.max(s, LibText.score(en, b.optString("t"), b.optString("a")));
                 if (s >= 0.6) seen.put(b.optString("id"), new JSONObject(b.toString()).put("rack", true).put("free", true));
             }
+            final String world = en != null ? en : query; // (Gutenberg / Open Library are searched in English when he said it in Telugu)
             // 2. Telugu Wikisource (Telugu words)
             if (telugu(query)) {
                 try {
@@ -307,10 +313,10 @@ final class Library {
             Map<String, JSONObject> pgById = new HashMap<>();
             List<JSONObject> pgHits = new ArrayList<>();
             try {
-                JSONArray r = getJson("https://gutendex.com/books?search=" + enc(query)).optJSONArray("results");
+                JSONArray r = getJson("https://gutendex.com/books?search=" + enc(world)).optJSONArray("results");
                 for (int i = 0; r != null && i < r.length() && i < 10; i++) pgHits.add(LibText.fromGutendex(r.getJSONObject(i)));
             } catch (Exception e) {
-                try { pgHits = LibText.fromOpds(new String(get("https://www.gutenberg.org/ebooks/search.opds/?query=" + enc(query), 3_000_000), StandardCharsets.UTF_8)); }
+                try { pgHits = LibText.fromOpds(new String(get("https://www.gutenberg.org/ebooks/search.opds/?query=" + enc(world), 3_000_000), StandardCharsets.UTF_8)); }
                 catch (Exception x) { probs.put("Project Gutenberg చేరలేదు"); }
             }
             for (int i = 0; i < pgHits.size() && i < 10; i++) {
@@ -321,7 +327,7 @@ final class Library {
             // 4. every other book: its details (Open Library)
             try {
                 JSONArray docs = getJson("https://openlibrary.org/search.json?limit=12&fields=key,title,author_name,first_publish_year,cover_i,ebook_access,"
-                        + "id_project_gutenberg,id_standard_ebooks,language,subject&q=" + enc(query)).optJSONArray("docs");
+                        + "id_project_gutenberg,id_standard_ebooks,language,subject&q=" + enc(world)).optJSONArray("docs");
                 for (int i = 0; docs != null && i < docs.length(); i++) {
                     JSONObject o = LibText.fromOpenLibrary(docs.getJSONObject(i));
                     if ("pg".equals(o.optString("src"))) {

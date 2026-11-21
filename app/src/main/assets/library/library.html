@@ -189,6 +189,11 @@
   .msay { color: var(--gold); margin: 4px 0 6px; }
   .mlink { padding: 3px 0; cursor: pointer; }
   #mFind { width: 100%; margin: 6px 0; }
+  #sMic { flex: none; min-width: 44px; padding: 7px 10px; }
+  #sMic.on { background: #2fb8d8; color: #08131a; border-color: #2fb8d8; }
+  #search header #q { min-width: 0; }
+  .loc h3 { margin: 4px 0 6px; font-size: 15px; color: var(--gold); }
+  .saidEn { color: var(--muted); font-size: 13.5px; margin: 2px 0 8px; }
   .mic { flex: none; }
   .mic.on { background: #2fb8d8 !important; color: #08131a !important; border-color: #2fb8d8 !important; }
   #vline { position: absolute; left: 12px; right: 12px; bottom: 74px; z-index: 13; background: rgba(12,28,34,.94); color: #d9f6ff; border: 1px solid #2fb8d8;
@@ -216,7 +221,7 @@
 <div id="hallbar" hidden><button id="hPrev">◀ వెనకటి కాలం</button><button id="hOut">🚪 బయటకు</button><button id="hNext">తర్వాతి కాలం ▶</button></div>
 
 <div id="search" class="panel" hidden>
-  <header><button id="sBack">←</button><input id="q" type="search" placeholder="పుస్తకం / రచయిత పేరు (తెలుగు లేదా English)" enterkeyhint="search"><button id="sGo" class="gold">🔍</button></header>
+  <header><button id="sBack">←</button><input id="q" type="search" placeholder="పుస్తకం / రచయిత పేరు (తెలుగు లేదా English)" enterkeyhint="search"><button id="sMic" aria-label="మాట్లాడి వెతుకు">🎤</button><button id="sGo" class="gold">🔍</button></header>
   <div class="body" id="sBody"><p class="muted">ప్రపంచంలోని ఏ పుస్తకం అయినా వెతకండి. ఉచితంగా దొరికేవి (✅) రాక్‌లోకి దించుకోవచ్చు; కాపీరైట్ ఉన్నవాటికి వివరాలు మాత్రమే.</p></div>
 </div>
 

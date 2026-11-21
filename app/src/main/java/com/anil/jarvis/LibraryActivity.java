@@ -364,6 +364,13 @@ public class LibraryActivity extends Activity {
             case "close": finish(); break;
             // ---- 🎙️ his voice here
             case "mic": if (ear != null) { if (!WorkshopVoice.micInUse) holdReading(); ear.tap(); } break;
+            case "dictate": // 🎤 in the search box: his words only written out (Telugu or English, the way Jarvis hears him)
+                if (ear == null) break;
+                if (ear.dictating()) { ear.tap(); break; }
+                if (!WorkshopVoice.micInUse) holdReading();
+                try { send(json("dictst").put("on", true)); } catch (Exception ignored) {}
+                ear.dictate(w -> { try { send(json("dictated").put("s", w == null ? "" : w.trim())); } catch (Exception ignored) {} });
+                break;
             case "vdone": {
                 String w = m.optString("s", ""), said = m.optString("say", "");
                 if (ear == null) break;

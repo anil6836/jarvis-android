@@ -791,11 +791,29 @@ function openSearch(q) {
   if (q !== undefined) { $('q').value = q; runSearch(); }
   else setTimeout(() => $('q').focus(), 50);
 }
+/** On his racks already (₹0, at once): a name said in Telugu letters meets its English title, and the other way round. */
+function localHits(q) {
+  return K.rankSaid(q, S.books, (x) => [x.t, x.tt, (x.t || '') + ' ' + (x.a || ''), x.a], 0.62, 4).map((h) => h.item);
+}
+function localBox(list) {
+  const box = el('div', 'loc');
+  if (!list.length) return box;
+  box.appendChild(el('h3', '', '📚 మీ రాక్‌లలో ఉన్నవి'));
+  list.forEach((x) => {
+    const d = el('div', 'sug');
+    const w = el('div', 'w'); w.appendChild(el('div', '', '📗 ' + x.t + (x.a ? ' · ' + x.a : ''))); if (x.tt && x.tt !== x.t) w.appendChild(el('div', 'why', x.tt)); d.appendChild(w);
+    d.appendChild(btn(x.state === 'ready' ? '📖 చూపించు' : 'చూపించు', 'gold', () => { $('search').hidden = true; show(x.id); }));
+    box.appendChild(d);
+  });
+  return box;
+}
 function runSearch() {
   const q = $('q').value.trim();
   if (!q) return;
   const b = $('sBody');
   b.textContent = '';
+  S.localHits = localHits(q);
+  b.appendChild(localBox(S.localHits));
   b.appendChild(el('p', 'prog', '🔍 "' + q + '" వెతుకుతున్నాను… (Project Gutenberg, Open Library' + (/[ఀ-౿]/.test(q) ? ', తెలుగు వికీసోర్స్' : '') + ')'));
   $('q').blur();
   post({ t: 'search', q });
@@ -803,9 +821,13 @@ function runSearch() {
 function showResults(m) {
   const b = $('sBody');
   b.textContent = '';
-  S.results = m.results || [];
+  const loc = S.localHits || [];
+  if (m.en) b.appendChild(el('p', 'saidEn', '🔁 ఇంగ్లీష్‌లో కూడా వెతికాను: “' + m.en + '” (ఫోన్ తెలుగు ప్యాక్, ₹0)'));
+  b.appendChild(localBox(loc));
+  S.results = (m.results || []).filter((r) => !loc.some((x) => x.id === r.id));
   if (m.problems && m.problems.length) b.appendChild(el('p', 'muted', '⚠️ ' + m.problems.join(' · ') + ' (ఇంటర్నెట్ చూడండి)'));
-  if (!S.results.length) { b.appendChild(el('p', '', 'ఏమీ దొరకలేదు. పేరు ఇంకోలా (English లో కూడా) రాసి చూడండి.')); return; }
+  if (!S.results.length) { if (!loc.length) b.appendChild(el('p', '', 'ఏమీ దొరకలేదు. పేరు ఇంకోలా (English లో కూడా) రాసి / చెప్పి చూడండి.')); return; }
+  if (loc.length) b.appendChild(el('h3', 'sec2', '🌐 ఉచిత పుస్తకాలు, వివరాలు'));
   S.results.forEach((r) => {
     const card = el('div', 'res');
     const cvr = el('div', 'cv', r.lang === 'te' ? 'అ' : '📕');
@@ -1233,6 +1255,12 @@ $('tBack').onclick = () => { $('trs').hidden = true; };
 $('bAdd').onclick = openAdd;
 $('bView').onclick = () => { closeBook(true); S.hall = false; S.view = S.view === 'era' ? 'sec' : 'era'; post({ t: 'prefs', view: S.view }); rebuild(); goRack(S.view === 'era' ? 'universe' : 'fic', true); };
 $('sBack').onclick = () => { $('search').hidden = true; };
+$('sMic').onclick = () => post({ t: 'dictate' });
+function dictOn(on) {
+  $('sMic').classList.toggle('on', !!on);
+  $('sMic').textContent = on ? '👂' : '🎤';
+  $('q').placeholder = on ? '🎤 చెప్పండి… (తెలుగు లేదా English)' : 'పుస్తకం / రచయిత పేరు (తెలుగు లేదా English)';
+}
 $('sGo').onclick = runSearch;
 $('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') runSearch(); });
 
@@ -2313,6 +2341,16 @@ function onJarvis(m) {
       break;
     case 'addinfo': addForm(m); break;
     // ---- 📊 🖍️ 🎧 💬 📝 ❓ 🗺️ 📚 🏠
+    case 'dictst': dictOn(m.on); break;
+    case 'dictated': {
+      dictOn(false);
+      const q = K.searchSaid(m.s);
+      if (!q) { toast('🎤 ఏమీ వినపడలేదు. మళ్ళీ 🎤 నొక్కి చెప్పండి.', 4000); break; }
+      if ($('search').hidden) openSearch();
+      $('q').value = q;
+      runSearch();
+      break;
+    }
     case 'vheard': { const r = voiceDo(m.s); post({ t: 'vdone', s: m.s, brain: !r.took, say: r.say || '' }); break; }
     case 'vline': vLine(m.s, V.st === 1 || V.st === 2); break;
     case 'vmic': vMic(m.st); break;

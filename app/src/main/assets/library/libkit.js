@@ -441,6 +441,24 @@
     if (/^(వెనక్కి|వెనక్కు|back|go back|మూసేయి|close)$/.test(s)) return { c: 'back' };
     return null;
   }
+  /** All of `items` that sound like what he said, best first: [{item, score}] (at most n, each ≥ min). */
+  function rankSaid(said, items, names, min, n) {
+    const out = [];
+    (items || []).forEach((it) => {
+      let sc = 0;
+      names(it).forEach((x) => { if (x) sc = Math.max(sc, sayLike(said, x)); });
+      if (sc >= (min || 0.6)) out.push({ item: it, score: sc });
+    });
+    return out.sort((a, b) => b.score - a.score).slice(0, n || 5);
+  }
+  /** 🎤 What he said into the search box → the words to search ("షెర్లాక్ హోమ్స్ పుస్తకం కావాలి" → "షెర్లాక్ హోమ్స్"). */
+  function searchSaid(raw) {
+    let t = String(raw || '').trim().replace(/[.!?।,"“”]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const tail = /\s*(పుస్తకాన్ని|పుస్తకం|పుస్తకాలు|బుక్|బుక్స్|book|books|ని|ను|గురించి|కావాలి|కావాలి సర్|వెతుకు|వెతకు|వెతికి పెట్టు|చూపించు|సెర్చ్ చేయి|సెర్చ్|ఉందా|ఉన్నాయా|please|ప్లీజ్)$/i;
+    for (let k = 0; k < 6 && tail.test(t); k++) t = t.replace(tail, '').trim();
+    t = t.replace(/^(search|find|వెతుకు|సెర్చ్)\s+(for\s+)?/i, '').trim();
+    return t;
+  }
   /** ❓ Which answer he said: "B", "బి", "రెండోది", "2", or the answer's own words → 0–3 | -1. */
   function quizPick(raw, options) {
     const s = String(raw || '').trim().toLowerCase().replace(/[.!?।,]+$/g, '').replace(/^(జవాబు|answer|ఆప్షన్|option)\s*/, '').trim();
@@ -459,7 +477,7 @@
 
   const K = { centre, SECTIONS, ERAS, MY, MY_SHELVES, CASE, racks, hash, colourOf, sizeOf, merge, onRack, myShelves, layout, myLayout, mark,
     yearSaid, pagesSaid, money, rackName, spineLines, wordAt, nextReads, mapLayout, mapRank, mapPick, egoLayout, ranges,
-    te2lat, vnorm, sayLike, bestSaid, voiceCmd, quizPick, isQuestion };
+    te2lat, vnorm, sayLike, bestSaid, rankSaid, searchSaid, voiceCmd, quizPick, isQuestion };
   if (typeof module !== 'undefined' && module.exports) module.exports = K;
   root.LibKit = K;
 })(typeof window !== 'undefined' ? window : globalThis);

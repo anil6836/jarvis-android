@@ -93,9 +93,23 @@ final class WorkshopVoice implements VoiceIO.Listener, Tools.Host {
         listenSoon(250);
     }
 
+    /** (📚 the library's 🎤 search box) the next words he says are only written out for it: no command, no brain. */
+    private java.util.function.Consumer<String> dictate;
+
+    /** 🎤 in the search box: listen once and give his words to `to` ("" when nothing was heard). */
+    void dictate(java.util.function.Consumer<String> to) {
+        if (stopped) return;
+        dictate = to;
+        wake();
+    }
+
+    /** The 🎤 listen is going on (a second tap stops it). */
+    boolean dictating() { return dictate != null; }
+
     /** 🎙️ tapped: listen now, or stop listening. */
     void tap() {
         if (stopped) return;
+        if (dictate != null && voice != null && voice.listening) { java.util.function.Consumer<String> d = dictate; dictate = null; voice.cancelListening(); idle(); d.accept(""); return; }
         if (voice != null && voice.listening) { voice.cancelListening(); idle(); return; }
         wake();
     }
@@ -156,6 +170,7 @@ final class WorkshopVoice implements VoiceIO.Listener, Tools.Host {
         lastPartial = "";
         understanding = false;
         if (confirmWait != null) { heardConfirm(t); return; }
+        if (dictate != null) { java.util.function.Consumer<String> d = dictate; dictate = null; idle(); d.accept(t); return; } // (🎤: only written out)
         if (voice.isPaused()) { // (he talked over an answer: "కొనసాగించు" / "ఆపు" / new words)
             int r = voice.pausedHeard(t);
             if (r == VoiceIO.RESUMED) { state(SPEAKING); return; }
@@ -173,6 +188,7 @@ final class WorkshopVoice implements VoiceIO.Listener, Tools.Host {
     @Override public void onListenFailed(int error) {
         lastPartial = "";
         understanding = false;
+        if (dictate != null) { java.util.function.Consumer<String> d = dictate; dictate = null; idle(); d.accept(""); return; }
         if (confirmWait != null) { confirmSilence(); return; }
         if (voice != null && voice.isPaused()) { int r = voice.pausedHeard(""); if (r == VoiceIO.RESUMED) { state(SPEAKING); return; } }
         idle();
