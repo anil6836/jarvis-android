@@ -205,8 +205,8 @@ function drawSpine(sl, b) {
   // ✨ AI Telugu made for it (some or all): a small gold sparkle at the head
   if (aiInfo(b).any) sparkle(g, sl.x + w / 2, sl.y + 17, Math.min(12, w * 0.24));
   // ✓ on the phone (a small gold dot at the foot), 🔖 a wish
-  if (b.state === 'ready' || b.wish) {
-    g.fillStyle = b.wish ? '#9cc8ff' : '#8fd6a0';
+  if (b.state === 'ready' || b.wish || b.home) {
+    g.fillStyle = b.wish ? '#9cc8ff' : b.state === 'ready' ? '#8fd6a0' : '#ffb067'; // (🏠 his paper copy at home: orange)
     g.beginPath(); g.arc(sl.x + w / 2, sl.y + h - 22, Math.min(9, w * 0.18), 0, Math.PI * 2); g.fill();
   }
 }
@@ -247,6 +247,7 @@ function aiMerge(id, ai) {
 }
 function aiLine(n) {
   if (!n) return '';
+  if (n.kind === 'map') return '🗺️ ' + (n.title || (S.byId[n.id] || {}).t || '') + ' · అధ్యాయం ' + (Number(n.unit) + 1) + ' (' + (n.ci || 1) + '/' + (n.cn || 1) + ') · ' + K.money(n.rs || 0);
   return '✨ ' + (n.title || (S.byId[n.id] || {}).t || '') + ' · అధ్యాయం ' + (Number(n.unit) + 1) + (n.cn > 1 ? ' (' + n.ci + '/' + n.cn + ')' : '') + ' · '
     + (n.n ? Math.floor(n.k * 100 / n.n) : 0) + '% · ' + K.money(n.rs || 0);
 }
@@ -256,14 +257,14 @@ function aiBars() {
   const bar = $('aibar'), r = $('rAi');
   [bar, r].forEach((x) => { x.textContent = ''; x.hidden = !n; });
   if (!n) return;
-  const pc = n.n ? Math.floor(n.k * 100 / n.n) : 0;
+  const pc = n.kind === 'map' ? Math.floor(Math.max(0, (n.ci || 1) - 1) * 100 / Math.max(1, n.cn || 1)) : n.n ? Math.floor(n.k * 100 / n.n) : 0;
   bar.appendChild(el('span', 't', aiLine(n)));
   bar.appendChild(btn('⏹', '', () => post({ t: 'ai_stop' })));
   const b1 = el('div', 'bar'); const f1 = el('i'); f1.style.width = pc + '%'; b1.appendChild(f1); bar.appendChild(b1);
-  bar.onclick = () => openTrs();
+  bar.onclick = () => { if (n.kind !== 'map') openTrs(); };
   r.appendChild(el('span', 't', aiLine(n)));
   r.appendChild(btn('⏹ ఆపు', '', () => post({ t: 'ai_stop' })));
-  r.onclick = () => openTrs();
+  r.onclick = () => { if (n.kind !== 'map') openTrs(); };
 }
 
 // ================================================================ ✨ the translations page
@@ -278,17 +279,18 @@ function renderTrs() {
   const body = $('tBody');
   if ($('trs').hidden) return;
   body.textContent = '';
-  const books = S.shelf.filter((b) => b && b.state === 'ready' && (aiInfo(b).any || S.ai === b.id));
+  const trRun = (id) => S.ai === id && !(S.aiNow && S.aiNow.kind === 'map');
+  const books = S.shelf.filter((b) => b && b.state === 'ready' && (aiInfo(b).any || trRun(b.id)));
   const m = S.month;
   let chs = 0; books.forEach((b) => { chs += aiInfo(b).done; });
   body.appendChild(el('p', 'tsum', books.length
     ? books.length + ' పుస్తకాలు · ' + chs + ' అధ్యాయాలు పూర్తిగా తెలుగులో' + (m ? ' · ఈ నెల 📚 ' + K.money(m.books) + ' · మొత్తం ₹' + m.used + ' / హద్దు ₹' + m.limit + ' (మిగిలింది ₹' + Math.max(0, m.limit - m.used) + ')' : '')
       + (S.model ? ' · లైబ్రరీ AI: ' + S.model : '')
     : 'ఇంకా ఏ పుస్తకానికీ AI తెలుగు చేయించలేదు. పుస్తకం తెరిచి ✨ AI తెలుగు నొక్కండి: ఖర్చు ముందే చూపిస్తాను.'));
-  const order = (b) => (S.ai === b.id ? 0 : aiInfo(b).pct < 100 ? 1 : 2);
+  const order = (b) => (trRun(b.id) ? 0 : aiInfo(b).pct < 100 ? 1 : 2);
   books.sort((a, b) => order(a) - order(b) || String(a.t).localeCompare(String(b.t)));
   books.forEach((b) => {
-    const i = aiInfo(b), run = S.ai === b.id;
+    const i = aiInfo(b), run = trRun(b.id);
     const row = el('div', 'trow' + (run ? ' run' : ''));
     row.appendChild(el('h3', '', (b.tt && b.tt !== b.t ? b.tt + ' · ' : '') + b.t));
     row.appendChild(el('div', 'n', '✨ ' + i.done + ' / ' + i.n + ' అధ్యాయాలు పూర్తి' + (i.part ? ' · ' + i.part + ' సగంలో' : '') + ' · పుస్తకంలో ' + i.pct + '%'));
@@ -370,7 +372,7 @@ function bookcase(i, rack) {
   return g;
 }
 
-function placeBook(p, b, x0) {
+function placeBook(p, b, x0, parent) {
   const s = slot(Math.max(48, Math.min(200, Math.round(ROWH * p.t / p.h))));
   drawSpine(s, b);
   const geo = new THREE.BoxGeometry(p.t, p.h, p.d);
@@ -384,7 +386,7 @@ function placeBook(p, b, x0) {
   const front = C.d / 2 - 0.015 - r() * 0.012;
   m.position.set(x0 - C.inner / 2 + p.x, C.shelves[p.shelf] + p.h / 2, front - p.d / 2);
   m.userData = { id: b.id, home: m.position.clone(), p };
-  world.add(m);
+  (parent || world).add(m);
   bookMeshes.push(m);
 }
 
@@ -422,6 +424,8 @@ function rebuild() {
   S.byId = {};
   S.books.forEach((b) => { S.byId[b.id] = b; });
   rackList = K.racks(S.view);
+  floor.visible = wall.visible = !S.hall;
+  if (S.hall && S.view === 'era') { buildHall(); atlases.forEach((a) => { a.tex.needsUpdate = true; }); chips(); dirty = true; return; }
   rackList.forEach((rack, i) => {
     bookcase(i, rack);
     decor(i, rack);
@@ -452,12 +456,14 @@ function rebuild() {
 function chips() {
   const c = $('chips');
   c.textContent = '';
-  rackList.forEach((r) => {
+  if (S.view === 'era' && !S.hall) c.appendChild(btn('🚶 కాలం హాల్‌లో నడువు', 'chip', () => enterHall()));
+  (S.hall ? hallRacks() : rackList).forEach((r) => {
     const b = el('button', 'chip' + (r.k === S.rack ? ' on' : ''), r.e + ' ' + r.n);
-    b.onclick = () => goRack(r.k);
+    b.onclick = () => (S.hall ? hallGo(r.k) : goRack(r.k));
     c.appendChild(b);
   });
   $('bView').textContent = S.view === 'era' ? '🗂️ విభాగాలు' : '🕰️ కాలం';
+  $('hallbar').hidden = !S.hall;
 }
 function goRack(k, instant) {
   if (caseX[k] === undefined) k = rackList.length > 1 ? rackList[1].k : rackList[0].k;
@@ -465,8 +471,17 @@ function goRack(k, instant) {
   const tx = caseX[k], ty = k === 'my' ? 1.62 : 1.25;
   if (instant) { cam.x = tx; cam.y = ty; }
   else anim(500, (e, from) => { cam.x = from.x + (tx - from.x) * e; cam.y = from.y + (ty - from.y) * e; }, { x: cam.x, y: cam.y });
-  [...$('chips').children].forEach((b, i) => { b.classList.toggle('on', rackList[i] && rackList[i].k === k); if (rackList[i] && rackList[i].k === k) b.scrollIntoView({ inline: 'center', block: 'nearest' }); });
+  chipsOn(k, true);
   dirty = true;
+}
+/** The chip of this rack lit (the hall's way-in chip is not a rack). */
+function chipsOn(k, scroll) {
+  [...$('chips').children].forEach((b) => {
+    const r = rackList.find((x) => b.textContent === x.e + ' ' + x.n);
+    const on = !!r && r.k === k;
+    b.classList.toggle('on', on);
+    if (on && scroll) b.scrollIntoView({ inline: 'center', block: 'nearest' });
+  });
 }
 function nearestRack() {
   let best = null, bd = 1e9;
@@ -498,13 +513,15 @@ cv.addEventListener('pointermove', (e) => {
     p.x = e.clientX; p.y = e.clientY;
     const [a2, b2] = [...ptrs.values()];
     const d1 = Math.hypot(a2.x - b2.x, a2.y - b2.y);
-    if (d0 > 10 && d1 > 10) { cam.z = Math.max(0.75, Math.min(3.8, cam.z * d0 / d1)); dirty = true; }
+    if (d0 > 10 && d1 > 10 && S.hall) { hallCam.back = Math.max(0, Math.min(1.25, hallCam.back + (d0 - d1) * 0.004)); dirty = true; }
+    else if (d0 > 10 && d1 > 10) { cam.z = Math.max(0.75, Math.min(3.8, cam.z * d0 / d1)); dirty = true; }
     return;
   }
   const dx = e.clientX - p.x, dy = e.clientY - p.y;
   p.x = e.clientX; p.y = e.clientY;
   if (!drag || S.sel) return;
   drag.moved += Math.abs(dx) + Math.abs(dy);
+  if (S.hall) { hallMove(dx, dy); return; }
   const wpp = 2 * cam.z * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / cv.clientHeight;
   cam.x -= dx * wpp; cam.y += dy * wpp;
   const now = performance.now(), dt = Math.max(1, now - drag.lt);
@@ -594,7 +611,10 @@ function openBook(mesh) {
   const p = mesh.userData.p;
   S.sel = { mesh, b };
   const G = new THREE.Group();
-  G.position.copy(mesh.position);
+  const wq = new THREE.Quaternion();
+  mesh.getWorldPosition(G.position);
+  mesh.getWorldQuaternion(wq);
+  G.quaternion.copy(wq);
   world.add(G);
   const mats = mesh.material.slice();
   const tp = new THREE.MeshStandardMaterial({ map: titlePageTex(b), roughness: 0.9 });
@@ -619,10 +639,16 @@ function openBook(mesh) {
   const vis = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
   const aspect = cv.clientWidth / Math.max(1, cv.clientHeight);
   const dist = Math.max(p.h / (0.38 * vis), (2 * p.d) / (0.8 * vis * aspect));
-  const to = new THREE.Vector3(cam.x + p.d * 0.5, cam.y + 0.1 * vis * dist, cam.z - dist);
+  const f = new THREE.Vector3();
+  camera.getWorldDirection(f);
+  f.y = 0; f.normalize();
+  const right = new THREE.Vector3().crossVectors(f, new THREE.Vector3(0, 1, 0));
+  const to = camera.position.clone().addScaledVector(f, dist).addScaledVector(right, p.d * 0.5);
+  to.y = camera.position.y + 0.1 * vis * dist;
   const from = G.position.clone();
-  const out = from.clone(); out.z += 0.12;
-  const q0 = G.quaternion.clone(), q1 = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.12, -Math.PI / 2, 0));
+  const out = from.clone().addScaledVector(new THREE.Vector3(0, 0, 1).applyQuaternion(wq), 0.12);
+  const yaw = Math.atan2(-f.x, -f.z);
+  const q0 = G.quaternion.clone(), q1 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0.12, -Math.PI / 2, 0)));
   anim(260, (e) => { G.position.lerpVectors(from, out, e); }, null, () => {
     anim(650, (e) => { G.position.lerpVectors(out, to, e); G.quaternion.slerpQuaternions(q0, q1, e); }, null, () => {
       anim(620, (e) => { pivot.rotation.y = -2.55 * e; }, null);
@@ -639,8 +665,11 @@ function closeBook(instant) {
   openG = null;
   const done = () => { world.remove(o.G); o.mesh.visible = true; o.mats.forEach((m) => { if (m.map) m.map.dispose(); m.dispose(); }); o.G.children.forEach((c) => { if (c.geometry && c !== o.G.children[0]) c.geometry.dispose(); }); dirty = true; };
   if (instant) { done(); return; }
-  const from = o.G.position.clone(), q0 = o.G.quaternion.clone(), home = o.mesh.userData.home.clone(), q1 = new THREE.Quaternion();
-  const out = home.clone(); out.z += 0.12;
+  const home = new THREE.Vector3(), q1 = new THREE.Quaternion();
+  o.mesh.getWorldPosition(home);
+  o.mesh.getWorldQuaternion(q1);
+  const from = o.G.position.clone(), q0 = o.G.quaternion.clone();
+  const out = home.clone().addScaledVector(new THREE.Vector3(0, 0, 1).applyQuaternion(q1), 0.12);
   anim(260, (e) => { o.pivot.rotation.y = -2.55 * (1 - e); }, null, () => {
     anim(480, (e) => { o.G.position.lerpVectors(from, out, e); o.G.quaternion.slerpQuaternions(q0, q1, e); }, null, () => {
       anim(220, (e) => { o.G.position.lerpVectors(out, home, e); }, null, done);
@@ -666,7 +695,7 @@ function frame(now) {
     if (k >= 1) { anims.splice(i, 1); if (a.done) a.done(); }
     dirty = true;
   }
-  if (!drag && (Math.abs(cam.vx) > 1e-5 || Math.abs(cam.vy) > 1e-5)) {
+  if (!drag && !S.hall && (Math.abs(cam.vx) > 1e-5 || Math.abs(cam.vy) > 1e-5)) {
     cam.x += cam.vx * 16; cam.y += cam.vy * 16; cam.vx *= 0.92; cam.vy *= 0.92;
     clampCam();
     dirty = true;
@@ -674,14 +703,23 @@ function frame(now) {
   }
   if (!dirty) return;
   dirty = false;
-  camera.position.set(cam.x, cam.y, cam.z);
-  camera.lookAt(cam.x, cam.y - 0.04, 0);
-  lamp.position.set(cam.x, cam.y + 0.9, 1.2);
+  if (S.hall) {
+    // (standing back from where he looks: two fingers apart → nearer, together → the whole bookcase)
+    const sx = Math.sin(hallCam.yaw), cz = Math.cos(hallCam.yaw), bk = hallCam.back;
+    camera.position.set(sx * bk, 1.32, hallCam.z + cz * bk);
+    camera.lookAt(sx * bk - sx * 3, 1.18, hallCam.z + cz * bk - cz * 3);
+    lamp.position.set(0, 2.5, hallCam.z - 0.6);
+  } else {
+    camera.position.set(cam.x, cam.y, cam.z);
+    camera.lookAt(cam.x, cam.y - 0.04, 0);
+    lamp.position.set(cam.x, cam.y + 0.9, 1.2);
+  }
   renderer.render(scene, camera);
 }
 function onSettle() {
+  if (S.hall) return;
   const k = nearestRack();
-  if (k && k !== S.rack) { S.rack = k; [...$('chips').children].forEach((b, i) => b.classList.toggle('on', rackList[i] && rackList[i].k === k)); }
+  if (k && k !== S.rack) { S.rack = k; chipsOn(k, false); }
 }
 let settleT = 0;
 cv.addEventListener('pointerup', () => { clearTimeout(settleT); settleT = setTimeout(onSettle, 700); });
@@ -701,11 +739,13 @@ function showCard(b) {
   const ready = b.state === 'ready';
   if (ready) marks.appendChild(el('span', 'pill ok', '✅ ఫోన్‌లో ఉంది · ' + (b.n || 0) + ' అధ్యాయాలు · ' + K.pagesSaid(b.chars)));
   else if (b.wish) { const m = K.mark(b); marks.appendChild(el('span', 'pill ' + m.cls, m.i + ' ' + m.s)); }
+  else if (b.src === 'home') { /* (only the 🏠 pill below: no free copy found) */ }
   else marks.appendChild(el('span', 'pill ok', '✅ ఉచితం · ' + (b.src === 'ws' ? 'తెలుగు వికీసోర్స్' : b.src === 'se' ? 'Standard Ebooks' : 'Project Gutenberg')));
   if (b.credit && ready) marks.appendChild(el('span', 'pill', b.credit));
   const at = S.pos[b.id];
   if (ready && at && !b.done) marks.appendChild(el('span', 'pill', '🔖 అధ్యాయం ' + (at[0] + 1) + ' దగ్గర ఆగారు'));
   if (b.done) marks.appendChild(el('span', 'pill ok', '✓ పూర్తయింది'));
+  if (b.home) marks.appendChild(el('span', 'pill web', '🏠 మీ ఇంట్లో ఉంది (కాగితం పుస్తకం)'));
   const ai = aiInfo(b);
   if (ready && b.lang !== 'te' && ai.any) {
     const pl = el('span', 'pill ok', '✨ AI తెలుగు: ' + ai.done + ' / ' + ai.n + ' అధ్యాయాలు' + (ai.part ? ' (+' + ai.part + ' సగం)' : '') + ' · ' + ai.pct + '%');
@@ -724,7 +764,7 @@ function showCard(b) {
     if (te) row.appendChild(btn('🔊 తెలుగులో (ఫోన్, ₹0)', '', () => post({ t: 'read', id: b.id, lang: 'te' })));
     if (te) row.appendChild(btn('✨ AI తెలుగు', '', () => post({ t: 'quote', id: b.id, unit: (S.pos[b.id] || [0])[0] })));
     row.appendChild(btn('📖 తెరపై చదువు', '', () => openReader(b.id, (S.pos[b.id] || [0])[0])));
-  } else if (!b.wish || b.free) {
+  } else if ((!b.wish && b.src !== 'home') || b.free) {
     row.appendChild(btn('⬇️ రాక్‌లోకి దించు (ఉచితం)', 'gold', () => download(b, '')));
     row.appendChild(btn('⬇️ దించి చదువు', '', () => download(b, 'read')));
   }
@@ -805,6 +845,7 @@ function openAdd() {
   a.appendChild(el('p', 'muted', 'మీ ఫోన్‌లోని PDF / EPUB / TXT, లేదా మీ దగ్గర ఉన్న పుస్తకం పేజీల ఫోటోలు. అక్షరాలు మాత్రమే దాచుతాను; ఫోటోలు, PDF కాపీ దాచను.'));
   a.appendChild(btn('📄 ఫోన్ నుంచి ఫైల్ (PDF / EPUB / TXT)', 'wide', () => post({ t: 'add', kind: 'file' })));
   a.appendChild(btn('📸 పుస్తకం పేజీల ఫోటోలు (స్కానర్)', 'wide', () => post({ t: 'add', kind: 'scan' })));
+  a.appendChild(btn('🏠 ఇంటి పుస్తకాల అర ఫోటో (పేర్లు AI చదువుతుంది)', 'wide', () => { closeAdd(); post({ t: 'shelf_photo' }); }));
 }
 function closeAdd() { $('add').hidden = true; if (S.addInfo) post({ t: 'add_cancel' }); S.addInfo = null; }
 function addForm(m) {
@@ -888,10 +929,11 @@ function modelSheet(m) {
   const q = $('quote');
   q.textContent = '';
   q.hidden = false;
-  q.appendChild(btn('✕', 'x', () => { q.hidden = true; }));
+  q.appendChild(btn('✕', 'x', () => { q.hidden = true; S.afterModel = null; }));
   q.appendChild(el('h2', '', '🤖 లైబ్రరీ AI మోడల్'));
-  q.appendChild(el('div', 'sub', 'అధ్యాయం ' + (m.unit + 1) + ' · ' + Number(m.chars || 0).toLocaleString('en-IN') + ' అక్షరాలు · ప్రతి మోడల్‌తో AI తెలుగు సుమారు ఖర్చు'));
-  q.appendChild(el('p', 'muted', 'ఇక్కడ ఎంచుకున్నది లైబ్రరీకి మాత్రమే (✨ AI తెలుగు, 📸 తెలుగు పేజీ ఫోటోలు); వర్క్‌షాప్ AI మారదు. '
+  const tk = TOOL_COST[m.kind];
+  q.appendChild(el('div', 'sub', tk ? tk(m) + ' · ప్రతి మోడల్‌తో సుమారు ఖర్చు' : 'అధ్యాయం ' + (m.unit + 1) + ' · ' + Number(m.chars || 0).toLocaleString('en-IN') + ' అక్షరాలు · ప్రతి మోడల్‌తో AI తెలుగు సుమారు ఖర్చు'));
+  q.appendChild(el('p', 'muted', 'ఇక్కడ ఎంచుకున్నది లైబ్రరీకి మాత్రమే (✨ AI తెలుగు, 📸 తెలుగు పేజీ ఫోటోలు, 📝 ❓ 💬 🗺️ ✨సూచనలు 🏠); వర్క్‌షాప్ AI మారదు. '
     + 'చౌక మోడల్ తెలుగు కొంచెం తక్కువ బాగుండొచ్చు: ముందు ఒక్క అధ్యాయం చేయించి చూడండి. "అంచనా" అంటే ఆ మోడల్ ధర నా లిస్ట్‌లో లేదు.'));
   if (m.problems) q.appendChild(el('p', 'muted', '⚠ ' + m.problems));
   const pick = (id) => {
@@ -981,14 +1023,21 @@ function wantsPhoneTe() { return R.mode === 'te' || (R.mode === 'both' && pairOf
 function showsAi() { return R.mode === 'ai' || (R.mode === 'both' && pairOf() === 'ai'); }
 function gotChapter(m) {
   if (m.id !== R.id) return;
-  R.unit = m.unit; R.n = m.n; R.parts = m.parts || []; R.te = m.te || null; R.ai = m.ai || null;
+  R.unit = m.unit; R.n = m.n; R.parts = m.parts || []; R.te = m.te || null; R.ai = m.ai || null; R.marks = m.marks || [];
   if (m.titles && m.titles.length) R.titles = m.titles;
   const sel = $('chap');
   sel.textContent = '';
   chapList();
   modesBar();
+  toolsBar();
   renderText();
   $('rBody').scrollTop = 0;
+  const j = S.jumpTo;
+  if (j && j.id === R.id && j.unit === R.unit) {
+    S.jumpTo = null; R.follow = false; R.scrolledAt = Date.now();
+    const d = $('text').querySelector('.p[data-i="' + j.part + '"]');
+    if (d) setTimeout(() => d.scrollIntoView({ block: 'center' }), 60);
+  }
   if (wantsPhoneTe()) needTe();
 }
 function modesBar() {
@@ -1045,6 +1094,8 @@ function renderText() {
     if (R.mode === 'en') d.textContent = p;
     else if (R.mode === 'both') { d.appendChild(document.createTextNode(p)); if (!noAi) { const s = el('span', 'te' + (teOf(i) ? '' : ' wait'), teOf(i) || '…'); d.appendChild(s); } }
     else { const tx = teOf(i); if (tx) d.textContent = tx; else { d.textContent = p; d.classList.add('wait'); } }
+    const mk = markOf(i);
+    if (mk) { d.classList.add('hl'); if (mk.n) d.appendChild(el('span', 'mnote', '📝 ' + mk.n)); }
     t.appendChild(d);
   });
   if (!R.parts.length) t.appendChild(el('p', 'muted', 'ఈ అధ్యాయంలో అక్షరాలు లేవు.'));
@@ -1092,6 +1143,9 @@ $('text').addEventListener('click', (e) => {
     if (r && r.startContainer && r.startContainer.nodeType === 3) word = K.wordAt(r.startContainer.textContent, r.startOffset);
   }
   if (word && word.length > 1 && !/[ఀ-౿]/.test(word)) bub.appendChild(btn('🔤 "' + word + '" అర్థం', '', () => { bub.textContent = '…'; post({ t: 'word', w: word }); }));
+  const mk = markOf(i);
+  bub.appendChild(btn(mk ? '🖍️ గుర్తు తీసేయి' : '🖍️ గుర్తు పెట్టు', '', () => { bub.hidden = true; markSet(i, !mk, undefined); }));
+  bub.appendChild(btn(mk && mk.n ? '📝 నోట్ మార్చు' : '📝 నోట్ రాయి', '', () => { bub.hidden = true; noteSheet(i); }));
   bub.hidden = false;
   bub.style.left = Math.max(8, Math.min(window.innerWidth - 240, e.clientX - 100)) + 'px';
   bub.style.top = Math.max(60, e.clientY - 70) + 'px';
@@ -1142,13 +1196,14 @@ $('bSearch').onclick = () => openSearch();
 $('bTr').onclick = () => openTrs();
 $('tBack').onclick = () => { $('trs').hidden = true; };
 $('bAdd').onclick = openAdd;
-$('bView').onclick = () => { closeBook(true); S.view = S.view === 'era' ? 'sec' : 'era'; post({ t: 'prefs', view: S.view }); rebuild(); goRack(S.view === 'era' ? 'universe' : 'fic', true); };
+$('bView').onclick = () => { closeBook(true); S.hall = false; S.view = S.view === 'era' ? 'sec' : 'era'; post({ t: 'prefs', view: S.view }); rebuild(); goRack(S.view === 'era' ? 'universe' : 'fic', true); };
 $('sBack').onclick = () => { $('search').hidden = true; };
 $('sGo').onclick = runSearch;
 $('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') runSearch(); });
 
 /** Fly to a book on its rack and open it. */
 function show(id) {
+  if (S.hall) leaveHall();
   const all = bookMeshes.filter((x) => x.userData.id === id);
   const m = all.find((x) => Math.abs(x.position.x - (caseX.my || 0)) > C.w) || all[0]; // (its own rack before "నావి")
   if (!m) { const b = S.byId[id]; if (b) { S.sel = null; showCard(b); } return; }
@@ -1158,18 +1213,633 @@ function show(id) {
   if (best) S.rack = best;
   const tx = m.position.x, ty = m.position.y + 0.05;
   anim(550, (e, f) => { cam.x = f.x + (tx - f.x) * e; cam.y = f.y + (ty - f.y) * e; }, { x: cam.x, y: cam.y }, () => openBook(m));
-  [...$('chips').children].forEach((b, i) => b.classList.toggle('on', rackList[i] && rackList[i].k === S.rack));
+  chipsOn(S.rack, false);
 }
 
 function back() {
   if (!$('bubble').hidden) { $('bubble').hidden = true; return; }
   if (!$('quote').hidden) { $('quote').hidden = true; return; }
+  if (!$('tool').hidden) { closeTool(); return; }
+  if (!$('mapp').hidden) { $('mapp').hidden = true; return; }
+  if (!$('me').hidden) { $('me').hidden = true; return; }
   if (!$('trs').hidden) { $('trs').hidden = true; return; }
   if (!$('add').hidden) { closeAdd(); return; }
   if (!$('reader').hidden) { closeReader(); return; }
   if (!$('search').hidden) { $('search').hidden = true; return; }
   if (S.sel) { closeBook(); return; }
+  if (S.hall) { leaveHall(); return; }
   post({ t: 'close' });
+}
+
+// ================================================================ 🕰️ the time hall: walk from the universe's start to today
+const HALL = { seg: 4.4, w: 1.6, start: 5.4 };
+const hallCam = { z: 5.4, yaw: 0, back: 0 };
+const HALL_TIME = {
+  universe: 'సుమారు 1380 కోట్ల సంవత్సరాల క్రితం విశ్వం · 460 కోట్ల సం. క్రితం సూర్యుడు',
+  life: 'సుమారు 450 కోట్ల సం. క్రితం భూమి · 350 కోట్ల సం. క్రితం మొదటి జీవం',
+  ancient: 'సుమారు 3 లక్షల సం. క్రితం మనిషి · 5000 సం. క్రితం రాత · క్రీ.శ. 500 దాకా',
+  medieval: 'క్రీ.శ. 500 – 1500 · రాజ్యాలు, కోటలు, కావ్యాలు',
+  modern: '1500 – 1900 · అచ్చు యంత్రం, సైన్స్, యంత్రాలు',
+  now: '1900 – ఈ రోజు · విమానం, అంతరిక్షం, ఫోన్',
+};
+/** The hall's times ("నావి" stays on the racks). */
+function hallRacks() { return rackList.filter((r) => r.k !== 'my'); }
+function hallSide(i) { return i % 2 === 0 ? -1 : 1; }
+function hallCaseZ(i) { return -i * HALL.seg - 1.6; }
+function hallMat(col, glow) { return new THREE.MeshStandardMaterial({ color: col, emissive: glow || '#000000', emissiveIntensity: glow ? 0.9 : 0, roughness: 0.55, metalness: 0.15 }); }
+function signTex(text, sub) {
+  return canvasTex(1024, 300, (g, w, h) => {
+    const gr = g.createLinearGradient(0, 0, 0, h);
+    gr.addColorStop(0, '#2c1a0c'); gr.addColorStop(1, '#170d05');
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#d8b25a'; g.lineWidth = 8; g.strokeRect(10, 10, w - 20, h - 20);
+    g.fillStyle = '#ffe2a0'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const s = fitFont(g, text, w - 90, 84, 30, '700', SERIF);
+    g.font = '700 ' + s + 'px ' + SERIF; g.fillText(text, w / 2, h * 0.38);
+    if (sub) { const s2 = fitFont(g, sub, w - 70, 34, 16, '500', SERIF); g.font = '500 ' + s2 + 'px ' + SERIF; g.fillStyle = '#e8cf95'; g.fillText(sub, w / 2, h * 0.74); }
+  });
+}
+/** Each time's own little sign of itself (simple shapes of our own): stars, the earth, a pyramid, a tower, a gear, a rocket. */
+function emblem(k, parent) {
+  const g = new THREE.Group();
+  parent.add(g);
+  const gold = hallMat('#c9a24e', '#3a2a08');
+  box(0.5, 0.9, 0.5, new THREE.MeshStandardMaterial({ map: woodTex('#5a3a20', '#24130a', 23), roughness: 0.6 }), 0, 0.45, 0, g);
+  const top = new THREE.Group(); top.position.y = 1.2; g.add(top);
+  if (k === 'universe') {
+    top.add(new THREE.Mesh(new THREE.SphereGeometry(0.1, 20, 14), hallMat('#fff3c4', '#ffd36a')));
+    const r = rnd(77), dots = new THREE.Group();
+    for (let i = 0; i < 60; i++) {
+      const d = new THREE.Mesh(new THREE.SphereGeometry(0.012 + r() * 0.012, 6, 4), hallMat('#ffffff', r() < 0.5 ? '#9cc8ff' : '#ffd8a0'));
+      const a = r() * Math.PI * 2, b = (r() - 0.5) * Math.PI, rr = 0.15 + r() * 0.2;
+      d.position.set(Math.cos(a) * Math.cos(b) * rr, Math.sin(b) * rr, Math.sin(a) * Math.cos(b) * rr);
+      dots.add(d);
+    }
+    top.add(dots);
+  } else if (k === 'life') {
+    top.add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 28, 20), hallMat('#2f7ab0', '#0b2a44')));
+    const land = hallMat('#3f8a3a', '#0d2a0c');
+    [[0.08, 0.1, 0.13], [-0.1, -0.05, 0.14], [0.02, -0.14, 0.12]].forEach(([x, y, z]) => { const m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 8), land); m.scale.set(1, 0.6, 0.45); m.position.set(x, y, z); top.add(m); });
+  } else if (k === 'ancient') {
+    const m = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.32, 4), hallMat('#d8b878', '#2a1e08'));
+    m.rotation.y = Math.PI / 4; top.add(m);
+  } else if (k === 'medieval') {
+    const st = hallMat('#9a9488', '#16140f');
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.34, 16), st); top.add(t);
+    const c = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.18, 16), hallMat('#7a2a1c', '#200a05')); c.position.y = 0.26; top.add(c);
+  } else if (k === 'modern') {
+    const gear = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.04, 8, 24), gold); top.add(gear);
+    for (let i = 0; i < 10; i++) { const tth = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.06), gold); const a = (i / 10) * Math.PI * 2; tth.position.set(Math.cos(a) * 0.2, Math.sin(a) * 0.2, 0); tth.rotation.z = a; top.add(tth); }
+  } else {
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.34, 16), hallMat('#e8e6e0', '#1a1a18')); top.add(body);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.14, 16), hallMat('#c0392b', '#2a0a06')); nose.position.y = 0.24; top.add(nose);
+    const fire = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.14, 12), hallMat('#ffb347', '#ff8a2a')); fire.rotation.x = Math.PI; fire.position.y = -0.24; top.add(fire);
+  }
+  return g;
+}
+function buildHall() {
+  const hr = hallRacks();
+  const n = hr.length;
+  const len = n * HALL.seg + 8, mid = HALL.start + 1.2 - len / 2;
+  const floorM = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.75 });
+  floorM.__keep = true;
+  const fl = new THREE.Mesh(new THREE.PlaneGeometry(HALL.w * 2 + 0.6, len), floorM);
+  fl.rotation.x = -Math.PI / 2; fl.position.set(0, 0, mid); world.add(fl);
+  const wm = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.95 });
+  wm.__keep = true;
+  [-1, 1].forEach((sd) => { const w = new THREE.Mesh(new THREE.PlaneGeometry(len, 3.4), wm); w.position.set(sd * (HALL.w + 0.3), 1.7, mid); w.rotation.y = -sd * Math.PI / 2; world.add(w); });
+  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(HALL.w * 2 + 0.6, len), new THREE.MeshStandardMaterial({ color: '#140c06', roughness: 1 }));
+  ceil.rotation.x = Math.PI / 2; ceil.position.set(0, 3.4, mid); world.add(ceil);
+  // the line of time along the floor
+  box(0.05, 0.006, len - 4, hallMat('#d8a84a', '#a8781e'), 0, 0.004, 0.5 - len / 2 + 2);
+  hr.forEach((rack, i) => {
+    const sd = hallSide(i), z = hallCaseZ(i);
+    const g = bookcase(i, rack);
+    g.position.set(sd * HALL.w, 0, z);
+    g.rotation.y = -sd * Math.PI / 2;
+    caseX[rack.k] = z;
+    const list = K.onRack(S.books, 'era', rack.k);
+    K.layout(list).forEach((p) => placeBook(p, S.byId[p.id], 0, g));
+    // the arch over the way in, its sign; the time's emblem across from the bookcase
+    const az = z + 1.75;
+    const pil = hallMat('#4a2e16', '#120a04');
+    [-1, 1].forEach((x) => box(0.16, 2.75, 0.16, pil, x * (HALL.w + 0.05), 1.375, az));
+    box(HALL.w * 2 + 0.3, 0.14, 0.18, pil, 0, 2.8, az);
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.44), new THREE.MeshStandardMaterial({ map: signTex(rack.e + ' ' + rack.n, HALL_TIME[rack.k] || rack.s), emissive: '#ffffff', emissiveIntensity: 0.25, roughness: 0.6 }));
+    sign.material.emissiveMap = sign.material.map;
+    sign.position.set(0, 2.3, az + 0.1);
+    world.add(sign);
+    const em = emblem(rack.k, world);
+    em.position.set(-sd * (HALL.w - 0.35), 0, az - 0.7);
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.16, 24), hallMat('#ffd36a', '#c99a2e'));
+    disc.rotation.x = -Math.PI / 2; disc.position.set(0, 0.008, az); world.add(disc);
+  });
+  // the far end: today
+  const endZ = hallCaseZ(n - 1) - 2.2;
+  const end = new THREE.Mesh(new THREE.PlaneGeometry(HALL.w * 2 + 0.6, 3.4), wm);
+  end.position.set(0, 1.7, endZ); world.add(end);
+  const now = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.44), new THREE.MeshStandardMaterial({ map: signTex('📍 ఈ రోజు', 'మీరు ఇక్కడ ఉన్నారు · వెనక్కి నడిస్తే కాలంలో వెనక్కి'), roughness: 0.6 }));
+  now.position.set(0, 1.9, endZ + 0.02); world.add(now);
+  S.hallEnd = endZ;
+}
+function enterHall() {
+  closeBook(true);
+  S.hall = true;
+  hallCam.z = HALL.start; hallCam.yaw = 0; hallCam.back = 0;
+  rebuild();
+  S.rack = hallRacks()[0].k;
+  chipsOn(S.rack, true);
+  toast('🚶 వేలితో పైకి జరిపితే ముందుకు (కాలంలో ముందుకు), పక్కకి జరిపితే తల తిప్పుతారు. పుస్తకం తాకితే తెరుచుకుంటుంది.', 6500);
+}
+function leaveHall() {
+  closeBook(true);
+  S.hall = false;
+  rebuild();
+  goRack(S.rack && caseX[S.rack] !== undefined ? S.rack : 'universe', true);
+}
+function hallMove(dx, dy) {
+  hallCam.yaw = Math.max(-1.5, Math.min(1.5, hallCam.yaw + dx * 0.0055));
+  hallCam.z = Math.max((S.hallEnd || -30) + 1.2, Math.min(HALL.start + 0.4, hallCam.z + dy * 0.012));
+  hallNear();
+  dirty = true;
+}
+function hallNear() {
+  let best = null, bd = 1e9;
+  hallRacks().forEach((r) => { const d = Math.abs(caseX[r.k] - hallCam.z); if (d < bd) { bd = d; best = r.k; } });
+  if (best && best !== S.rack) { S.rack = best; chipsOn(best, true); }
+}
+/** Walk to a time's bookcase and turn to it. */
+function hallGo(k) {
+  const i = hallRacks().findIndex((r) => r.k === k);
+  if (i < 0) return;
+  S.rack = k; chipsOn(k, true);
+  const tz = hallCaseZ(i), ty = -hallSide(i) * 1.35;
+  anim(900, (e, f) => { hallCam.z = f.z + (tz - f.z) * e; hallCam.yaw = f.y + (ty - f.y) * e; hallCam.back = f.b + (0.55 - f.b) * e; }, { z: hallCam.z, y: hallCam.yaw, b: hallCam.back });
+}
+$('hPrev').onclick = () => { const hr = hallRacks(), i = hr.findIndex((r) => r.k === S.rack); hallGo(hr[Math.max(0, i - 1)].k); };
+$('hNext').onclick = () => { const hr = hallRacks(), i = hr.findIndex((r) => r.k === S.rack); hallGo(hr[Math.min(hr.length - 1, i + 1)].k); };
+$('hOut').onclick = () => leaveHall();
+
+// ================================================================ 🖍️ his marks
+function markOf(i) { return (R.marks || []).find((x) => x.u === R.unit && x.k === i) || null; }
+function markSet(i, on, note) {
+  post({ t: 'mark', id: R.id, unit: R.unit, part: i, text: R.parts[i] || '', te: teOf(i) || '', on, note });
+}
+function noteSheet(i) {
+  T.kind = 'note'; T.id = R.id; T.unit = R.unit;
+  const q = toolSheet('📝 మీ నోట్');
+  const mk = markOf(i);
+  q.appendChild(el('p', 'muted', (R.parts[i] || '').slice(0, 220) + ((R.parts[i] || '').length > 220 ? '…' : '')));
+  const ta = el('textarea', 'f');
+  ta.placeholder = 'ఈ లైన్ గురించి మీ మాట (మీ ఫోన్‌లోనే ఉంటుంది)';
+  ta.value = mk ? (mk.n || '') : '';
+  q.appendChild(ta);
+  const row = el('div', 'row');
+  row.appendChild(btn('💾 దాచు', 'gold', () => { markSet(i, true, ta.value.trim()); closeTool(); }));
+  if (mk) row.appendChild(btn('🗑️ గుర్తు, నోట్ తీసేయి', '', () => { markSet(i, false, ''); closeTool(); }));
+  row.appendChild(btn('వద్దు', '', closeTool));
+  q.appendChild(row);
+  setTimeout(() => ta.focus(), 50);
+}
+function marksList(box, id, list, opener) {
+  let lastU = -1;
+  (list || []).forEach((x) => {
+    if (x.u !== lastU) { box.appendChild(el('div', 'sub', '📖 అధ్యాయం ' + (x.u + 1))); lastU = x.u; }
+    const d = el('div', 'mk');
+    d.appendChild(el('div', 'mx', x.x.length > 260 ? x.x.slice(0, 260) + '…' : x.x));
+    if (x.te) d.appendChild(el('div', 'te', x.te.length > 260 ? x.te.slice(0, 260) + '…' : x.te));
+    if (x.n) d.appendChild(el('div', 'n', '📝 ' + x.n));
+    d.onclick = () => { if (opener) opener(); $('me').hidden = true; S.jumpTo = { id, unit: x.u, part: x.k }; openReader(id, x.u); };
+    box.appendChild(d);
+  });
+}
+function openMarksSheet(id) {
+  const bid = id || R.id;
+  T.kind = 'marks'; T.id = bid; T.unit = R.unit;
+  const q = toolSheet('🖍️ నా గుర్తులు, నోట్స్');
+  const list = bid === R.id ? R.marks : ((S.me.marks || []).find((x) => x.id === bid) || {}).m;
+  if (!list || !list.length) { q.appendChild(el('p', '', 'ఈ పుస్తకంలో ఇంకా గుర్తులు లేవు. చదువుతున్నప్పుడు ఒక లైన్ తాకి "🖍️ గుర్తు పెట్టు" నొక్కండి; "📝 నోట్ రాయి" తో మీ మాట రాసుకోవచ్చు.')); return; }
+  const row = el('div', 'row');
+  row.appendChild(btn('📄 PDF చేయి (₹0)', 'gold', () => { const p = $('pdfline'); if (p) p.textContent = '📄 తయారవుతోంది…'; post({ t: 'marks_pdf', id: bid }); }));
+  q.appendChild(row);
+  const pl = el('div', 'muted', ''); pl.id = 'pdfline'; q.appendChild(pl);
+  const box = el('div', ''); q.appendChild(box);
+  marksList(box, bid, list, closeTool);
+}
+
+// ================================================================ 🧰 the reader's tools: 📝 ❓ 💬 🗺️ 🎧 🖍️
+const T = { kind: '', id: '', unit: 0, q: '', scope: 'ch' };
+const TOOL_COST = {
+  sum: (m) => '📝 అధ్యాయం ' + (m.unit + 1) + ' సారాంశం',
+  quiz: (m) => '❓ అధ్యాయం ' + (m.unit + 1) + ' క్విజ్',
+  ask_ch: (m) => '💬 అధ్యాయం ' + (m.unit + 1) + ' లో మీ ప్రశ్న',
+  ask_book: () => '💬 మొత్తం పుస్తకంలో మీ ప్రశ్న',
+  map: () => '🗺️ పాత్రల మ్యాప్ (మిగిలిన అధ్యాయాలు)',
+};
+/** After 🤖 a new model: the same tool's cost again, now with that model (no AI Telugu sheet in between). */
+function afterModel() {
+  const a = S.afterModel;
+  S.afterModel = null;
+  $('quote').hidden = true;
+  T.id = a.id; T.unit = a.unit;
+  if (a.kind === 'ask_ch' || a.kind === 'ask_book') {
+    T.scope = a.kind === 'ask_book' ? 'book' : 'ch'; T.q = a.q || '';
+    openAsk();
+    const go = $('askGo'); if (go) go.textContent = '…';
+    post({ t: 'tquote', kind: a.kind, id: a.id, unit: a.unit, q: T.q });
+    return;
+  }
+  T.kind = a.kind;
+  toolSheet(TOOL_NAMES[a.kind]).appendChild(el('p', 'muted', '…'));
+  post({ t: 'tquote', kind: a.kind, id: a.id, unit: a.unit });
+}
+const TOOL_NAMES = { sum: '📝 అధ్యాయం సారాంశం (తెలుగులో)', quiz: '❓ అధ్యాయం క్విజ్', map: '🗺️ పాత్రల మ్యాప్', ask: '💬 పుస్తకాన్ని అడుగు' };
+function toolsBar() {
+  const t = $('tools');
+  t.textContent = '';
+  const n = (R.marks || []).length;
+  [['📝 సారాంశం', () => toolAsk('sum')], ['❓ క్విజ్', () => toolAsk('quiz')], ['💬 పుస్తకాన్ని అడుగు', openAsk], ['🗺️ పాత్రలు', () => toolAsk('map')],
+    ['🎧 ఆడియో ఫైల్', openAudio], ['🖍️ గుర్తులు' + (n ? ' (' + n + ')' : ''), () => openMarksSheet()]].forEach(([name, f]) => t.appendChild(btn(name, 'chip', f)));
+}
+function toolSheet(title) {
+  const q = $('tool');
+  q.textContent = '';
+  q.hidden = false;
+  q.appendChild(btn('✕', 'x', closeTool));
+  q.appendChild(el('h2', '', title));
+  const b = S.byId[T.id] || {};
+  if (T.id) q.appendChild(el('div', 'sub', (b.t || '') + (T.kind === 'map' || (T.kind === 'ask' && T.scope === 'book') ? '' : ' · అధ్యాయం ' + (T.unit + 1))));
+  return q;
+}
+function closeTool() { $('tool').hidden = true; T.kind = ''; }
+function toolAsk(kind) {
+  T.kind = kind; T.id = R.id; T.unit = R.unit; T.q = '';
+  const q = toolSheet(TOOL_NAMES[kind]);
+  q.appendChild(el('p', 'muted', '…'));
+  post({ t: 'tquote', kind, id: R.id, unit: R.unit });
+}
+function modelRow(kind, q) {
+  const r = el('div', 'row');
+  r.appendChild(btn('🤖 మోడల్ మార్చు · ప్రతి మోడల్ ధర చూడు', 'wide', () => {
+    S.afterModel = { kind, id: T.id, unit: T.unit, q: q || '' };
+    closeTool();
+    const s = $('quote'); s.textContent = ''; s.hidden = false;
+    s.appendChild(btn('✕', 'x', () => { s.hidden = true; S.afterModel = null; }));
+    s.appendChild(el('h2', '', '🤖 లైబ్రరీ AI మోడల్'));
+    s.appendChild(el('p', 'muted', 'మీ keys తో వాడగలిగే మోడల్స్ లిస్ట్ తెస్తున్నాను…'));
+    post({ t: 'models', id: T.id, unit: T.unit, kind, q: q || '' });
+  }));
+  return r;
+}
+function gotTquote(m) {
+  if (m.kind === 'ask_ch' || m.kind === 'ask_book') { askQuote(m); return; }
+  if (T.kind !== m.kind || T.id !== m.id) return;
+  if (m.have) { post({ t: 'tkept', kind: m.kind, id: m.id, unit: m.unit }); return; }
+  const q = toolSheet(TOOL_NAMES[m.kind]);
+  if (m.why) { q.appendChild(el('p', '', m.why)); q.appendChild(modelRow(m.kind)); return; }
+  const what = {
+    sum: 'ఈ అధ్యాయాన్ని మీ లైబ్రరీ AI సరళమైన తెలుగులో చిన్నగా చెబుతుంది: 4–6 వాక్యాల కథ, తర్వాత ముఖ్యమైన విషయాలు.',
+    quiz: 'ఈ అధ్యాయం మీద 5 ప్రశ్నలు, ఒక్కోదానికి 4 జవాబులు; మీరు నొక్కాక సరైనది ఏదో, ఎందుకో చెబుతుంది.',
+    map: 'పుస్తకంలోని పాత్రలు, వాళ్ళ మధ్య సంబంధాలు, ప్రతి అధ్యాయంలో ఏమి జరిగిందో — అధ్యాయం తర్వాత అధ్యాయం చేసి ఒక మ్యాప్‌గా చూపిస్తుంది.' + (m.left ? ' ఇంకా ' + m.left + ' అధ్యాయాలు చేయాలి; పైన పట్టీలో ఎంతవరకు వచ్చిందో కనిపిస్తుంది, ⏹ తో ఆపొచ్చు.' : ''),
+  }[m.kind];
+  q.appendChild(el('p', '', what + ' ఒకసారి చేసినది దాచుకుంటాను: మళ్ళీ చూస్తే ₹0.'));
+  q.appendChild(el('p', 'muted', '🤖 ' + m.model + ' · ఈ నెల ₹' + m.used + ' వాడింది / హద్దు ₹' + m.limit + ' · అంకెలు సుమారు' + (m.known === false ? ' · ఈ మోడల్ ధర అంచనా' : '')));
+  const row = el('div', 'row');
+  row.appendChild(btn('✨ చేయించు · సుమారు ' + K.money(m.rupees), 'gold wide', () => toolRun(m.kind, '')));
+  const b = S.byId[m.id] || {};
+  if (m.kind === 'map' && m.left < (b.n || 0)) row.appendChild(btn('📖 ఇప్పటిదాకా అయినవి చూడు (₹0)', 'wide', () => post({ t: 'tkept', kind: 'map', id: m.id, unit: 0 })));
+  row.appendChild(btn('వద్దు', 'wide', closeTool));
+  q.appendChild(row);
+  q.appendChild(modelRow(m.kind));
+}
+function toolRun(kind, q) {
+  const s = toolSheet(TOOL_NAMES[kind]);
+  if (kind === 'map') {
+    post({ t: 'tgo', kind, id: T.id, unit: T.unit, q });
+    closeTool();
+    toast('🗺️ పాత్రల మ్యాప్ మొదలుపెట్టాను. పైన పట్టీలో ఎంతవరకు వచ్చిందో కనిపిస్తుంది; ⏹ తో ఆపొచ్చు. అయ్యాక 🗺️ పాత్రలు నొక్కండి.', 7000);
+    return;
+  }
+  const box = el('div', 'tbox live', kind === 'quiz' ? '❓ ప్రశ్నలు తయారవుతున్నాయి… (కొన్ని సెకన్లు)' : '✨ రాస్తోంది…');
+  box.id = 'tlive';
+  s.appendChild(box);
+  post({ t: 'tgo', kind, id: T.id, unit: T.unit, q });
+}
+function showSum(res, kept) {
+  const q = toolSheet(TOOL_NAMES.sum);
+  q.appendChild(el('div', 'tbox', res.text || ''));
+  q.appendChild(el('p', 'muted', kept ? '💾 ఇంతకుముందు చేసినది · ఇప్పుడు ₹0' : '🤖 ' + (res.model || '') + ' · ఖర్చు ' + K.money(res.rs || 0) + ' · దాచాను: మళ్ళీ చూస్తే ₹0'));
+}
+function showQuiz(res, kept) {
+  const qs = res.q || [];
+  let at = 0, right = 0;
+  const draw = () => {
+    const s = toolSheet(TOOL_NAMES.quiz);
+    s.classList.add('quiz');
+    if (at >= qs.length) {
+      s.appendChild(el('div', 'tbox', '🏁 ' + qs.length + ' లో ' + right + ' సరైనవి' + (right === qs.length ? ' · అద్భుతం Sir!' : right >= qs.length / 2 ? ' · బాగుంది!' : ' · ఇంకోసారి చదివి చూడండి.')));
+      const r = el('div', 'row');
+      r.appendChild(btn('🔁 మళ్ళీ (₹0)', 'gold', () => { at = 0; right = 0; draw(); }));
+      r.appendChild(btn('సరే', '', closeTool));
+      s.appendChild(r);
+      s.appendChild(el('p', 'muted', kept ? '💾 దాచిన క్విజ్ · ₹0' : '🤖 ' + (res.model || '') + ' · ఖర్చు ' + K.money(res.rs || 0)));
+      return;
+    }
+    const x = qs[at];
+    s.appendChild(el('div', 'sub', 'ప్రశ్న ' + (at + 1) + ' / ' + qs.length));
+    s.appendChild(el('div', 'tbox', x.q));
+    let done = false;
+    const why = el('p', '', '');
+    x.o.forEach((o, i) => {
+      const b = btn(o, 'opt', () => {
+        if (done) return;
+        done = true;
+        if (i === x.a) right++;
+        [...s.querySelectorAll('.opt')].forEach((e, k) => { if (k === x.a) e.classList.add('right'); else if (k === i) e.classList.add('wrong'); });
+        why.textContent = (i === x.a ? '✅ సరైనది! ' : '❌ సరైనది: ' + x.o[x.a] + '. ') + (x.why || '');
+        nx.hidden = false;
+      });
+      s.appendChild(b);
+    });
+    s.appendChild(why);
+    const nx = btn(at + 1 < qs.length ? 'తర్వాతి ప్రశ్న →' : 'ఫలితం చూడు', 'gold', () => { at++; draw(); });
+    nx.hidden = true;
+    s.appendChild(nx);
+  };
+  draw();
+}
+
+// ---- 💬 ask the book
+function openAsk() {
+  T.kind = 'ask'; T.id = R.id; T.unit = R.unit; T.shownQ = '';
+  const q = toolSheet(TOOL_NAMES.ask);
+  const sc = el('div', 'row');
+  const c1 = btn('📖 ఈ అధ్యాయంలో', 'chip' + (T.scope !== 'book' ? ' on' : ''), () => { T.scope = 'ch'; c1.className = 'chip on'; c2.className = 'chip'; });
+  const c2 = btn('📚 మొత్తం పుస్తకంలో', 'chip' + (T.scope === 'book' ? ' on' : ''), () => { T.scope = 'book'; c2.className = 'chip on'; c1.className = 'chip'; });
+  sc.appendChild(c1); sc.appendChild(c2);
+  q.appendChild(sc);
+  const ta = el('textarea', 'f');
+  ta.id = 'askq';
+  ta.placeholder = 'ఉదా: Holmes ఈ కేసు ఎలా కనిపెట్టాడు? (తెలుగు లేదా English)';
+  ta.value = T.q || '';
+  q.appendChild(ta);
+  q.appendChild(el('p', 'muted', 'జవాబు ఆ పుస్తకంలో ఉన్నదాని నుంచే, తెలుగులో, ఏ అధ్యాయమో చెప్పి. ఖర్చు ముందే చూపిస్తాను.'));
+  const go = el('div', 'row'); go.id = 'askGo';
+  go.appendChild(btn('💬 ఖర్చు చూసి అడుగు', 'gold wide', () => {
+    T.q = ta.value.trim();
+    if (!T.q) { ta.focus(); return; }
+    go.textContent = '…';
+    post({ t: 'tquote', kind: T.scope === 'book' ? 'ask_book' : 'ask_ch', id: T.id, unit: T.unit, q: T.q });
+  }));
+  q.appendChild(go);
+  const out = el('div', 'tbox', ''); out.id = 'askOut'; q.appendChild(out);
+  const hist = el('div', ''); hist.id = 'askHist'; q.appendChild(hist);
+  post({ t: 'tkept', kind: 'ask', id: T.id, unit: T.unit });
+}
+function askQuote(m) {
+  if (T.kind !== 'ask' || T.id !== m.id) return;
+  const go = $('askGo');
+  if (!go) return;
+  go.textContent = '';
+  if (m.why) { go.appendChild(el('p', '', m.why)); go.appendChild(modelRow(m.kind, T.q)); return; }
+  go.appendChild(el('p', 'muted', '🤖 ' + m.model + ' · ' + (m.kind === 'ask_book' ? 'మొత్తం పుస్తకంలో వెతికి' : 'ఈ అధ్యాయం చదివి') + ' · ఈ నెల ₹' + m.used + ' / ₹' + m.limit));
+  go.appendChild(btn('✅ అడుగు · సుమారు ' + K.money(m.rupees), 'gold', () => {
+    go.textContent = '';
+    $('askOut').textContent = '✨ వెతుకుతోంది / రాస్తోంది…';
+    post({ t: 'tgo', kind: 'ask', id: T.id, unit: T.unit, q: (T.scope === 'book' ? 'book:' : 'ch:') + T.q });
+  }));
+  go.appendChild(btn('వద్దు', '', () => { go.textContent = ''; openAsk(); }));
+  go.appendChild(modelRow(m.kind, T.q));
+}
+function askHistory(list) {
+  const h = $('askHist');
+  if (!h) return;
+  h.textContent = '';
+  if (!list || !list.length) return;
+  h.appendChild(el('div', 'sec2', '💬 ఇంతకుముందు అడిగినవి (మళ్ళీ చూడటానికి ₹0)'));
+  list.forEach((x) => {
+    const d = el('div', 'qa');
+    d.appendChild(el('div', 'q', '❓ ' + x.q + (x.scope === 'book' ? ' · 📚' : ' · 📖 అధ్యాయం ' + (x.unit + 1))));
+    d.appendChild(el('div', 'a', x.a));
+    h.appendChild(d);
+  });
+}
+
+// ---- 🗺️ the people map
+function openMap(res) {
+  closeTool();
+  const b = S.byId[T.id] || {};
+  $('mapp').hidden = false;
+  $('pTitle').textContent = '🗺️ ' + (b.t || 'పాత్రలు');
+  const body = $('pBody');
+  body.textContent = '';
+  const cs = (res && res.c) || [], rs = (res && res.r) || [], es = (res && res.e) || [];
+  if (!cs.length) { body.appendChild(el('p', '', 'ఇంకా పాత్రల మ్యాప్ లేదు. చదివే స్క్రీన్‌లో 🗺️ పాత్రలు నొక్కి చేయించండి.')); return; }
+  body.appendChild(el('p', 'muted', cs.length + ' పాత్రలు · ' + rs.length + ' సంబంధాలు' + (res.n ? ' · ' + res.done + ' / ' + res.n + ' అధ్యాయాల నుంచి' : '') + ' · ఒక పేరు తాకితే ఆ వ్యక్తి వివరాలు'));
+  const cv2 = el('canvas', ''); cv2.id = 'mapcv'; body.appendChild(cv2);
+  const info = el('div', 'tbox', ''); body.appendChild(info);
+  const W = cv2.clientWidth || 380, H = cv2.clientHeight || 360, dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv2.width = W * dpr; cv2.height = H * dpr;
+  const pos = K.mapLayout(cs, rs, W, H);
+  let sel = null;
+  const draw = () => {
+    const g = cv2.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.fillStyle = '#0f0a06'; g.fillRect(0, 0, W, H);
+    g.font = '11px system-ui, sans-serif'; g.textAlign = 'center';
+    rs.forEach((l) => {
+      const a = pos[l[0]], z = pos[l[1]];
+      if (!a || !z) return;
+      const on = sel && (sel === l[0] || sel === l[1]);
+      g.strokeStyle = on ? '#ffd36a' : 'rgba(216,178,90,0.35)'; g.lineWidth = on ? 2 : 1;
+      g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(z.x, z.y); g.stroke();
+      if (on) { g.fillStyle = '#ffe2a0'; g.fillText(l[2], (a.x + z.x) / 2, (a.y + z.y) / 2 - 3); }
+    });
+    cs.forEach((c) => {
+      const p = pos[c.n];
+      if (!p) return;
+      const r = 6 + Math.min(10, (p.d || 0) * 1.5);
+      g.fillStyle = sel === c.n ? '#ffd36a' : '#c9a24e';
+      g.beginPath(); g.arc(p.x, p.y, r, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#f3e6d0'; g.font = (sel === c.n ? '600 13px' : '12px') + ' "Noto Sans Telugu", system-ui, sans-serif';
+      g.fillText(c.te || c.n, p.x, p.y + r + 13);
+    });
+  };
+  const tell = (c) => {
+    info.textContent = '';
+    if (!c) return;
+    info.appendChild(el('div', '', '👤 ' + (c.te || c.n) + (c.te && c.te !== c.n ? ' (' + c.n + ')' : '')));
+    if (c.w) info.appendChild(el('div', '', c.w));
+    info.appendChild(el('div', 'muted', 'అధ్యాయాలు: ' + (c.u || []).map((u) => u + 1).join(', ')));
+    rs.filter((l) => l[0] === c.n || l[1] === c.n).forEach((l) => info.appendChild(el('div', '', '🔗 ' + (l[0] === c.n ? l[1] : l[0]) + ' · ' + l[2])));
+  };
+  cv2.onclick = (e) => {
+    const r = cv2.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    let best = null, bd = 30;
+    cs.forEach((c) => { const p = pos[c.n]; if (!p) return; const d = Math.hypot(p.x - x, p.y - y); if (d < bd) { bd = d; best = c; } });
+    sel = best ? best.n : null; draw(); tell(best);
+  };
+  draw();
+  body.appendChild(el('div', 'sec2', '👥 పాత్రలు'));
+  cs.forEach((c) => {
+    const d = el('div', 'who');
+    d.appendChild(el('b', '', (c.te || c.n)));
+    d.appendChild(document.createTextNode((c.te && c.te !== c.n ? ' (' + c.n + ')' : '') + (c.w ? ' — ' + c.w : '')));
+    d.onclick = () => { sel = c.n; draw(); tell(c); $('pBody').scrollTop = 0; };
+    body.appendChild(d);
+  });
+  if (es.length) {
+    body.appendChild(el('div', 'sec2', '📜 కథ, అధ్యాయం వారీగా'));
+    es.slice().sort((a, b2) => a.u - b2.u).forEach((x) => body.appendChild(el('div', 'ev', 'అధ్యాయం ' + (x.u + 1) + ': ' + x.e)));
+  }
+}
+$('pBack').onclick = () => { $('mapp').hidden = true; };
+
+// ---- 🎧 a chapter as a sound file
+function openAudio() {
+  T.kind = 'audio'; T.id = R.id; T.unit = R.unit;
+  const b = S.byId[R.id] || {};
+  const q = toolSheet('🎧 అధ్యాయం ఆడియో ఫైల్ (₹0)');
+  q.appendChild(el('p', '', 'ఈ అధ్యాయాన్ని మీరు వినే అదే ఫోన్ గొంతుతో, అదే వేగంతో ఒక ఆడియో ఫైల్ (.m4a) గా చేసి ఫోన్‌లోని Music/Jarvis Library లో పెడతాను. నెట్ అక్కర్లేదు, ఖర్చు లేదు. తర్వాత ఏ మ్యూజిక్ యాప్‌లో అయినా, బ్లూటూత్‌లో అయినా వినొచ్చు.'));
+  let lang = b.lang === 'te' ? 'en' : readLang();
+  const langs = b.lang === 'te' ? [['en', 'తెలుగు']] : [['en', 'English'], ['te', 'తెలుగు (ఫోన్)']].concat(R.ai ? [['ai', '✨ AI తెలుగు']] : []);
+  const row = el('div', 'row');
+  const chips2 = langs.map(([k, n]) => { const c = btn(n, 'chip' + (k === lang ? ' on' : ''), () => { lang = k; chips2.forEach((x, i) => { x.className = 'chip' + (langs[i][0] === k ? ' on' : ''); }); }); row.appendChild(c); return c; });
+  q.appendChild(row);
+  const pr = el('div', 'tbox', ''); pr.id = 'audLine'; q.appendChild(pr);
+  const bar = el('div', 'bar'); const fill = el('i'); fill.id = 'audFill'; fill.style.width = '0%'; bar.appendChild(fill); q.appendChild(bar);
+  const r2 = el('div', 'row'); r2.id = 'audBtns';
+  r2.appendChild(btn('🎧 తయారు చేయి', 'gold', () => { r2.textContent = ''; r2.appendChild(btn('⏹ ఆపు', '', () => post({ t: 'audio_stop' }))); pr.textContent = '🎧 మొదలుపెడుతున్నాను…'; post({ t: 'audio', id: T.id, unit: T.unit, lang }); }));
+  r2.appendChild(btn('వద్దు', '', closeTool));
+  q.appendChild(r2);
+  q.appendChild(el('p', 'muted', 'ఒక పెద్ద అధ్యాయానికి కొన్ని నిమిషాలు పట్టొచ్చు; ఈ షీట్ మూసినా తయారవుతూనే ఉంటుంది.'));
+}
+
+// ================================================================ 📊 నా చదువు: stats, marks, what next, 🏠
+S.me = { stats: null, marks: null, ol: null, ai: null, aiq: null, aiErr: '' };
+function openMe() {
+  closeBook(true);
+  $('me').hidden = false;
+  renderMe();
+  post({ t: 'stats' });
+  post({ t: 'allmarks' });
+}
+function readAuthors() {
+  const seen = {};
+  S.books.filter((b) => b.state === 'ready' && (S.pos[b.id] || b.done || b.fav) && b.a).forEach((b) => { seen[b.a] = 1; });
+  return Object.keys(seen).slice(0, 4);
+}
+function readTitles() { return S.books.filter((b) => b.state === 'ready' && (S.pos[b.id] || b.done || b.fav)).map((b) => b.t + (b.a ? ' — ' + b.a : '')).slice(0, 20); }
+function renderMe() {
+  if ($('me').hidden) return;
+  const body = $('mBody');
+  const keepY = body.scrollTop;
+  body.textContent = '';
+  const st = S.me.stats;
+  body.appendChild(el('div', 'sec2', '📊 లెక్కలు'));
+  if (!st) body.appendChild(el('p', 'muted', '…'));
+  else {
+    const tiles = el('div', 'tiles');
+    [[st.today + ' ని.', 'ఈ రోజు విన్నది'], [st.streak + ' 🔥', 'వరుసగా రోజులు'], [st.all_h + ' గం.', 'మొత్తం'], [st.week_m + ' ని.', 'ఈ వారం'], [st.ch_week, 'ఈ వారం అధ్యాయాలు'], [st.done, 'పూర్తయిన పుస్తకాలు']]
+      .forEach(([v, l]) => { const t = el('div', 'tile'); t.appendChild(el('b', '', String(v))); t.appendChild(el('span', '', l)); tiles.appendChild(t); });
+    body.appendChild(tiles);
+    const bars = el('div', 'bars');
+    const max = Math.max(10, ...st.week.map((x) => x.m));
+    st.week.forEach((x) => { const b = el('div', 'b'); b.appendChild(el('em', '', x.m ? String(x.m) : '')); const i = el('i'); i.style.height = Math.round(x.m / max * 80) + 'px'; b.appendChild(i); b.appendChild(el('span', '', x.d)); bars.appendChild(b); });
+    body.appendChild(bars);
+    body.appendChild(el('p', 'muted', 'నిమిషాలు = Jarvis చదివి వినిపించిన సమయం (ఈ ఫోన్‌లోనే లెక్క).'));
+    (st.top || []).forEach((x) => { const d = el('div', 'sug'); d.appendChild(el('div', 'w', '📖 ' + x.t + ' · ' + x.m + ' ని.')); d.appendChild(btn('చూపించు', '', () => { $('me').hidden = true; show(x.id); })); body.appendChild(d); });
+  }
+  body.appendChild(el('div', 'sec2', '🖍️ నా గుర్తులు, నోట్స్'));
+  const mk = S.me.marks;
+  if (!mk) body.appendChild(el('p', 'muted', '…'));
+  else if (!mk.length) body.appendChild(el('p', 'muted', 'ఇంకా గుర్తులు లేవు. చదివేటప్పుడు ఒక లైన్ తాకి "🖍️ గుర్తు పెట్టు" నొక్కండి.'));
+  else mk.forEach((x) => {
+    const d = el('div', 'sug');
+    d.appendChild(el('div', 'w', '📖 ' + x.t + ' · ' + x.m.length + ' గుర్తులు'));
+    d.appendChild(btn('చూడు', '', () => openMarksSheet(x.id)));
+    d.appendChild(btn('📄 PDF', '', () => { openMarksSheet(x.id); const p = $('pdfline'); if (p) p.textContent = '📄 తయారవుతోంది…'; post({ t: 'marks_pdf', id: x.id }); }));
+    body.appendChild(d);
+  });
+  body.appendChild(el('div', 'sec2', '📚 తర్వాత ఏమి చదవాలి'));
+  const nx = K.nextReads(S.books, S.pos);
+  if (!nx.length) body.appendChild(el('p', 'muted', 'రాక్‌లలో ఇంకా సూచించడానికి ఏమీ లేదు.'));
+  nx.forEach((x) => {
+    const d = el('div', 'sug');
+    const w = el('div', 'w'); w.appendChild(el('div', '', '📗 ' + x.b.t + (x.b.a ? ' · ' + x.b.a : ''))); w.appendChild(el('div', 'why', x.why)); d.appendChild(w);
+    d.appendChild(btn('చూపించు', '', () => { $('me').hidden = true; show(x.b.id); }));
+    body.appendChild(d);
+  });
+  const au = readAuthors();
+  if (au.length) body.appendChild(btn('🌐 మీరు చదివిన రచయితల ఇంకా ఉచిత పుస్తకాలు (Open Library, ₹0)', 'wide', () => { S.me.ol = 'busy'; renderMe(); post({ t: 'next_ol', authors: au }); }));
+  if (S.me.ol === 'busy') body.appendChild(el('p', 'muted', '🌐 వెతుకుతున్నాను…'));
+  else if (Array.isArray(S.me.ol)) {
+    if (!S.me.ol.length) body.appendChild(el('p', 'muted', 'Open Library లో కొత్తవి దొరకలేదు.'));
+    S.me.ol.forEach((o) => {
+      const d = el('div', 'sug');
+      const w = el('div', 'w'); w.appendChild(el('div', '', '🌐 ' + o.t + (o.a ? ' · ' + o.a : ''))); w.appendChild(el('div', 'why', o.why || '')); d.appendChild(w);
+      d.appendChild(btn('⬇️ దించు', '', () => { post({ t: 'download', item: o, then: 'show' }); toast('⬇️ దించుతున్నాను: ' + o.t); }));
+      body.appendChild(d);
+    });
+  }
+  if (readTitles().length) body.appendChild(btn('✨ AI సూచనలు (మీరు చదివినవాటి పేర్లు మాత్రమే AI కి వెళ్తాయి)', 'wide', () => { S.me.ai = null; S.me.aiq = 'busy'; renderMe(); post({ t: 'next_q' }); }));
+  if (S.me.aiq === 'busy') body.appendChild(el('p', 'muted', '…'));
+  else if (S.me.aiq && S.me.aiq.rupees !== undefined && !S.me.ai) {
+    const q = S.me.aiq;
+    if (q.why) body.appendChild(el('p', '', q.why));
+    else {
+      const r = el('div', 'row');
+      r.appendChild(btn('✅ అడుగు · సుమారు ' + K.money(q.rupees) + ' (' + q.model + ')', 'gold', () => { S.me.ai = 'busy'; renderMe(); post({ t: 'next_ai', titles: readTitles() }); }));
+      r.appendChild(btn('వద్దు', '', () => { S.me.aiq = null; renderMe(); }));
+      body.appendChild(r);
+    }
+  }
+  if (S.me.ai === 'busy') body.appendChild(el('p', 'muted', '✨ ఆలోచిస్తోంది…'));
+  else if (Array.isArray(S.me.ai)) S.me.ai.forEach((o) => {
+    const d = el('div', 'sug');
+    const w = el('div', 'w'); w.appendChild(el('div', '', '✨ ' + o.t + (o.a ? ' · ' + o.a : ''))); w.appendChild(el('div', 'why', o.why || '')); d.appendChild(w);
+    d.appendChild(btn('🔍 వెతుకు', '', () => { $('me').hidden = true; openSearch(o.t + (o.a ? ' ' + o.a : '')); }));
+    body.appendChild(d);
+  });
+  if (S.me.aiErr) body.appendChild(el('p', '', S.me.aiErr));
+  body.appendChild(el('div', 'sec2', '🏠 ఇంటి పుస్తకాల అర'));
+  body.appendChild(el('p', 'muted', 'మీ ఇంట్లో ఉన్న పుస్తకాల అర ఫోటో తీస్తే, AI వెన్నెముకల మీది పేర్లు చదువుతుంది; మీరు ఎంచుకున్నవి 🏠 గుర్తుతో రాక్‌లో పెడతాను. ఫోటో దాచను.'));
+  body.appendChild(btn('📸 ఇంటి అర ఫోటో తీయి', 'wide', () => post({ t: 'shelf_photo' })));
+  body.scrollTop = keepY;
+}
+$('bMe').onclick = openMe;
+$('mBack').onclick = () => { $('me').hidden = true; };
+
+// ---- 🏠 the shelf photo's sheets
+function shelfReady(m) {
+  T.kind = 'shelf'; T.id = '';
+  const q = toolSheet('🏠 ఇంటి అర ఫోటో రెడీ');
+  if (m.why) { q.appendChild(el('p', '', m.why)); q.appendChild(btn('సరే', 'wide', () => { post({ t: 'shelf_cancel' }); closeTool(); })); return; }
+  q.appendChild(el('p', '', 'మీ లైబ్రరీ AI ఫోటోలోని పుస్తకాల పేర్లు చదువుతుంది. తర్వాత మీరు ఎంచుకున్నవే రాక్‌లో పెడతాను. ఫోటో ఈ పనికే, తర్వాత పోతుంది.'));
+  q.appendChild(el('p', 'muted', '🤖 ' + m.model + (m.known === false ? ' · ధర అంచనా' : '')));
+  const r = el('div', 'row');
+  r.appendChild(btn('✨ పేర్లు చదువు · సుమారు ' + K.money(m.rupees), 'gold wide', () => { r.textContent = ''; r.appendChild(el('p', 'muted', '✨ చదువుతోంది…')); post({ t: 'shelf_go' }); }));
+  r.appendChild(btn('వద్దు (ఫోటో వదిలేయి)', 'wide', () => { post({ t: 'shelf_cancel' }); closeTool(); }));
+  q.appendChild(r);
+}
+function shelfBooks(m) {
+  T.kind = 'shelf'; T.id = '';
+  const q = toolSheet('🏠 ఫోటోలో దొరికిన పుస్తకాలు');
+  if (m.err) { q.appendChild(el('p', '', m.err)); return; }
+  const list = m.list || [];
+  q.appendChild(el('p', 'muted', list.length + ' పుస్తకాలు చదివింది. రాక్‌లో పెట్టాల్సినవి ఎంచుకోండి (తప్పుగా చదివినవి తీసేయండి).'));
+  const boxes = [];
+  list.forEach((x) => {
+    const d = el('label', 'chk');
+    const c = el('input'); c.type = 'checkbox'; c.checked = true;
+    d.appendChild(c); d.appendChild(el('span', '', x.t + (x.a ? ' · ' + x.a : '')));
+    boxes.push([c, x]);
+    q.appendChild(d);
+  });
+  const r = el('div', 'row');
+  r.appendChild(btn('🏠 రాక్‌లో పెట్టు', 'gold wide', () => { const pick = boxes.filter(([c]) => c.checked).map(([, x]) => x); if (!pick.length) return; post({ t: 'home_add', list: pick }); closeTool(); toast('🏠 ' + pick.length + ' పుస్తకాలు పెడుతున్నాను… (వాటి వివరాలు Open Library నుంచి)', 5000); }));
+  r.appendChild(btn('వద్దు', 'wide', closeTool));
+  q.appendChild(r);
 }
 
 // ================================================================ messages from the phone
@@ -1230,10 +1900,11 @@ function onJarvis(m) {
     case 'te': gotTe(m); break;
     case 'need_pack': packSheet(); break;
     case 'pack': S.pack = !!m.ok; toast(m.s, 5000); if (m.ok && !$('reader').hidden && wantsPhoneTe()) needTe(); break;
-    case 'quote': quoteSheet(m); break;
+    case 'quote': if (S.afterModel) afterModel(); else quoteSheet(m); break;
     case 'models': modelSheet(m); break;
     case 'model': S.model = m.model || ''; S.rate = Number(m.rate) || 0; break;
-    case 'ai_on': S.ai = m.id; S.aiNow = { id: m.id, title: (S.byId[m.id] || {}).t || '', unit: 0, k: 0, n: 0, ci: 1, cn: 1, rs: 0 }; aiBars(); toast('✨ AI తెలుగు మొదలుపెట్టాను. అయిన భాగాలు వెంటనే దాచుకుంటాను; ఆపాలంటే ⏹.'); break;
+    case 'ai_on': S.ai = m.id; S.aiNow = { id: m.id, kind: m.kind || 'tr', title: (S.byId[m.id] || {}).t || '', unit: 0, k: 0, n: 0, ci: 1, cn: 1, rs: 0 }; aiBars();
+      if (m.kind !== 'map') toast('✨ AI తెలుగు మొదలుపెట్టాను. అయిన భాగాలు వెంటనే దాచుకుంటాను; ఆపాలంటే ⏹.'); break;
     case 'trs': S.month = m; S.rate = Number(m.rate) || S.rate; if (m.model) S.model = m.model;
       if (m.shelf) { (m.shelf || []).forEach((x) => { if (x && x.ai_u) aiMerge(x.id, { ai_u: x.ai_u, ai_cc: x.ai_cc, ai_rs: x.ai_rs }); }); }
       if (m.ainow) { S.aiNow = m.ainow; S.ai = m.ainow.id; } renderTrs(); aiBars(); break;
@@ -1248,8 +1919,8 @@ function onJarvis(m) {
     }
     case 'aidone':
       S.ai = ''; S.aiNow = null; delete S.busy[m.id]; aiBars(); renderTrs();
-      toast(m.s, 7000);
-      if (!$('reader').hidden && R.id === m.id) post({ t: 'chapter', id: R.id, unit: R.unit });
+      toast(m.s + (m.kind === 'map' ? ' చదివే స్క్రీన్‌లో 🗺️ పాత్రలు నొక్కండి.' : ''), 7000);
+      if (!$('reader').hidden && R.id === m.id && m.kind !== 'map') post({ t: 'chapter', id: R.id, unit: R.unit });
       { const a = $('cardProg'); if (a) a.textContent = ''; }
       break;
     case 'now':
@@ -1272,6 +1943,70 @@ function onJarvis(m) {
       if (m.v === 'era' || m.v === 'sec') { closeBook(true); S.view = m.v; post({ t: 'prefs', view: S.view }); rebuild(); goRack(m.v === 'era' ? 'universe' : 'fic', true); }
       break;
     case 'addinfo': addForm(m); break;
+    // ---- 📊 🖍️ 🎧 💬 📝 ❓ 🗺️ 📚 🏠
+    case 'stats': S.me.stats = m; renderMe(); break;
+    case 'allmarks': S.me.marks = m.list || []; renderMe(); break;
+    case 'marks':
+      if (m.id === R.id) { R.marks = m.list || []; if (!$('reader').hidden) { const y = $('rBody').scrollTop; renderText(); $('rBody').scrollTop = y; toolsBar(); } }
+      if (S.me.marks) post({ t: 'allmarks' });
+      break;
+    case 'pdfready': {
+      const p = $('pdfline');
+      const say = '📄 PDF సేవ్ అయింది: ' + m.where;
+      if (p) { p.textContent = say + ' '; if (m.share) p.appendChild(btn('📤 షేర్ చేయి', 'gold', () => post({ t: 'pdf_share' }))); }
+      else toast(say, 6000);
+      break;
+    }
+    case 'audprog': {
+      const l = $('audLine'), f = $('audFill');
+      if (l) l.textContent = m.s; if (f) f.style.width = Math.max(0, Math.min(100, m.pct || 0)) + '%';
+      break;
+    }
+    case 'auddone': {
+      const l = $('audLine'), f = $('audFill'), b = $('audBtns');
+      if (m.err) { if (l) l.textContent = '⚠ ' + m.err; else toast('🎧 ' + m.err, 6000); if (b) { b.textContent = ''; b.appendChild(btn('సరే', '', closeTool)); } break; }
+      if (f) f.style.width = '100%';
+      if (l) l.textContent = '✅ ఆడియో ఫైల్ రెడీ: ' + m.where; else toast('🎧 ఆడియో ఫైల్ రెడీ: ' + m.where, 6000);
+      if (b) { b.textContent = ''; if (m.play) b.appendChild(btn('▶ వినండి', 'gold', () => post({ t: 'audio_play' }))); b.appendChild(btn('సరే', '', closeTool)); }
+      break;
+    }
+    case 'tquote': gotTquote(m); break;
+    case 'tlive': {
+      if (m.kind === 'ask') { const o = $('askOut'); if (o && T.kind === 'ask' && T.id === m.id) o.textContent = m.s; break; }
+      const o = $('tlive'); if (o && T.kind === m.kind && T.id === m.id) o.textContent = m.s;
+      break;
+    }
+    case 'tres': {
+      if (m.kind === 'map') { if (m.err) toast('🗺️ ' + m.err, 6000); else { T.id = m.id; openMap(m.res); } break; }
+      if (T.id !== m.id || (T.kind !== m.kind)) { if (m.err) toast(m.err, 6000); else toast('✅ ' + (TOOL_NAMES[m.kind] || '') + ' రెడీ: మళ్ళీ నొక్కితే ₹0', 5000); break; }
+      if (m.err) {
+        if (m.kind === 'ask') { const o = $('askOut'); if (o) o.textContent = '⚠ ' + m.err; break; }
+        toolSheet(TOOL_NAMES[m.kind]).appendChild(el('p', '', '⚠ ' + m.err));
+        break;
+      }
+      if (m.kind === 'sum') showSum(m.res, !!m.res.kept);
+      else if (m.kind === 'quiz') showQuiz(m.res, !!m.res.kept);
+      else if (m.kind === 'ask') {
+        const o = $('askOut');
+        T.shownQ = m.res.q;
+        if (o) o.textContent = m.res.a + '\n\n' + (m.res.kept ? '💾 ఇంతకుముందు అడిగిందే · ₹0' : '🤖 ' + (m.res.model || '') + ' · ఖర్చు ' + K.money(m.res.rs || 0));
+        post({ t: 'tkept', kind: 'ask', id: T.id, unit: T.unit });
+      }
+      break;
+    }
+    case 'tkept': {
+      if (m.kind === 'ask') { if (T.kind === 'ask' && T.id === m.id) askHistory(((m.res || {}).list || []).filter((x) => !(T.shownQ && x.q === T.shownQ))); break; }
+      if (m.kind === 'map') { T.id = m.id; openMap(m.res); break; }
+      if (T.kind !== m.kind || T.id !== m.id) break;
+      if (!m.res) { toolAsk(m.kind); break; }
+      if (m.kind === 'sum') showSum(m.res, true); else if (m.kind === 'quiz') showQuiz(m.res, true);
+      break;
+    }
+    case 'nextol': S.me.ol = m.list || []; renderMe(); break;
+    case 'nextq': S.me.aiq = m; renderMe(); break;
+    case 'nextai': if (m.err) { S.me.ai = null; S.me.aiq = null; S.me.aiErr = '⚠ ' + m.err; } else { S.me.ai = m.list || []; S.me.aiErr = ''; } renderMe(); break;
+    case 'shelfready': shelfReady(m); break;
+    case 'shelfbooks': shelfBooks(m); break;
     case 'say': toast(m.s, 5000); break;
     case 'back': back(); break;
     default: break;
@@ -1281,4 +2016,4 @@ function onJarvis(m) {
 resize();
 requestAnimationFrame(frame);
 window.__lib = { S, onJarvis, get cam() { return cam; }, show, openReader, back, rebuild,
-  where(id) { const m = bookMeshes.find((x) => x.userData.id === id); if (!m) return null; frame(performance.now()); const v = m.position.clone().project(camera); return { x: (v.x + 1) / 2 * cv.clientWidth, y: (1 - v.y) / 2 * cv.clientHeight }; } };
+  where(id) { const m = bookMeshes.find((x) => x.userData.id === id); if (!m) return null; frame(performance.now()); const v = m.getWorldPosition(new THREE.Vector3()).project(camera); return { x: (v.x + 1) / 2 * cv.clientWidth, y: (1 - v.y) / 2 * cv.clientHeight }; } };

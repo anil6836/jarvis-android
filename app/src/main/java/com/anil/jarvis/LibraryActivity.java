@@ -67,7 +67,12 @@ public class LibraryActivity extends Activity {
     private static final Set<String> FILES = new HashSet<>(Arrays.asList("library.html", "library.js", "libkit.js", "starter.json"));
     /** The workshop's bundled three.js (one copy in the app), served under the library's own path. */
     private static final Set<String> SHARED = new HashSet<>(Arrays.asList("three.module.min.js"));
-    private static final int REQ_FILE = 51, REQ_SCAN = 52, REQ_PHOTOS = 53;
+    private static final int REQ_FILE = 51, REQ_SCAN = 52, REQ_PHOTOS = 53, REQ_SHELF_CAM = 54, REQ_SHELF_GAL = 55, REQ_CAM_PERM = 56;
+    /** 🏠 His bookshelf photo, only until the AI has read it (or he says వద్దు); never saved. */
+    private volatile String shelfJpeg;
+    /** The last 📄 PDF / 🎧 sound file made here (shared / played only on his tap). */
+    private volatile Coder.Made lastPdf;
+    private volatile Uri lastAudio;
 
     /** How many library screens are open (the reader keeps the phone's translator while one is). */
     static volatile int open;
@@ -273,7 +278,59 @@ public class LibraryActivity extends Activity {
             case "word": word(m.optString("w", "")); break;
             case "pack": pack(); break;
             case "quote": quote(id, m.optInt("unit", 0)); break;
-            case "models": listModels(id, m.optInt("unit", 0)); break;
+            case "models": listModels(id, m.optInt("unit", 0), m.optString("kind", ""), m.optString("q", "")); break;
+            // ---- 📊 🖍️ 🎧 💬 📝 ❓ 🗺️ 📚 🏠 the library's tools
+            case "stats": io.execute(() -> { try { send(LibTools.statsView(this)); } catch (Exception e) { say("లెక్కలు రాలేదు"); } }); break;
+            case "allmarks": io.execute(() -> { try { send(json("allmarks").put("list", LibTools.allMarks(this))); } catch (Exception e) { say("గుర్తులు రాలేదు"); } }); break;
+            case "mark": io.execute(() -> {
+                try {
+                    JSONArray l = LibTools.mark(this, id, m.optInt("unit"), m.optInt("part"), m.optString("text"), m.optString("te"),
+                            m.has("note") ? m.optString("note") : null, m.optBoolean("on", true));
+                    send(json("marks").put("id", id).put("list", l));
+                } catch (Exception e) { say("గుర్తు పెట్టలేకపోయాను: " + e.getMessage()); }
+            }); break;
+            case "marks_pdf": new Thread(() -> {
+                try { lastPdf = LibTools.marksPdf(this, id); send(json("pdfready").put("id", id).put("where", lastPdf.where).put("share", lastPdf.uri != null)); }
+                catch (Exception e) { say("PDF తయారు కాలేదు: " + e.getMessage()); }
+            }, "jarvis-library-pdf").start(); break;
+            case "pdf_share": sharePdf(); break;
+            case "audio": audio(id, m.optInt("unit"), m.optString("lang", "en")); break;
+            case "audio_stop": LibTools.audioStop = true; break;
+            case "audio_play": playAudio(); break;
+            case "tquote": io.execute(() -> { try { send(LibTools.quote(this, m.optString("kind"), id, m.optInt("unit"), m.optString("q"))); } catch (Exception e) { say("ఖర్చు లెక్క రాలేదు: " + e.getMessage()); } }); break;
+            case "tgo": tool(m.optString("kind"), id, m.optInt("unit"), m.optString("q")); break;
+            case "tkept": io.execute(() -> {
+                try {
+                    String k = m.optString("kind");
+                    JSONObject r = "ask".equals(k) ? new JSONObject().put("list", LibTools.asked(this, id)) : LibTools.kept(this, k, id, m.optInt("unit"));
+                    send(json("tkept").put("kind", k).put("id", id).put("unit", m.optInt("unit")).put("res", r == null ? JSONObject.NULL : r));
+                } catch (Exception e) { say("తెరవలేకపోయాను"); }
+            }); break;
+            case "next_ol": new Thread(() -> {
+                try { send(json("nextol").put("list", LibTools.nextByAuthors(this, m.optJSONArray("authors") == null ? new JSONArray() : m.optJSONArray("authors")))); }
+                catch (Exception e) { say("Open Library నుంచి రాలేదు: " + e.getMessage()); }
+            }, "jarvis-library-next").start(); break;
+            case "next_q": io.execute(() -> {
+                try {
+                    Prefs p = new Prefs(this);
+                    JSONObject o = json("nextq").put("rupees", Math.round(LibTools.nextQuote(this) * 100) / 100.0).put("model", Library.model(p));
+                    String over = Workshop.overLimit(this, p);
+                    if (Library.model(p).isEmpty()) o.put("why", "లైబ్రరీకి AI ఇంకా ఎంచుకోలేదు Sir.");
+                    else if (over != null) o.put("why", over);
+                    send(o);
+                } catch (Exception e) { say("ఖర్చు లెక్క రాలేదు"); }
+            }); break;
+            case "next_ai": new Thread(() -> {
+                try { send(json("nextai").put("list", LibTools.nextByAi(this, m.optJSONArray("titles") == null ? new JSONArray() : m.optJSONArray("titles")))); }
+                catch (Exception e) { try { send(json("nextai").put("err", e.getMessage() == null ? "రాలేదు" : e.getMessage())); } catch (Exception ignored) {} }
+            }, "jarvis-library-next").start(); break;
+            case "shelf_photo": shelfPick(); break;
+            case "shelf_go": shelfGo(); break;
+            case "shelf_cancel": shelfJpeg = null; break;
+            case "home_add": new Thread(() -> {
+                try { int n = LibTools.homeAdd(this, m.optJSONArray("list") == null ? new JSONArray() : m.optJSONArray("list")); say("🏠 " + n + " పుస్తకాలు మీ రాక్‌లో పెట్టాను (నావి → ➕ అరలో, వాటి విభాగాల్లో కూడా)."); sendShelf(); }
+                catch (Exception e) { say("పెట్టలేకపోయాను: " + e.getMessage()); }
+            }, "jarvis-library-home").start(); break;
             case "trs": io.execute(() -> { // ✨ the translations page: this month's money (the books' tallies are in the shelf)
                 try {
                     Prefs p = new Prefs(this);
@@ -357,6 +414,7 @@ public class LibraryActivity extends Activity {
                 String[] te = Library.kept(this, id, "te", u, parts.size()), ai = Library.kept(this, id, "ai", u, parts.size());
                 if (te != null) m.put("te", arr(te));
                 if (ai != null) m.put("ai", arr(ai));
+                m.put("marks", LibTools.marks(this, id)); // (🖍️ his marks in this book)
                 send(m);
             } catch (Exception e) { say("అధ్యాయం తెరవలేకపోయాను: " + e.getMessage()); }
         });
@@ -436,12 +494,14 @@ public class LibraryActivity extends Activity {
     /** The models his keys can use, each with this chapter's AI Telugu cost (the keys stay here; the page gets names and ₹ only). */
     private volatile List<String> offered = new ArrayList<>();
 
-    private void listModels(String id, int unit) {
+    private void listModels(String id, int unit, String kind, String q) {
         new Thread(() -> {
             try {
                 Prefs p = new Prefs(this);
                 long chars = 0;
                 try { chars = Library.chars(this, id, unit); } catch (Exception ignored) {}
+                // (a tool: 📝 ❓ 💬 🗺️ 📚 🏠 → that tool's calls priced for each model; "" → this chapter's AI Telugu, as before)
+                List<long[]> need = kind.isEmpty() ? null : LibTools.need(this, kind, id, unit, q);
                 String[] provs = {Prefs.ANTHROPIC, Prefs.GEMINI, Prefs.OPENAI};
                 String[] keys = {p.anthropicKey(), p.geminiKey(), p.openAiKey()};
                 JSONArray list = new JSONArray();
@@ -456,13 +516,13 @@ public class LibraryActivity extends Activity {
                             if (!Library.goodModel(mid) || ids.contains(mid) || !provs[i].equals(Workshop.provider(mid))) continue;
                             ids.add(mid);
                             list.put(new JSONObject().put("id", mid).put("co", Models.company(provs[i])).put("name", it.name == null || it.name.equals(it.id) ? "" : it.name)
-                                    .put("r", Library.cost(mid, chars)).put("known", Usage.knownPrice(mid)).put("n", n++));
+                                    .put("r", need == null ? Library.cost(mid, chars) : LibTools.rupees(mid, need)).put("known", Usage.knownPrice(mid)).put("n", n++));
                         }
                     } catch (Exception e) { problems.append(Models.company(provs[i])).append(": ").append(e.getMessage() == null ? "లిస్ట్ రాలేదు" : e.getMessage()).append('\n'); }
                 }
                 offered = ids;
                 if (ids.isEmpty() && problems.length() == 0) problems.append("⚙️ → Jarvis మెదడు లో ఒక్క AI key కూడా లేదు.");
-                send(json("models").put("id", id).put("unit", unit).put("chars", chars).put("list", list).put("cur", Library.model(p))
+                send(json("models").put("id", id).put("unit", unit).put("kind", kind).put("chars", chars).put("list", list).put("cur", Library.model(p))
                         .put("lib", p.libraryModel().trim()).put("ws", p.workshopModel().trim()).put("problems", problems.toString().trim()));
             } catch (Exception e) { say("మోడల్స్ లిస్ట్ రాలేదు: " + e.getMessage()); }
         }, "jarvis-library-models").start();
@@ -483,6 +543,131 @@ public class LibraryActivity extends Activity {
                 try { send(Library.quote(this, id, unit)); } catch (Exception ignored) {}
             } catch (Exception e) { say("మార్చలేకపోయాను: " + e.getMessage()); }
         });
+    }
+
+    // ================================================================ the library's tools (📄 🎧 💬 📝 ❓ 🗺️ 🏠)
+
+    private void sharePdf() {
+        Coder.Made m = lastPdf;
+        if (m == null || m.uri == null) { say("PDF ఫోన్‌లో సేవ్ అయింది" + (m == null ? "" : ": " + m.where)); return; }
+        try {
+            Intent s = new Intent(Intent.ACTION_SEND).setType("application/pdf").putExtra(Intent.EXTRA_STREAM, m.uri)
+                    .putExtra(Intent.EXTRA_TEXT, "🖍️ " + m.name).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(Intent.createChooser(s, "ఎక్కడికి పంపాలి?"));
+        } catch (Exception ignored) {}
+    }
+
+    private void audio(String id, int unit, String lang) {
+        if (!LibTools.audioBusy.isEmpty()) { say("ఒక ఆడియో ఇప్పటికే తయారవుతోంది Sir."); return; }
+        new Thread(() -> {
+            try {
+                LibTools.Saved sv = LibTools.audio(this, id, unit, "te".equals(lang) || "ai".equals(lang) ? lang : "en", (said, pct) -> {
+                    try { send(json("audprog").put("id", id).put("unit", unit).put("s", said).put("pct", pct)); } catch (Exception ignored) {}
+                });
+                lastAudio = sv.uri;
+                send(json("auddone").put("id", id).put("unit", unit).put("where", sv.where).put("play", sv.uri != null));
+            } catch (Exception e) {
+                try { send(json("auddone").put("id", id).put("unit", unit).put("err", e.getMessage() == null ? "తయారు కాలేదు" : e.getMessage())); } catch (Exception ignored) {}
+            }
+        }, "jarvis-library-audio").start();
+    }
+
+    private void playAudio() {
+        Uri u = lastAudio;
+        if (u == null) return;
+        try { startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(u, "audio/mp4").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)); }
+        catch (Exception e) { say("ఆడియో తెరిచే యాప్ దొరకలేదు; Music/Jarvis Library లో ఉంది."); }
+    }
+
+    /** 💬 📝 ❓ 🗺️: the cost is checked again here (the page showed it; his tap brought this), then the AI. */
+    private void tool(String kind, String id, int unit, String q) {
+        new Thread(() -> {
+            try {
+                String qk = "ask".equals(kind) ? ("book".equals(q.startsWith("book:") ? "book" : "ch") ? "ask_book" : "ask_ch") : kind;
+                String question = q.startsWith("book:") ? q.substring(5) : q.startsWith("ch:") ? q.substring(3) : q;
+                JSONObject qt = LibTools.quote(this, qk, id, unit, question);
+                if (qt.has("why") && !qt.optBoolean("have")) { send(json("tres").put("kind", kind).put("id", id).put("unit", unit).put("err", qt.optString("why"))); return; }
+                LibTools.Live live = s -> { try { send(json("tlive").put("kind", kind).put("id", id).put("unit", unit).put("s", s)); } catch (Exception ignored) {} };
+                JSONObject res;
+                switch (kind) {
+                    case "sum": res = LibTools.summary(this, id, unit, live); break;
+                    case "quiz": res = LibTools.quiz(this, id, unit); break;
+                    case "ask": res = LibTools.askBook(this, id, unit, q.startsWith("book:") ? "book" : "ch", question, live); break;
+                    case "map": {
+                        List<Integer> units = new ArrayList<>();
+                        for (int u = 0; u < Library.count(this, id); u++) if (!LibTools.mapDone(this, id, u)) units.add(u);
+                        if (units.isEmpty()) { send(json("tres").put("kind", kind).put("id", id).put("unit", unit).put("res", LibTools.mapMerge(this, id))); return; }
+                        if (!Library.aiStart(this, id, units, "map")) { say("ఇంకో AI పని నడుస్తోంది. అది అయ్యాక నొక్కండి."); return; }
+                        send(json("ai_on").put("id", id).put("kind", "map"));
+                        return;
+                    }
+                    default: return;
+                }
+                send(json("tres").put("kind", kind).put("id", id).put("unit", unit).put("res", res));
+            } catch (Exception e) {
+                try { send(json("tres").put("kind", kind).put("id", id).put("unit", unit).put("err", e.getMessage() == null ? "రాలేదు" : e.getMessage())); } catch (Exception ignored) {}
+            }
+        }, "jarvis-library-tool").start();
+    }
+
+    /** 🏠 A photo of his bookshelf: the camera or the gallery (his choice). */
+    private void shelfPick() {
+        new android.app.AlertDialog.Builder(this).setTitle("🏠 ఇంటి పుస్తకాల అర")
+                .setMessage("అర మొత్తం కనిపించేలా, వెలుతురులో, పుస్తకాల వెన్నెముకలు చదవగలిగేలా ఒక ఫోటో. ఫోటో మీ లైబ్రరీ AI కి ఈ ఒక్క పనికే వెళ్తుంది; ఎక్కడా దాచను.")
+                .setPositiveButton("📷 కెమెరా", (d, w) -> shelfCam()).setNeutralButton("🖼️ గ్యాలరీ", (d, w) -> {
+                    try { startActivityForResult(new Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE), REQ_SHELF_GAL); } catch (Exception ignored) {}
+                }).setNegativeButton("వద్దు", null).show();
+    }
+
+    private void shelfCam() {
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.CAMERA}, REQ_CAM_PERM);
+            return;
+        }
+        File f = PhotoProvider.file(this);
+        if (f.exists()) //noinspection ResultOfMethodCallIgnored
+            f.delete();
+        Uri out = PhotoProvider.uri();
+        Intent i = new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).putExtra(android.provider.MediaStore.EXTRA_OUTPUT, out);
+        i.setClipData(ClipData.newRawUri("photo", out));
+        i.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try { startActivityForResult(i, REQ_SHELF_CAM); } catch (Exception e) { say("కెమెరా తెరవలేకపోయాను; గ్యాలరీ నుంచి ఎంచుకోండి."); }
+    }
+
+    @Override public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(req, perms, res);
+        if (req == REQ_CAM_PERM && res.length > 0 && res[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) shelfCam();
+    }
+
+    private void shelfReady(Uri u, boolean fromCam) {
+        new Thread(() -> {
+            android.graphics.Bitmap bm = FacePhotos.upright(this, u, 1800);
+            if (fromCam) //noinspection ResultOfMethodCallIgnored
+                PhotoProvider.file(this).delete(); // (his photo is not kept here)
+            if (bm == null) { say("ఫోటో తెరవలేకపోయాను."); return; }
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            bm.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out);
+            shelfJpeg = android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP);
+            try {
+                Prefs p = new Prefs(this);
+                JSONObject o = json("shelfready").put("rupees", Math.round(LibTools.shelfQuote(this) * 100) / 100.0).put("model", Library.model(p))
+                        .put("known", Usage.knownPrice(Library.model(p)));
+                String over = Workshop.overLimit(this, p);
+                if (Library.model(p).isEmpty()) o.put("why", "లైబ్రరీకి AI ఇంకా ఎంచుకోలేదు Sir.");
+                else if (over != null) o.put("why", over);
+                send(o);
+            } catch (Exception ignored) {}
+        }, "jarvis-library-shelf").start();
+    }
+
+    private void shelfGo() {
+        String jpeg = shelfJpeg;
+        if (jpeg == null) { say("ఫోటో లేదు; మళ్ళీ తీయండి."); return; }
+        new Thread(() -> {
+            try { JSONArray l = LibTools.shelfRead(this, jpeg); send(json("shelfbooks").put("list", l)); }
+            catch (Exception e) { try { send(json("shelfbooks").put("err", e.getMessage() == null ? "చదవలేకపోయింది" : e.getMessage())); } catch (Exception ignored) {} }
+            finally { shelfJpeg = null; } // (the photo is dropped either way)
+        }, "jarvis-library-shelf").start();
     }
 
     private void aiGo(String id, String scope, int unit) {
@@ -532,6 +717,13 @@ public class LibraryActivity extends Activity {
 
     @Override protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+        if (req == REQ_SHELF_CAM || req == REQ_SHELF_GAL) { // 🏠
+            if (res != RESULT_OK) { if (req == REQ_SHELF_CAM) //noinspection ResultOfMethodCallIgnored
+                PhotoProvider.file(this).delete(); return; }
+            Uri u = req == REQ_SHELF_CAM ? PhotoProvider.uri() : data != null ? data.getData() : null;
+            if (u != null) shelfReady(u, req == REQ_SHELF_CAM);
+            return;
+        }
         if (res != RESULT_OK || data == null) return;
         if (req == REQ_FILE && data.getData() != null) {
             Uri u = data.getData();
@@ -624,7 +816,7 @@ public class LibraryActivity extends Activity {
                 } catch (Exception ignored) {}
             }
             @Override public void finished(Library.AiJob j, String said) {
-                try { send(json("aidone").put("id", j.id).put("s", said)); } catch (Exception ignored) {}
+                try { send(json("aidone").put("id", j.id).put("kind", j.kind).put("s", said)); } catch (Exception ignored) {}
                 sendShelf(); // (the ✨ on its spine, the counts on its card)
             }
         };

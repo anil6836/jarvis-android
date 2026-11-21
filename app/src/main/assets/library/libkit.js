@@ -28,7 +28,7 @@
     { k: 'fav', n: '⭐ ఇష్టమైనవి' },
     { k: 'done', n: '✓ పూర్తయినవి' },
     { k: 'wish', n: '🔖 కోరికలు (వివరాలు మాత్రమే)' },
-    { k: 'added', n: '➕ ఫోన్ నుంచి పెట్టినవి' },
+    { k: 'added', n: '➕ మీరు పెట్టినవి (ఫోన్ / 🏠 ఇల్లు)' },
   ];
 
   /** The racks for a view: 'sec' (by subject) or 'era' (by time), "నావి" first. */
@@ -92,7 +92,7 @@
       if (b.state === 'ready' && p[b.id] && !b.done) out.reading.push(b);
       if (b.fav) out.fav.push(b);
       if (b.done) out.done.push(b);
-      if (b.src === 'file' || b.src === 'scan') out.added.push(b);
+      if (b.src === 'file' || b.src === 'scan' || b.home) out.added.push(b);
     });
     out.reading.sort((a, b) => ((p[b.id] || [])[2] || 0) - ((p[a.id] || [])[2] || 0));
     return out;
@@ -203,8 +203,59 @@
     return s.slice(a, b).replace(/^['\-]+|['\-]+$/g, '');
   }
 
+  /**
+   * 📚 What to read next (₹0, from the racks): free books not read yet by an author he read, of a rack he reads, or of the same
+   * time; with nothing read yet, one book from each rack to start with. [{b, score, why}], best first, at most 8.
+   */
+  function nextReads(books, pos) {
+    const p = pos || {};
+    const read = books.filter((b) => b.state === 'ready' && (p[b.id] || b.done || b.fav));
+    const readIds = new Set(read.map((b) => b.id));
+    const key = (a) => String(a || '').toLowerCase().replace(/[^a-z\u0C00-\u0C7F ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const secName = (k) => { const x = SECTIONS.find((s) => s.k === k); return x ? x.e + ' ' + x.n : ''; };
+    const cands = books.filter((b) => !b.wish && !readIds.has(b.id) && (b.starter || b.free || b.state === 'ready') && b.src !== 'home');
+    const out = [];
+    cands.forEach((c) => {
+      let score = 0, why = '';
+      read.forEach((r) => {
+        if (c.a && r.a && key(c.a) && key(c.a) === key(r.a)) { if (score < 3) { score = 3; why = r.a + ' రాసినదే (మీరు "' + r.t + '" చదివారు)'; } }
+        else if (c.sec && c.sec === r.sec && c.sec !== 'mine') { if (score < 1) { score = 1; why = '"' + r.t + '" లాంటిదే · ' + secName(c.sec); } }
+        else if (c.era && c.era === r.era) { if (score < 0.5) { score = 0.5; why = '"' + r.t + '" కాలం నాటిదే'; } }
+      });
+      if (score > 0) out.push({ b: c, score, why });
+    });
+    if (!read.length) SECTIONS.forEach((s) => { const f = cands.find((c) => c.sec === s.k); if (f) out.push({ b: f, score: 0.1, why: s.e + ' ' + s.n + ' నుంచి మొదలుపెట్టడానికి' }); });
+    out.sort((x, y) => y.score - x.score || String(x.b.t).localeCompare(String(y.b.t)));
+    return out.slice(0, 8);
+  }
+
+  /** 🗺️ Where each person sits on the map: the most linked in the middle, the rest on rings (no randomness: the same each time). */
+  function mapLayout(people, links, w, h) {
+    const deg = {};
+    people.forEach((p) => { deg[p.n] = 0; });
+    (links || []).forEach((l) => { if (l[0] in deg) deg[l[0]]++; if (l[1] in deg) deg[l[1]]++; });
+    const order = people.slice().sort((a, b) => (deg[b.n] - deg[a.n]) || ((b.u || []).length - (a.u || []).length));
+    const cx = w / 2, cy = h / 2, pos = {};
+    // rings of 1, 6, 12, 18 … people; the rings spread over the whole picture (room left for the names)
+    const cap = (k) => (k === 0 ? 1 : 6 * k);
+    let rings = 0, room = 0;
+    while (room < order.length) { room += cap(rings); rings++; }
+    const rx = Math.max(10, w / 2 - 46), ry = Math.max(10, h / 2 - 26);
+    let ring = 0, slot = 0;
+    order.forEach((p) => {
+      if (ring === 0) { pos[p.n] = { x: Math.round(cx), y: Math.round(cy), d: deg[p.n] }; ring = 1; slot = 0; return; }
+      const f = rings <= 2 ? 0.82 : 0.45 + 0.55 * (ring - 1) / (rings - 2);
+      const inRing = Math.min(cap(ring), order.length - (ring === 1 ? 1 : 1 + 3 * ring * (ring - 1)));
+      const a = (slot / Math.max(1, inRing)) * Math.PI * 2 - Math.PI / 2 + ring * 0.5;
+      pos[p.n] = { x: Math.round(cx + Math.cos(a) * rx * f), y: Math.round(cy + Math.sin(a) * ry * f), d: deg[p.n] };
+      slot++;
+      if (slot >= cap(ring)) { ring++; slot = 0; }
+    });
+    return pos;
+  }
+
   const K = { centre, SECTIONS, ERAS, MY, MY_SHELVES, CASE, racks, hash, colourOf, sizeOf, merge, onRack, myShelves, layout, myLayout, mark,
-    yearSaid, pagesSaid, money, rackName, spineLines, wordAt };
+    yearSaid, pagesSaid, money, rackName, spineLines, wordAt, nextReads, mapLayout };
   if (typeof module !== 'undefined' && module.exports) module.exports = K;
   root.LibKit = K;
 })(typeof window !== 'undefined' ? window : globalThis);

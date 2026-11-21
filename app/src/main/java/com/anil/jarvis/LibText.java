@@ -532,4 +532,267 @@ final class LibText {
         }
         return subs;
     }
+
+    // ================================================================ 💬 the book's own words for a question (₹0: found on the phone)
+
+    private static final java.util.Set<String> STOP = new java.util.HashSet<>(java.util.Arrays.asList(
+            "the", "and", "for", "that", "with", "this", "from", "was", "were", "are", "his", "her", "him", "she", "they", "them", "what",
+            "who", "whom", "why", "how", "when", "where", "which", "did", "does", "has", "have", "had", "not", "but", "you", "your",
+            "into", "about", "there", "their", "then", "than", "been", "being", "will", "would", "could", "should", "book", "story"));
+
+    /** Search words of a question (English letters, 3+, no common words), lower case, each once. */
+    static List<String> searchWords(String q) {
+        List<String> out = new ArrayList<>();
+        if (q == null) return out;
+        Matcher m = Pattern.compile("[A-Za-z][A-Za-z'\\-]{2,}").matcher(q);
+        while (m.find()) {
+            String w = m.group().toLowerCase(Locale.ROOT).replaceAll("'s$", "");
+            if (w.length() >= 3 && !STOP.contains(w) && !out.contains(w)) out.add(w);
+        }
+        return out;
+    }
+
+    /**
+     * The parts of the book that best answer these words (chapters cut into pieces of about {@code size} letters, each piece
+     * scored by the words it holds, rarer words weighing more), up to {@code maxChars} in book order, each with
+     * "[అధ్యాయం N]" before it. "" when no word is in the book.
+     */
+    static String topPassages(List<String> chapters, List<String> words, int size, int maxChars) {
+        if (chapters == null || words == null || words.isEmpty()) return "";
+        List<int[]> at = new ArrayList<>(); // {unit, start, end}
+        for (int u = 0; u < chapters.size(); u++) {
+            String t = chapters.get(u) == null ? "" : chapters.get(u);
+            int i = 0;
+            while (i < t.length()) {
+                int e = Math.min(t.length(), i + size);
+                if (e < t.length()) { int dot = t.lastIndexOf(". ", e); if (dot > i + size / 2) e = dot + 1; }
+                at.add(new int[]{u, i, e});
+                i = e;
+            }
+        }
+        int n = at.size();
+        double[] score = new double[n];
+        for (String w : words) {
+            Pattern pw = Pattern.compile("\\b" + Pattern.quote(w), Pattern.CASE_INSENSITIVE);
+            int[] tf = new int[n];
+            int df = 0;
+            for (int k = 0; k < n; k++) {
+                int[] a = at.get(k);
+                Matcher m = pw.matcher(chapters.get(a[0]).substring(a[1], a[2]));
+                while (m.find()) tf[k]++;
+                if (tf[k] > 0) df++;
+            }
+            if (df == 0) continue;
+            double idf = Math.log(1 + (double) n / df);
+            for (int k = 0; k < n; k++) if (tf[k] > 0) score[k] += idf * (1 + Math.log(tf[k]));
+        }
+        Integer[] order = new Integer[n];
+        for (int k = 0; k < n; k++) order[k] = k;
+        java.util.Arrays.sort(order, (x, y) -> Double.compare(score[y], score[x]));
+        List<Integer> pick = new ArrayList<>();
+        int used = 0;
+        for (Integer k : order) {
+            if (score[k] <= 0) break;
+            int len = at.get(k)[2] - at.get(k)[1];
+            if (used + len > maxChars && !pick.isEmpty()) continue;
+            pick.add(k);
+            used += len;
+            if (used >= maxChars) break;
+        }
+        if (pick.isEmpty()) return "";
+        java.util.Collections.sort(pick);
+        StringBuilder b = new StringBuilder();
+        for (int k : pick) {
+            int[] a = at.get(k);
+            b.append("[అధ్యాయం ").append(a[0] + 1).append("]\n").append(chapters.get(a[0]).substring(a[1], a[2]).trim()).append("\n\n");
+        }
+        return b.toString().trim();
+    }
+
+    // ================================================================ the AI's answers in a form the page can use
+
+    /** The first whole {...} in the AI's answer (it may say a word before or after), or null. */
+    static JSONObject jsonBlock(String s) {
+        if (s == null) return null;
+        int i = s.indexOf('{');
+        while (i >= 0) {
+            int depth = 0;
+            boolean str = false, esc = false;
+            for (int k = i; k < s.length(); k++) {
+                char ch = s.charAt(k);
+                if (str) { if (esc) esc = false; else if (ch == '\\') esc = true; else if (ch == '"') str = false; continue; }
+                if (ch == '"') str = true;
+                else if (ch == '{') depth++;
+                else if (ch == '}' && --depth == 0) {
+                    try { return new JSONObject(s.substring(i, k + 1)); } catch (Exception e) { break; }
+                }
+            }
+            i = s.indexOf('{', i + 1);
+        }
+        return null;
+    }
+
+    /** ❓ The quiz the AI wrote: up to 5 questions, each with 4 choices, the right one's number and why; bad ones left out. */
+    static JSONArray quiz(String ai) {
+        JSONArray out = new JSONArray();
+        JSONObject j = jsonBlock(ai);
+        JSONArray q = j == null ? null : j.optJSONArray("q");
+        for (int i = 0; q != null && i < q.length() && out.length() < 5; i++) {
+            JSONObject x = q.optJSONObject(i);
+            if (x == null) continue;
+            JSONArray o = x.optJSONArray("o");
+            int a = x.optInt("a", -1);
+            String qq = x.optString("q", "").trim();
+            if (qq.isEmpty() || o == null || o.length() < 2 || o.length() > 5 || a < 0 || a >= o.length()) continue;
+            try {
+                JSONArray oo = new JSONArray();
+                for (int k = 0; k < o.length(); k++) oo.put(cut(o.optString(k, "").trim(), 200));
+                out.put(new JSONObject().put("q", cut(qq, 400)).put("o", oo).put("a", a).put("why", cut(x.optString("why", "").trim(), 500)));
+            } catch (Exception ignored) {}
+        }
+        return out;
+    }
+
+    /** A name as one key ("Mr. Sherlock Holmes" = "sherlock holmes"). */
+    static String nameKey(String n) {
+        if (n == null) return "";
+        String k = n.toLowerCase(Locale.ROOT).replaceAll("\\b(mr|mrs|miss|ms|dr|sir|lady|lord|captain|colonel|professor)\\.?\\s+", "")
+                .replaceAll("[^\\p{L}\\p{N} ]", " ").replaceAll("\\s+", " ").trim();
+        return k;
+    }
+
+    /**
+     * 🗺️ The chapters' characters as one map: each person once (by name; a shorter name of the same person joins the
+     * longer, "Holmes" → "Sherlock Holmes"), the chapters they are in, how they are linked, and each chapter's event.
+     * Input: one {u, c:[{n, te, w}], r:[[a, b, how]], e} per chapter.
+     */
+    static JSONObject mergeMap(List<JSONObject> chapters) {
+        java.util.LinkedHashMap<String, JSONObject> people = new java.util.LinkedHashMap<>();
+        java.util.LinkedHashMap<String, JSONArray> links = new java.util.LinkedHashMap<>();
+        JSONArray events = new JSONArray();
+        List<JSONArray> raw = new ArrayList<>();
+        try {
+            for (JSONObject ch : chapters) {
+                if (ch == null) continue;
+                int u = ch.optInt("u", 0);
+                JSONArray c = ch.optJSONArray("c");
+                for (int i = 0; c != null && i < c.length(); i++) {
+                    JSONObject x = c.optJSONObject(i);
+                    if (x == null) continue;
+                    String key = nameKey(x.optString("n"));
+                    if (key.isEmpty()) continue;
+                    String same = sameAs(people, key);
+                    if (same != null && key.length() > same.length()) { // (the longer name wins: the entry moves to it)
+                        JSONObject old = people.remove(same);
+                        old.put("n", x.optString("n").trim());
+                        people.put(key, old);
+                        same = key;
+                    }
+                    JSONObject p = same != null ? people.get(same) : null;
+                    if (p == null) {
+                        p = new JSONObject().put("n", cut(x.optString("n").trim(), 80)).put("te", cut(x.optString("te").trim(), 80))
+                                .put("w", cut(x.optString("w").trim(), 200)).put("u", new JSONArray());
+                        people.put(key, p);
+                    }
+                    if (p.optString("te").isEmpty()) p.put("te", cut(x.optString("te").trim(), 80));
+                    if (p.optString("w").isEmpty()) p.put("w", cut(x.optString("w").trim(), 200));
+                    JSONArray us = p.getJSONArray("u");
+                    boolean has = false;
+                    for (int k = 0; k < us.length(); k++) if (us.optInt(k) == u) has = true;
+                    if (!has) us.put(u);
+                }
+                JSONArray r = ch.optJSONArray("r");
+                for (int i = 0; r != null && i < r.length(); i++) { JSONArray x = r.optJSONArray(i); if (x != null && x.length() >= 3) raw.add(x); }
+                String e = ch.optString("e", "").trim();
+                if (!e.isEmpty()) events.put(new JSONObject().put("u", u).put("e", cut(e, 300)));
+            }
+            // (links after everyone is known: a person's name may have grown in a later chapter)
+            for (JSONArray x : raw) {
+                String a = sameAs(people, nameKey(x.optString(0))), b = sameAs(people, nameKey(x.optString(1)));
+                if (a == null || b == null || a.equals(b)) continue;
+                String lk = a.compareTo(b) < 0 ? a + "|" + b : b + "|" + a;
+                if (!links.containsKey(lk)) links.put(lk, new JSONArray().put(people.get(a).optString("n")).put(people.get(b).optString("n")).put(cut(x.optString(2).trim(), 60)));
+            }
+            JSONArray cs = new JSONArray(), rs = new JSONArray();
+            for (JSONObject p : people.values()) cs.put(p);
+            for (JSONArray l : links.values()) rs.put(l);
+            return new JSONObject().put("c", cs).put("r", rs).put("e", events);
+        } catch (Exception e) {
+            return new JSONObject();
+        }
+    }
+
+    /** The key of the same person already there: the same name, or one name inside the other as whole words. */
+    private static String sameAs(java.util.Map<String, JSONObject> people, String key) {
+        if (key.isEmpty()) return null;
+        if (people.containsKey(key)) return key;
+        for (String k : people.keySet()) {
+            if ((" " + k + " ").contains(" " + key + " ") || (" " + key + " ").contains(" " + k + " ")) return k;
+        }
+        return null;
+    }
+
+    // ================================================================ 🎧 the phone voice's sound files
+
+    /** A WAV file's {sample rate, channels, bits, where the sound starts, its length}; null when it isn't plain PCM WAV. */
+    static int[] wavInfo(byte[] b) {
+        if (b == null || b.length < 44 || b[0] != 'R' || b[1] != 'I' || b[2] != 'F' || b[3] != 'F' || b[8] != 'W' || b[9] != 'A') return null;
+        int i = 12, rate = 0, ch = 0, bits = 0;
+        while (i + 8 <= b.length) {
+            String id = new String(b, i, 4, java.nio.charset.StandardCharsets.US_ASCII);
+            int len = (b[i + 4] & 0xFF) | (b[i + 5] & 0xFF) << 8 | (b[i + 6] & 0xFF) << 16 | (b[i + 7] & 0xFF) << 24;
+            if (id.equals("fmt ") && i + 24 <= b.length) {
+                int fmt = (b[i + 8] & 0xFF) | (b[i + 9] & 0xFF) << 8;
+                if (fmt != 1) return null;
+                ch = (b[i + 10] & 0xFF) | (b[i + 11] & 0xFF) << 8;
+                rate = (b[i + 12] & 0xFF) | (b[i + 13] & 0xFF) << 8 | (b[i + 14] & 0xFF) << 16 | (b[i + 15] & 0xFF) << 24;
+                bits = (b[i + 22] & 0xFF) | (b[i + 23] & 0xFF) << 8;
+            } else if (id.equals("data")) {
+                int start = i + 8, n = len < 0 || start + len > b.length ? b.length - start : len;
+                return rate > 0 && ch > 0 && (bits == 16 || bits == 8) ? new int[]{rate, ch, bits, start, n} : null;
+            }
+            i += 8 + Math.max(0, len) + (len & 1);
+        }
+        return null;
+    }
+
+    /** The sound as one channel of 16-bit samples, at the rate wanted (a simple straight-line resampling). */
+    static short[] mono16(byte[] b, int[] info, int toRate) {
+        int ch = info[1], bits = info[2], start = info[3], n = info[4];
+        int frame = ch * bits / 8, frames = frame == 0 ? 0 : n / frame;
+        short[] mono = new short[frames];
+        for (int f = 0; f < frames; f++) {
+            int sum = 0;
+            for (int c = 0; c < ch; c++) {
+                int o = start + f * frame + c * bits / 8;
+                sum += bits == 16 ? (short) ((b[o] & 0xFF) | b[o + 1] << 8) : ((b[o] & 0xFF) - 128) << 8;
+            }
+            mono[f] = (short) (sum / ch);
+        }
+        int from = info[0];
+        if (from == toRate || frames == 0) return mono;
+        int outN = (int) ((long) frames * toRate / from);
+        short[] out = new short[outN];
+        for (int k = 0; k < outN; k++) {
+            double x = (double) k * from / toRate;
+            int a = (int) x;
+            double t = x - a;
+            int s0 = mono[Math.min(a, frames - 1)], s1 = mono[Math.min(a + 1, frames - 1)];
+            out[k] = (short) Math.round(s0 + (s1 - s0) * t);
+        }
+        return out;
+    }
+
+    // ================================================================ 📊 days
+
+    /** Days in a row (up to today, or up to yesterday when today has nothing yet) with at least a minute of reading. */
+    static int streak(JSONObject days, java.util.Calendar today) {
+        if (days == null) return 0;
+        java.util.Calendar d = (java.util.Calendar) today.clone();
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd", Locale.ROOT);
+        if (days.optDouble(f.format(d.getTime()), 0) < 60) d.add(java.util.Calendar.DAY_OF_MONTH, -1);
+        int n = 0;
+        while (days.optDouble(f.format(d.getTime()), 0) >= 60 && n < 3650) { n++; d.add(java.util.Calendar.DAY_OF_MONTH, -1); }
+        return n;
+    }
 }

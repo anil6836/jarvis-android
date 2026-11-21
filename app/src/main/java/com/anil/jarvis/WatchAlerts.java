@@ -140,6 +140,27 @@ final class WatchAlerts {
         } catch (Exception ignored) {}
     }
 
+    /** ⌚ The reading card (📖 a book read aloud). */
+    static final int READING_ID = 0x5EAD;
+
+    /**
+     * 📖 A book read aloud: a quiet card on the watch (no buzz) with the reader's own buttons (⏸ / ▶, ⏹); sent again on
+     * every change (paused, going on), gone when the reading stops. Only when his watch is known to the phone.
+     */
+    static void reading(Context c, String title, String text, Notification.Action[] acts) {
+        try {
+            if (!WatchHub.known(c)) return;
+            JSONArray titles = new JSONArray();
+            if (acts != null) {
+                for (Notification.Action a : acts) titles.put(a == null ? "" : str(a.title));
+                actions.put(READING_ID, acts);
+            }
+            JSONObject o = new JSONObject().put("id", READING_ID).put("key", "jarvis-direct-" + READING_ID).put("kind", "info").put("title", title)
+                    .put("text", text).put("acts", titles).put("quiet", true).put("silent", true);
+            WatchHub.send(c.getApplicationContext(), P_ALERT, o, null, true);
+        } catch (Exception ignored) {}
+    }
+
     /** A card straight to the watch that never buzzes (the trip card, updated every few minutes); gone with {@link #directGone}. */
     static void directQuiet(Context c, int id, String title, String text) {
         try {

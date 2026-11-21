@@ -58,6 +58,8 @@ public class ReaderService extends Service {
     static volatile Watch watch;
     /** 🌙 elapsedRealtime when reading pauses by itself (0 = no sleep timer). */
     static volatile long sleepAt;
+    /** ⌚ When the watch last got the reading card (elapsedRealtime). */
+    private static volatile long cardAt;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private TextToSpeech tts;
@@ -227,10 +229,18 @@ public class ReaderService extends Service {
                         line = te;
                     } else if (ai != null && ai[k] != null) line = ai[k];
                     if (worker != me) return;
-                    if (!say(line, p)) return; // stopped / paused: this sentence is said again next time
+                    long t0 = android.os.SystemClock.elapsedRealtime();
+                    boolean whole = say(line, p);
+                    if (libId != null) LibTools.readFor(this, libId, (android.os.SystemClock.elapsedRealtime() - t0) / 1000.0); // (📊 the library's books read aloud)
+                    if (android.os.SystemClock.elapsedRealtime() - cardAt > 10 * 60_000L && worker == me) { // (⌚ the watch drops a card after 15 minutes: sent again)
+                        cardAt = android.os.SystemClock.elapsedRealtime();
+                        main.post(() -> { if (!paused && !reading.isEmpty()) try { note("📖 " + mark(this).getString("name", ""), "చదువుతున్నాను"); } catch (Exception ignored) {} });
+                    }
+                    if (!whole) return; // stopped / paused: this sentence is said again next time
                 }
                 m.edit().putInt("unit", unit + 1).putInt("chunk", 0).apply();
                 if (libId != null) Library.savePos(this, libId, unit + 1, 0);
+                if (libId != null) LibTools.chapterDone(this, libId);
             }
             String done = m.getString("on_done", "");
             m.edit().remove("uri").remove("on_done").apply();
@@ -501,11 +511,15 @@ public class ReaderService extends Service {
                 .addAction(new Notification.Action.Builder(null, "⏹ మూసేయి", stop).build()).build();
         if (Build.VERSION.SDK_INT >= 29) startForeground(NOTE, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
         else startForeground(NOTE, n);
+        // ⌚ the same buttons as a quiet card on his watch (no buzz): ⏸ / ▶ and ⏹ press the phone's own ones
+        WatchAlerts.reading(this, title, text, n.actions);
+        cardAt = android.os.SystemClock.elapsedRealtime();
     }
 
     @Override public void onDestroy() {
         stopFlag = true;
         halt();
+        WatchAlerts.directGone(this, WatchAlerts.READING_ID); // (⌚ the reading card goes with it)
         Watch w = watch;
         if (w != null) w.stopped(mark(this).getString("uri", ""));
         if (LibraryActivity.open == 0) Library.closeTranslator();

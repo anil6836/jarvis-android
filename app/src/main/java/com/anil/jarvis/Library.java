@@ -825,6 +825,8 @@ final class Library {
         /** Where it is now (for the live bar and the notification): the chapter, its lines done / all, which chapter of the job. */
         volatile int unit = -1, k, n, ci;
         volatile String title = "";
+        /** "tr" ✨ AI Telugu, "map" 🗺️ the book's people (chapter by chapter). */
+        volatile String kind = "tr";
         AiJob(String id, List<Integer> units) { this.id = id; this.units = units; }
     }
 
@@ -883,13 +885,54 @@ final class Library {
     }
 
     /** Starts AI Telugu for those chapters (one job at a time); false when one is running. */
-    static synchronized boolean aiStart(Context c, String id, List<Integer> units) {
+    static synchronized boolean aiStart(Context c, String id, List<Integer> units) { return aiStart(c, id, units, "tr"); }
+
+    static synchronized boolean aiStart(Context c, String id, List<Integer> units, String kind) {
         if (running != null) return false;
         AiJob j = new AiJob(id, units);
+        j.kind = "map".equals(kind) ? "map" : "tr";
         running = j;
         Context app = c.getApplicationContext();
-        new Thread(() -> aiRun(app, j), "jarvis-library-ai").start();
+        new Thread(() -> { if ("map".equals(j.kind)) aiRunMap(app, j); else aiRun(app, j); }, "jarvis-library-ai").start();
         return true;
+    }
+
+    /** 🗺️ The book's people, chapter by chapter (each kept as it comes), then one map; the cost said at the end. */
+    private static void aiRunMap(Context c, AiJob j) {
+        String said;
+        try {
+            Prefs p = new Prefs(c);
+            Workshop.Engine e = engine(p);
+            JSONObject bk = book(c, j.id);
+            j.title = bk == null ? "" : bk.optString("t");
+            j.n = 0;
+            for (int u : j.units) {
+                if (j.stop) break;
+                j.unit = u; j.ci++;
+                String over = Workshop.overLimit(c, p);
+                if (over != null) throw new Workshop.Problem(over);
+                aiNotice(c, j);
+                AiWatch w = aiWatch;
+                if (w != null) w.progress(j, "🗺️ అధ్యాయం " + (u + 1) + " (" + j.ci + " / " + j.units.size() + ") · " + Workshop.money(j.rupees));
+                j.rupees += LibTools.mapChapter(c, e, j.id, u);
+                j.done++;
+            }
+            JSONObject m = LibTools.mapMerge(c, j.id);
+            Workshop.spendBooks(c, 0, true);
+            said = (j.stop ? "🗺️ ఆపేశాను Sir. అయిన అధ్యాయాల పాత్రలు దాచాను" : "🗺️ పాత్రల మ్యాప్ అయింది Sir: " + (m.optJSONArray("c") == null ? 0 : m.optJSONArray("c").length()) + " పాత్రలు")
+                    + ", ఖర్చు " + Workshop.money(j.rupees) + ".";
+        } catch (Workshop.Problem e) {
+            LibTools.mapMerge(c, j.id);
+            said = e.getMessage() + (j.rupees > 0 ? " (ఇప్పటిదాకా " + Workshop.money(j.rupees) + ")" : "");
+        } catch (Exception e) {
+            LibTools.mapMerge(c, j.id);
+            said = "🗺️ ఆగిపోయింది Sir: " + (e.getMessage() == null ? "సమస్య" : e.getMessage()) + ". ఖర్చు " + Workshop.money(j.rupees) + "; అయినవి దాచాను.";
+        }
+        running = null;
+        try { c.getSystemService(NotificationManager.class).cancel(195); } catch (Exception ignored) {}
+        AiWatch w = aiWatch;
+        if (w != null) w.finished(j, said);
+        if (w == null || !LibraryActivity.front) notifyDone(c, said);
     }
 
     private static void aiRun(Context c, AiJob j) {
@@ -1029,7 +1072,7 @@ final class Library {
         AiJob j = running;
         if (j == null) return null;
         try {
-            JSONObject b = book(c, j.id), o = new JSONObject().put("id", j.id).put("title", j.title).put("unit", j.unit).put("k", j.k).put("n", j.n)
+            JSONObject b = book(c, j.id), o = new JSONObject().put("id", j.id).put("kind", j.kind).put("title", j.title).put("unit", j.unit).put("k", j.k).put("n", j.n)
                     .put("ci", j.ci).put("cn", j.units.size()).put("rs", Math.round(j.rupees * 100) / 100.0);
             if (b != null) {
                 long all = b.optLong("chars", 0), done = 0;
@@ -1049,15 +1092,16 @@ final class Library {
         try {
             NotificationManager nm = c.getSystemService(NotificationManager.class);
             nm.createNotificationChannel(new NotificationChannel("jarvis_library", "📚 లైబ్రరీ", NotificationManager.IMPORTANCE_LOW));
-            int pct = j.n == 0 ? 0 : j.k * 100 / j.n;
+            boolean map = "map".equals(j.kind);
+            int pct = map ? Math.max(0, j.ci - 1) * 100 / Math.max(1, j.units.size()) : j.n == 0 ? 0 : j.k * 100 / j.n;
             android.content.Intent open = new android.content.Intent(c, LibraryActivity.class).putExtra(LibraryActivity.EXTRA_VIEW, "tr")
                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP | android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
             android.content.Intent stop = new android.content.Intent(c, LibraryActivity.class).putExtra(LibraryActivity.EXTRA_STOP_AI, true).putExtra(LibraryActivity.EXTRA_VIEW, "tr")
                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP | android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
             int fl = android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT;
-            String line = "అధ్యాయం " + (j.unit + 1) + (j.units.size() > 1 ? " (" + j.ci + " / " + j.units.size() + ")" : "") + " · " + j.k + " / " + j.n + " వాక్యాలు · " + Workshop.money(j.rupees);
+            String line = "అధ్యాయం " + (j.unit + 1) + (j.units.size() > 1 ? " (" + j.ci + " / " + j.units.size() + ")" : "") + (map ? "" : " · " + j.k + " / " + j.n + " వాక్యాలు") + " · " + Workshop.money(j.rupees);
             nm.notify(195, new Notification.Builder(c, "jarvis_library").setSmallIcon(android.R.drawable.ic_menu_agenda)
-                    .setContentTitle("✨ AI తెలుగు · " + LibText.cut(j.title, 60)).setContentText(line)
+                    .setContentTitle((map ? "🗺️ పాత్రల మ్యాప్ · " : "✨ AI తెలుగు · ") + LibText.cut(j.title, 60)).setContentText(line)
                     .setProgress(100, pct, false).setOngoing(true).setOnlyAlertOnce(true)
                     .setContentIntent(android.app.PendingIntent.getActivity(c, 195, open, fl))
                     .addAction(new Notification.Action.Builder(null, "⏹ ఆపు", android.app.PendingIntent.getActivity(c, 196, stop, fl)).build())
