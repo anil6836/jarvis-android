@@ -67,7 +67,20 @@
   #reader.night header button, #reader.night footer button { background: rgba(255,255,255,.06); border-color: #4a3622; }
   #reader .h { color: #6a3f12; }
   #reader.night .h { color: var(--gold); }
-  #chap { font: inherit; font-size: 14px; max-width: 46vw; color: inherit; background: transparent; border: 1px solid rgba(0,0,0,.2); border-radius: 10px; padding: 5px; }
+  #chap { font: inherit; font-size: 14px; color: inherit; background: rgba(255,255,255,.35); border: 1px solid rgba(0,0,0,.2); border-radius: 10px; padding: 7px 6px; }
+  /* (two rows: the book's name in full with 🎙️; the chapter with A− A+ 🌙 under it: nothing pushed off the screen) */
+  #reader #rHead { flex-direction: column; align-items: stretch; gap: 6px; padding: 6px 8px 8px; }
+  #rHead .r1, #rHead .r2 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  #rHead .rt { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; line-height: 1.25; padding: 0 2px; }
+  #rTitle { font-weight: 700; font-size: 17px; color: #6b3f12; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #rSub { font-size: 12.5px; opacity: .72; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #reader.night #rTitle { color: #f0c977; }
+  #rHead #chap { flex: 1; min-width: 0; }
+  #rHead .r2 button { flex: none; min-width: 46px; padding: 7px 10px; }
+  #rHead .r1 button { flex: none; }
+  #reader #rMic { min-width: 46px; background: rgba(201,162,78,.22); border-color: #b58a3a; }
+  #reader.night #chap { background: rgba(255,255,255,.05); border-color: #4a3622; }
+  #reader.night #chap option { background: #221a12; }
   #modes { display: flex; gap: 6px; padding: 6px 8px; overflow-x: auto; background: inherit; border-bottom: 1px solid rgba(0,0,0,.12); scrollbar-width: none; }
   #modes .chip, #pairs .chip { background: rgba(0,0,0,.06); border-color: rgba(0,0,0,.18); color: inherit; }
   #reader.night #modes .chip, #reader.night #pairs .chip { background: rgba(255,255,255,.06); border-color: #4a3622; }
@@ -222,7 +235,10 @@
 </div>
 
 <div id="reader" class="panel" hidden>
-  <header><button id="rBack">←</button><span class="h" id="rTitle"></span><select id="chap"></select><button id="rSmall">A−</button><button id="rBig">A+</button><button id="rNight">🌙</button><button id="rMic" class="mic" aria-label="మాట్లాడండి">🎙️</button></header>
+  <header id="rHead">
+    <div class="r1"><button id="rBack">←</button><div class="rt"><span id="rTitle"></span><span id="rSub"></span></div><button id="rMic" class="mic" aria-label="మాట్లాడండి">🎙️</button></div>
+    <div class="r2"><select id="chap"></select><button id="rSmall" aria-label="అక్షరాలు చిన్నవి">A−</button><button id="rBig" aria-label="అక్షరాలు పెద్దవి">A+</button><button id="rNight" aria-label="రాత్రి / పగలు">🌙</button></div>
+  </header>
   <div id="modes"></div>
   <div id="pairs" hidden></div>
   <div id="rAi" hidden></div>

@@ -997,12 +997,22 @@ function openReader(id, unit) {
   closeBook(true);
   R.id = id; R.unit = Math.max(0, unit || 0); R.parts = []; R.te = null; R.ai = null; R.follow = true;
   R.mode = b.lang === 'te' ? 'en' : (S.prefs.mode || 'en');
-  $('rTitle').textContent = b.t;
+  R.n = b.n || 0;
   $('reader').hidden = false;
+  readerHead();
   $('text').textContent = '';
   $('text').appendChild(el('p', 'muted', 'తెరుస్తున్నాను…'));
   applyReaderLook();
   post({ t: 'chapter', id, unit: R.unit });
+}
+/** The reader's top line: the book's whole name (made a little smaller when long), its writer and which chapter. */
+function readerHead() {
+  const b = S.byId[R.id] || {};
+  const t = $('rTitle');
+  t.textContent = b.lang === 'te' && b.tt ? b.tt : b.t || '';
+  t.style.fontSize = '17px';
+  for (let f = 17; f > 14 && t.scrollWidth > t.clientWidth + 1; f -= 0.5) t.style.fontSize = f + 'px';
+  $('rSub').textContent = [b.a || '', R.n ? 'అధ్యాయం ' + (R.unit + 1) + ' / ' + R.n : ''].filter(Boolean).join(' · ');
 }
 function applyReaderLook() {
   $('reader').classList.toggle('night', !!S.prefs.night);
@@ -1028,6 +1038,7 @@ function gotChapter(m) {
   const sel = $('chap');
   sel.textContent = '';
   chapList();
+  readerHead();
   modesBar();
   toolsBar();
   renderText();
