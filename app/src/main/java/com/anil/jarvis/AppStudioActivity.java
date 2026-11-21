@@ -107,6 +107,8 @@ public class AppStudioActivity extends Activity {
     private LinearLayout list;
     private ScrollView listScroll;
     private HorizontalScrollView ideas;
+    /** 🧠 Before a plan is asked for: which AI writes it, about what a plan costs, and a tap for every model's plan cost. */
+    private TextView planAi;
     private EditText input;
     // the card over the preview: the plan, or the list of his apps
     private ScrollView overlay;
@@ -307,6 +309,10 @@ public class AppStudioActivity extends Activity {
         ideas = new HorizontalScrollView(this);
         ideas.setHorizontalScrollBarEnabled(false);
         ideas.addView(ideaRow);
+        planAi = Ui.text(this, "", 13.5f, Ui.CYAN);
+        planAi.setPadding(dp(2), dp(4), 0, dp(2));
+        planAi.setOnClickListener(v -> pickModel());
+        bottom.addView(planAi);
         bottom.addView(ideas);
 
         LinearLayout actions = new LinearLayout(this);
@@ -386,12 +392,18 @@ public class AppStudioActivity extends Activity {
      * 💰 The AI for this studio, picked by his tap from every model his keys can use, each with its cost for what is on the
      * screen: the plan being shown (its size), a change to the open app (its code), else one plan + one usual app.
      */
-    private void pickModel() {
-        final AppStudio.Plan pl = "plan".equals(overlayKind) ? plan : null;
-        final AppStudio.Made a = pl == null ? app : null;
-        String what = Workshop.costWhat(Workshop.APPS);
+    private void pickModel() { pickModel(false, null); }
+
+    /** (photo: the 📸 dialog's — a plan with a photo; after: run once his pick is kept) */
+    private void pickModel(boolean photo, Runnable after) {
+        final AppStudio.Plan pl = !photo && "plan".equals(overlayKind) ? plan : null;
+        final AppStudio.Made a = !photo && pl == null ? app : null;
+        String what = "🧠 ఒక ప్లాన్‌కి ఖర్చు (ఆ తర్వాత మామూలు సైజు యాప్ తయారీకి)";
         Models.Cost cost = Workshop.costOf(Workshop.APPS);
-        if (pl != null) {
+        if (photo) {
+            what = "📸 ఈ ఫోటోతో ఒక ప్లాన్‌కి ఖర్చు (ఆ తర్వాత మామూలు సైజు యాప్ తయారీకి)";
+            cost = mm -> "ప్లాన్ " + AppStudio.planMoney(mm, true) + " · యాప్ " + AppStudio.buildMoney(mm, "");
+        } else if (pl != null) {
             what = "ఈ ప్లాన్ (\"" + pl.title + "\") యాప్ తయారీకి ఖర్చు, ఎక్కువలో ఎక్కువ కూడా";
             cost = mm -> "తయారీ " + AppStudio.buildMoney(mm, pl.size) + " (ఎక్కువలో " + AppStudio.mostMoney(mm) + ")";
         } else if (a != null) {
@@ -404,6 +416,7 @@ public class AppStudioActivity extends Activity {
                     showChip();
                     if (pl != null && pl == plan && "plan".equals(overlayKind)) showPlan(pl, planCostShown); // (the card's ₹ for the new AI)
                     refresh();
+                    if (after != null) after.run();
                     android.widget.Toast.makeText(this, "✓ " + Workshop.studioName(Workshop.APPS) + " AI: " + it.id + " (వర్క్‌షాప్ AI మారలేదు)", android.widget.Toast.LENGTH_LONG).show();
                 });
     }
@@ -423,6 +436,12 @@ public class AppStudioActivity extends Activity {
         if (go == null) return;
         boolean busy = job != null, hasPlan = plan != null && "plan".equals(overlayKind), hasApp = app != null;
         ideas.setVisibility(!busy && !hasApp && plan == null ? View.VISIBLE : View.GONE);
+        if (planAi != null) {
+            planAi.setVisibility(ideas.getVisibility());
+            String pm = Workshop.modelFor(p, Workshop.APPS);
+            planAi.setText(pm.isEmpty() ? "🤖 AI ఎంచుకోలేదు · ఎంచుకో (ప్రతి మోడల్‌తో ప్లాన్ ఖర్చు) →"
+                    : "🤖 AI: " + WorkshopActivity.label(pm) + " · ప్లాన్‌కి సుమారు " + AppStudio.planMoney(pm) + " · మార్చు (ప్రతి మోడల్‌తో ప్లాన్ ఖర్చు) →");
+        }
         stopBtn.setVisibility(busy ? View.VISIBLE : View.GONE);
         cancelBtn.setVisibility(waiting != null ? View.VISIBLE : View.GONE);
         newBtn.setVisibility(!busy && (hasApp || plan != null) ? View.VISIBLE : View.GONE);
@@ -1088,6 +1107,8 @@ public class AppStudioActivity extends Activity {
         }, "jarvis-app-photo").start();
     }
 
+    private static String photoGo(String m) { return "🧠 ప్లాన్ చూపించు" + (m.isEmpty() ? "" : " (" + AppStudio.planMoney(m, true) + ")"); }
+
     /** The photo, his words (optional), and his tap: the photo goes to his AI with the plan request, and is not kept. */
     private void photoReady(String b64, android.graphics.Bitmap thumb) {
         LinearLayout box = new LinearLayout(this);
@@ -1103,12 +1124,18 @@ public class AppStudioActivity extends Activity {
         words.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         box.addView(words);
         String m = Workshop.modelFor(p, Workshop.APPS);
-        new AlertDialog.Builder(this).setTitle("📸 ఈ ఫోటోతో ప్లాన్")
+        AlertDialog dlg = new AlertDialog.Builder(this).setTitle("📸 ఈ ఫోటోతో ప్లాన్")
                 .setView(box)
-                .setPositiveButton("🧠 ప్లాన్ చూపించు" + (m.isEmpty() ? "" : " (" + AppStudio.planMoney(m, true) + ")"), (d, w) -> {
+                .setPositiveButton(photoGo(m), (d, w) -> {
                     String s = words.getText().toString().trim();
                     startPlan(s, s, false, b64);
-                }).setNegativeButton("వద్దు", null).show();
+                }).setNeutralButton("🤖 మోడల్", null).setNegativeButton("వద్దు", null).show();
+        // (🤖: every model's cost for a plan with this photo; the dialog stays, its button's ₹ follows the pick)
+        android.widget.Button nb = dlg.getButton(AlertDialog.BUTTON_NEUTRAL);
+        if (nb != null) nb.setOnClickListener(v -> pickModel(true, () -> {
+            android.widget.Button go2 = dlg.getButton(AlertDialog.BUTTON_POSITIVE);
+            if (go2 != null) go2.setText(photoGo(Workshop.modelFor(p, Workshop.APPS)));
+        }));
     }
 
     // ================================================================ ↩️ versions, 📤 send to family
