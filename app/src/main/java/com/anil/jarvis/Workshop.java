@@ -107,15 +107,24 @@ final class Workshop {
     // ---- 💰 each model's cost for one job of that studio (beside each model in the lists, cheapest first)
 
     /** About what one usual 3D model costs to build (the answer and a repair or two): "₹60–110" on Fable 5.2. */
-    static String buildMoney(String model) {
-        double lo = rupees(model, 4000, 0, 15000), hi = rupees(model, 5000, 0, 28000);
-        return "₹" + Math.max(1, (int) Math.floor(lo)) + "–" + Math.max(2, (int) Math.ceil(hi));
+    static String buildMoney(String model) { return fine(buildRupees(model)); }
+
+    static double[] buildRupees(String model) { return new double[]{rupees(model, 4000, 0, 15000), rupees(model, 5000, 0, 28000)}; }
+
+    /** 💰 A cost range said finely enough to tell cheap models apart: "₹0.12–0.35", "₹2.4–6.8", "₹46–108". */
+    static String fine(double[] r) { return "₹" + amt(r[0], false) + "–" + amt(r[1], true); }
+
+    private static String amt(double v, boolean up) {
+        v = Math.max(0, v);
+        if (v < 1) return String.format(Locale.ENGLISH, "%.2f", Math.max(0.01, up ? Math.ceil(v * 100) / 100 : Math.floor(v * 100) / 100));
+        if (v < 10) return String.format(Locale.ENGLISH, "%.1f", up ? Math.ceil(v * 10) / 10 : Math.floor(v * 10) / 10);
+        return String.valueOf(up ? (int) Math.ceil(v) : (int) Math.floor(v));
     }
 
     static Models.Cost costOf(String which) {
-        if (GAMES.equals(which)) return m -> "ఒక ఆట " + GameStudio.aboutMoney(m);
-        if (LAB.equals(which)) return m -> "కొత్త బోర్డ్ " + CircuitLab.aboutMoney(m, 0, false);
-        if (APPS.equals(which)) return m -> "ప్లాన్ " + AppStudio.planMoney(m) + " · యాప్ " + AppStudio.buildMoney(m, "");
+        if (GAMES.equals(which)) return m -> "ఒక ఆట " + fine(GameStudio.aboutRupees(m));
+        if (LAB.equals(which)) return m -> "కొత్త బోర్డ్ " + fine(CircuitLab.aboutRupees(m, CircuitLab.MODE_BOARD, 0, false));
+        if (APPS.equals(which)) return m -> "ప్లాన్ " + fine(AppStudio.planRupees(m, false)) + " · యాప్ " + fine(AppStudio.buildRupees(m, ""));
         if (BOOKS.equals(which)) return m -> "ఒక అధ్యాయం " + money(Library.cost(m, 50000));
         return m -> "ఒక బొమ్మ " + buildMoney(m);
     }

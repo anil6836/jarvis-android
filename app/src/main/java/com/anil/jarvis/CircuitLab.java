@@ -63,14 +63,18 @@ final class CircuitLab {
      * (chars = its size) and writes a board and the links.
      */
     static String aboutMoney(String model, String mode, int chars, boolean photo) {
+        double[] r = aboutRupees(model, mode, chars, photo);
+        return "₹" + Math.max(1, (int) Math.floor(r[0])) + "–" + Math.max(2, (int) Math.ceil(r[1]));
+    }
+
+    static double[] aboutRupees(String model, String mode, int chars, boolean photo) {
         long in = Math.round(SYSTEM.length() / 3.2) + 200 + (photo ? 1600 : 0);
         int lo = 600, hi;
         if (MODE_BOTH.equals(mode)) { in += Math.round((SLD_FORMAT.length() + SLD_LINKS.length()) / 3.2); lo = 2000; hi = 10000; }
         else if (MODE_SLD.equals(mode)) { in += Math.round(SLD_FORMAT.length() / 3.2); lo = 1500; hi = 8000; }
         else if (MODE_FROM_SLD.equals(mode)) { in += Math.round(SLD_LINKS.length() / 3.2) + Math.round(chars / 2.7); lo = 1200; hi = 6000; }
         else { in += Math.round(chars / 3.0); hi = chars > 0 || photo ? 4500 : 3500; }
-        double a = Workshop.rupees(model, in, 0, lo), b = Workshop.rupees(model, in, 0, hi);
-        return "₹" + Math.max(1, (int) Math.floor(a)) + "–" + Math.max(2, (int) Math.ceil(b));
+        return new double[]{Workshop.rupees(model, in, 0, lo), Workshop.rupees(model, in, 0, hi)};
     }
 
     static String overLimit(Context c, Prefs p) {

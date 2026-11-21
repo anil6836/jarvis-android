@@ -44,16 +44,22 @@ final class GameStudio {
 
     /** About what one game costs on this model, said before it is made: "₹9–35". */
     static String aboutMoney(String model) {
+        double[] r = aboutRupees(model);
+        return "₹" + Math.max(1, (int) Math.floor(r[0])) + "–" + Math.max(2, (int) Math.ceil(r[1]));
+    }
+
+    static double[] aboutRupees(String model) {
         long in = Math.round(SYSTEM.length() / 3.2) + 300;
-        double lo = Workshop.rupees(model, in, 0, 3500), hi = Workshop.rupees(model, in, 0, 9500) + Workshop.rupees(model, 9000, 0, 2500);
-        return "₹" + Math.max(1, (int) Math.floor(lo)) + "–" + Math.max(2, (int) Math.ceil(hi));
+        return new double[]{Workshop.rupees(model, in, 0, 3500), Workshop.rupees(model, in, 0, 9500) + Workshop.rupees(model, 9000, 0, 2500)};
     }
 
     /** About what a 🔧 repair of one part costs. */
     static String fixMoney(String model) {
-        double lo = Workshop.rupees(model, 7000, 0, 1500), hi = Workshop.rupees(model, 12000, 0, REPAIR_OUT);
-        return "₹" + Math.max(1, (int) Math.floor(lo)) + "–" + Math.max(2, (int) Math.ceil(hi));
+        double[] r = fixRupees(model);
+        return "₹" + Math.max(1, (int) Math.floor(r[0])) + "–" + Math.max(2, (int) Math.ceil(r[1]));
     }
+
+    static double[] fixRupees(String model) { return new double[]{Workshop.rupees(model, 7000, 0, 1500), Workshop.rupees(model, 12000, 0, REPAIR_OUT)}; }
 
     /** Why no new game may start now: this month's limit (the workshop's and the games' together) is reached; or null. */
     static String overLimit(Context c, Prefs p) {

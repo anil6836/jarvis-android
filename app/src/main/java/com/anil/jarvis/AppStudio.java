@@ -67,9 +67,36 @@ final class AppStudio {
     static String planMoney(String model) { return planMoney(model, false); }
 
     /** (with a photo: about 1,600 tokens more in) */
-    static String planMoney(String model, boolean photo) {
+    static String planMoney(String model, boolean photo) { double[] r = planRupees(model, photo); return range(r[0], r[1]); }
+
+    /** {least, most} rupees of a plan (or a change to the plan). */
+    static double[] planRupees(String model, boolean photo) {
         long in = Math.round(PLAN_SYSTEM.length() / 3.2) + 300 + (photo ? 1600 : 0);
-        return range(Workshop.rupees(model, in, 0, 900), Workshop.rupees(model, in + 900, 0, 2600));
+        return new double[]{Workshop.rupees(model, in, 0, 900), Workshop.rupees(model, in + 900, 0, 2600)};
+    }
+
+    /** How many things he asked for in these words (split by commas, new lines, "మరియు", "and"; a bracket is one thing). */
+    static int asks(String words) {
+        if (words == null) return 0;
+        String w = words.replaceAll("\\([^)]*\\)", " ");
+        int n = 0;
+        for (String piece : w.split("[,،;\\n]|\\s+మరియు\\s+|\\s+and\\s+|\\s+&\\s+"))
+            if (piece.replaceAll("[^\\p{L}\\p{N}]", "").length() >= 2) n++;
+        return n;
+    }
+
+    /** The app's size this ask may come to (only a guess for the cost: the plan decides). */
+    static String sizeFor(String words) { int a = asks(words); return a <= 3 ? "small" : a <= 8 ? "medium" : "large"; }
+
+    static String sizeSaid(String size) { return "small".equals(size) ? "చిన్నది" : "large".equals(size) ? "పెద్దది" : "మధ్యస్థం"; }
+
+    /** {least, most} rupees of a plan for THESE words: they go in with the brief, and the plan grows with what he asked for. */
+    static double[] planRupeesFor(String model, String words, boolean photo) {
+        int a = Math.max(1, asks(words)), len = words == null ? 0 : words.trim().length();
+        long in = Math.round(PLAN_SYSTEM.length() / 3.2) + 300 + (photo ? 1600 : 0) + Math.round(len / 1.5); // (Telugu letters weigh more)
+        // (set from a real one: the cricket score plan, 6 things asked, came to about 770 tokens back = ₹5.44 on GPT 6 Astra)
+        int lo = Math.min(PLAN_OUT, 450 + 60 * a), hi = Math.min(PLAN_OUT, 1100 + 180 * a);
+        return new double[]{Workshop.rupees(model, in, 0, lo), Workshop.rupees(model, in + 900, 0, hi)};
     }
 
     /** Tokens one app of this size usually writes: {least, most}. */
@@ -80,10 +107,12 @@ final class AppStudio {
     }
 
     /** About what making the app costs (with one repair allowed for): "₹20–45". */
-    static String buildMoney(String model, String size) {
+    static String buildMoney(String model, String size) { double[] r = buildRupees(model, size); return range(r[0], r[1]); }
+
+    static double[] buildRupees(String model, String size) {
         long in = Math.round(SYSTEM.length() / 3.2) + 900;
         int[] o = sizeOut(size);
-        return range(Workshop.rupees(model, in, 0, o[0]), Workshop.rupees(model, in, 0, o[1]) + Workshop.rupees(model, 12000, 0, 2500));
+        return new double[]{Workshop.rupees(model, in, 0, o[0]), Workshop.rupees(model, in, 0, o[1]) + Workshop.rupees(model, 12000, 0, 2500)};
     }
 
     /** The most one app can cost: the whole answer at its cap and every repair at its cap. "₹195" */
@@ -94,9 +123,11 @@ final class AppStudio {
     }
 
     /** A change: the app's whole code goes along (so the new parts fit), the changed parts come back. */
-    static String changeMoney(String model, int codeChars) {
+    static String changeMoney(String model, int codeChars) { double[] r = changeRupees(model, codeChars); return range(r[0], r[1]); }
+
+    static double[] changeRupees(String model, int codeChars) {
         long in = Math.round(SYSTEM.length() / 3.2) + Math.round(codeChars / 3.0) + 400;
-        return range(Workshop.rupees(model, in, 0, 1500), Workshop.rupees(model, in, 0, 7000));
+        return new double[]{Workshop.rupees(model, in, 0, 1500), Workshop.rupees(model, in, 0, 7000)};
     }
 
     static String repairMoney(String model, int codeChars) {
