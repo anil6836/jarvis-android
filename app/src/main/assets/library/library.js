@@ -1025,17 +1025,30 @@ function addForm(m) {
     a.appendChild(el('label', 'l', 'పేజీల్లో భాష'));
     const n = info.pages || 0;
     const r1 = el('div', 'radio' + (lang === 'en' ? ' on' : ''), '🔤 English: ఫోన్ తానే చదువుతుంది · ₹0');
-    const cost = m.quote1 > 0 ? K.money(m.quote1 * n) : '';
-    const r2 = el('div', 'radio', '🇮🇳 తెలుగు: మీ AI చదువుతుంది · ' + (cost ? 'సుమారు ' + cost + ' (' + n + ' పేజీలు)' : 'వర్క్‌షాప్ AI ఎంచుకోవాలి'));
+    const r2 = el('div', 'radio', '');
     r1.onclick = () => { lang = 'en'; r1.classList.add('on'); r2.classList.remove('on'); };
     r2.onclick = () => { lang = 'te'; r2.classList.add('on'); r1.classList.remove('on'); };
     a.appendChild(r1); a.appendChild(r2);
-  }
+    // 🤖 which AI reads the Telugu pages: every model with this book's cost (his pick; the library's AI, as in ✨)
+    const mrow = el('div', 'mrow2');
+    const mname = el('span', 'muted', '');
+    const mbtn = btn('🤖 మోడల్ మార్చు (ప్రతి మోడల్ ఖర్చు)', '', () => { S.afterPages = true; post({ t: 'models', id: '', unit: 0, kind: 'pages', q: String(n) }); });
+    mrow.appendChild(mname); mrow.appendChild(mbtn);
+    a.appendChild(mrow);
+    S.addCost = (perPage) => {
+      const c = perPage > 0 ? K.money(perPage * n) : '';
+      r2.textContent = '🇮🇳 తెలుగు: మీ AI చదువుతుంది · ' + (c ? 'సుమారు ' + c + ' (' + n + ' పేజీలు)' : 'వర్క్‌షాప్ AI ఎంచుకోవాలి');
+      mname.textContent = '🤖 చదివే AI: ' + (S.model || 'ఇంకా ఎంచుకోలేదు') + ' ';
+    };
+    S.addCost(Number(m.quote1) || 0);
+    S.addModelBtn = mbtn;
+  } else { S.addCost = null; S.addModelBtn = null; }
   const prog = el('div', 'prog', ''); prog.id = 'addProg';
   const row = el('div', 'row');
   const go = btn('➕ రాక్‌లో పెట్టు', 'gold', () => {
     if (!lang) { prog.textContent = 'ముందు పేజీల్లో భాష ఎంచుకోండి (English ₹0 / తెలుగు: ఖర్చు పైన ఉంది).'; return; }
     go.disabled = true;
+    if (S.addModelBtn) S.addModelBtn.disabled = true; // (the AI is fixed once it starts)
     prog.textContent = 'మొదలుపెడుతున్నాను…';
     post({ t: 'add_go', form: { kind: info.kind, t: t.value.trim(), a: au.value.trim(), sec: sec.value, era: era.value, lang } });
     row.appendChild(btn('⏹ ఆపు', '', () => post({ t: 'ai_stop' })));
@@ -1628,6 +1641,7 @@ const TOOL_COST = {
   ask_ch: (m) => '💬 అధ్యాయం ' + (m.unit + 1) + ' లో మీ ప్రశ్న',
   ask_book: () => '💬 మొత్తం పుస్తకంలో మీ ప్రశ్న',
   map: () => '🗺️ పాత్రల మ్యాప్ (మిగిలిన అధ్యాయాలు)',
+  pages: (m) => '📄 ' + m.q + ' తెలుగు పేజీలు (PDF / ఫోటోలు) AI చదవడానికి',
 };
 /** After 🤖 a new model: the same tool's cost again, now with that model (no AI Telugu sheet in between). */
 function afterModel() {
@@ -2429,7 +2443,9 @@ function onJarvis(m) {
     case 'pack': S.pack = !!m.ok; toast(m.s, 5000); if (m.ok && !$('reader').hidden && wantsPhoneTe()) needTe(); break;
     case 'quote': if (S.afterModel) afterModel(); else quoteSheet(m); break;
     case 'models': modelSheet(m); break;
-    case 'model': S.model = m.model || ''; S.rate = Number(m.rate) || 0; break;
+    case 'model': S.model = m.model || ''; S.rate = Number(m.rate) || 0;
+      if (S.afterPages) { S.afterPages = false; $('quote').hidden = true; if (S.addCost) S.addCost(Number(m.page1) || 0); } // (➕'s form: the new model's cost)
+      break;
     case 'ai_on': S.ai = m.id; S.aiNow = { id: m.id, kind: m.kind || 'tr', title: (S.byId[m.id] || {}).t || '', unit: 0, k: 0, n: 0, ci: 1, cn: 1, rs: 0 }; aiBars();
       if (m.kind !== 'map') toast('✨ AI తెలుగు మొదలుపెట్టాను. అయిన భాగాలు వెంటనే దాచుకుంటాను; ఆపాలంటే ⏹.'); break;
     case 'trs': S.month = m; S.rate = Number(m.rate) || S.rate; if (m.model) S.model = m.model;

@@ -507,6 +507,12 @@ final class LibTools {
                 break;
             }
             case "next": l.add(new long[]{600, 1000}); break;
+            case "pages": { // (➕ / 📄 a PDF's or photos' Telugu pages: the same per page as Library.pagesQuote)
+                int n = 0;
+                try { n = Math.max(0, Math.min(600, Integer.parseInt(q == null ? "0" : q.trim()))); } catch (Exception ignored) {}
+                if (n > 0) l.add(new long[]{1750L * n, 900L * n});
+                break;
+            }
             case "shelf": l.add(new long[]{1900, 1200}); break;
             default:
         }

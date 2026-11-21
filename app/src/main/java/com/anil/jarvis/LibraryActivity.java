@@ -550,7 +550,7 @@ public class LibraryActivity extends Activity {
                 }
                 offered = ids;
                 if (ids.isEmpty() && problems.length() == 0) problems.append("⚙️ → Jarvis మెదడు లో ఒక్క AI key కూడా లేదు.");
-                send(json("models").put("id", id).put("unit", unit).put("kind", kind).put("chars", chars).put("list", list).put("cur", Library.model(p))
+                send(json("models").put("id", id).put("unit", unit).put("kind", kind).put("q", "pages".equals(kind) ? q : "").put("chars", chars).put("list", list).put("cur", Library.model(p))
                         .put("lib", p.libraryModel().trim()).put("ws", p.workshopModel().trim()).put("problems", problems.toString().trim()));
             } catch (Exception e) { say("మోడల్స్ లిస్ట్ రాలేదు: " + e.getMessage()); }
         }, "jarvis-library-models").start();
@@ -564,7 +564,7 @@ public class LibraryActivity extends Activity {
                 if (!m2.isEmpty() && !offered.contains(m2)) { say("ఆ మోడల్ లిస్ట్‌లో లేదు. మళ్ళీ 🤖 మోడల్ మార్చు నొక్కండి."); return; }
                 Prefs p = new Prefs(this);
                 p.setLibraryModel(m2);
-                send(json("model").put("model", Library.model(p)).put("lib", m2).put("rate", Library.rate(p)));
+                send(json("model").put("model", Library.model(p)).put("lib", m2).put("rate", Library.rate(p)).put("page1", Library.pagesQuote(p, 1)));
                 String ws = p.workshopModel().trim();
                 say(m2.isEmpty() ? "↩ లైబ్రరీ ఇక వర్క్‌షాప్ AI నే వాడుతుంది" + (ws.isEmpty() ? "" : " (" + ws + ")") + "."
                         : "🤖 లైబ్రరీ AI: " + m2 + ". వర్క్‌షాప్ AI మారలేదు.");
