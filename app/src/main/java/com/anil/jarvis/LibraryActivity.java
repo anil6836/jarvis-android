@@ -258,6 +258,7 @@ public class LibraryActivity extends Activity {
         String id = m.optString("id", "");
         switch (m.optString("t")) {
             case "search": search(m.optString("q", "")); break;
+            case "browse": { String k = m.optString("kind", ""); int pg = m.optInt("page", 1); io.execute(() -> sendResults(Library.browse(this, k, pg))); break; }
             case "download": download(m.optJSONObject("item"), m.optString("then", "")); break;
             case "wish": io.execute(() -> { try { Library.wish(this, m.getJSONObject("item")); say("🔖 కోరికల రాక్‌లో పెట్టాను."); sendShelf(); } catch (Exception e) { say("పెట్టలేకపోయాను"); } }); break;
             case "chapter": chapter(id, m.optInt("unit", 0)); break;
@@ -390,10 +391,13 @@ public class LibraryActivity extends Activity {
     private void search(String q) {
         String query = Workshop.cap(q.trim(), 120);
         if (query.isEmpty()) return;
-        io.execute(() -> {
-            JSONObject r = Library.search(this, query);
+        io.execute(() -> sendResults(Library.search(this, query)));
+    }
+
+    /** Search / shelf results to the page, then small covers for the first ones (the page itself has no internet). */
+    private void sendResults(JSONObject r) {
+        {
             try { send(r.put("t", "results")); } catch (Exception ignored) {}
-            // small covers for the first results (the page itself has no internet): sent as pictures
             JSONArray res = r.optJSONArray("results");
             for (int i = 0; res != null && i < res.length() && i < 14 && !destroyed; i++) {
                 JSONObject o = res.optJSONObject(i);
@@ -405,7 +409,7 @@ public class LibraryActivity extends Activity {
                     if (img.length > 300) send(json("thumb").put("id", o.optString("id")).put("d", "data:image/jpeg;base64," + android.util.Base64.encodeToString(img, android.util.Base64.NO_WRAP)));
                 } catch (Exception ignored) {}
             }
-        });
+        }
     }
 
     private void download(JSONObject item, String then) {

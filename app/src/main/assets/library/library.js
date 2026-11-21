@@ -740,7 +740,7 @@ function showCard(b) {
   if (ready) marks.appendChild(el('span', 'pill ok', '✅ ఫోన్‌లో ఉంది · ' + (b.n || 0) + ' అధ్యాయాలు · ' + K.pagesSaid(b.chars)));
   else if (b.wish) { const m = K.mark(b); marks.appendChild(el('span', 'pill ' + m.cls, m.i + ' ' + m.s)); }
   else if (b.src === 'home') { /* (only the 🏠 pill below: no free copy found) */ }
-  else marks.appendChild(el('span', 'pill ok', '✅ ఉచితం · ' + (b.src === 'ws' ? 'తెలుగు వికీసోర్స్' : b.src === 'se' ? 'Standard Ebooks' : 'Project Gutenberg')));
+  else marks.appendChild(el('span', 'pill ok', '✅ ఉచితం · ' + (SRC_NAME[b.src] || 'Project Gutenberg')));
   if (b.credit && ready) marks.appendChild(el('span', 'pill', b.credit));
   const at = S.pos[b.id];
   if (ready && at && !b.done) marks.appendChild(el('span', 'pill', '🔖 అధ్యాయం ' + (at[0] + 1) + ' దగ్గర ఆగారు'));
@@ -788,8 +788,35 @@ function download(b, then) {
 function openSearch(q) {
   closeBook(true);
   $('search').hidden = false;
-  if (q !== undefined) { $('q').value = q; runSearch(); }
-  else setTimeout(() => $('q').focus(), 50);
+  if (q !== undefined) { $('q').value = q; runSearch(); return; }
+  if (!$('q').value.trim()) searchHome();
+}
+/** 📚 Shelves to look through without typing (Telugu first), and where the books come from. */
+const SHELVES = [
+  ['ws_featured', '📜 తెలుగు వికీసోర్స్: విశేష గ్రంథాలు'],
+  ['ws_satakam', '🪔 శతకాలు (తెలుగు వికీసోర్స్)'],
+  ['ws_kandukuri', '✍️ కందుకూరి వీరేశలింగం రచనలు'],
+  ['ws_granthamala', '🏛️ ఆంధ్ర గ్రంథమాల (తెలుగు వికీసోర్స్)'],
+  ['pg_te', '📘 Project Gutenberg లోని తెలుగు పుస్తకాలు'],
+  ['ia_te', '🗄️ Internet Archive తెలుగు (ఉచిత లైసెన్స్ ఉన్నవి)'],
+];
+function searchHome() {
+  S.browse = null; S.localHits = [];
+  const b = $('sBody');
+  b.textContent = '';
+  b.appendChild(el('p', 'muted', 'పేరు టైప్ చేయండి లేదా 🎤 తో చెప్పండి (తెలుగు / English). ఉచితంగా దొరికేవి (✅) రాక్‌లోకి దించుకోవచ్చు; కాపీరైట్ ఉన్నవాటికి వివరాలు మాత్రమే.'));
+  b.appendChild(el('div', 'sec2', '🇮🇳 తెలుగు పుస్తకాల అరలు (టైప్ చేయకుండా చూడండి)'));
+  SHELVES.forEach(([k, n]) => b.appendChild(btn(n, 'wide', () => runBrowse(k, n, 1))));
+  b.appendChild(el('div', 'sec2', '🌐 పుస్తకాలు ఎక్కడి నుంచి'));
+  b.appendChild(el('p', 'muted', 'Project Gutenberg · Standard Ebooks · తెలుగు వికీసోర్స్ (స్కాన్ నుంచి టైప్ చేసిన పుటలు కూడా) · English Wikisource · Internet Archive (ఉచిత లైసెన్స్ ఉన్నవి మాత్రమే) · Open Library (వివరాలు). అన్నీ ఉచితం, చట్టబద్ధం; పైరసీ సైట్లు కావు.'));
+}
+function runBrowse(kind, title, page) {
+  S.browse = { kind, title, page };
+  S.localHits = [];
+  const b = $('sBody');
+  b.textContent = '';
+  b.appendChild(el('p', 'prog', '⏳ ' + title + ': తెస్తున్నాను…'));
+  post({ t: 'browse', kind, page });
 }
 /** On his racks already (₹0, at once): a name said in Telugu letters meets its English title, and the other way round. */
 function localHits(q) {
@@ -810,23 +837,31 @@ function localBox(list) {
 function runSearch() {
   const q = $('q').value.trim();
   if (!q) return;
+  S.browse = null;
   const b = $('sBody');
   b.textContent = '';
   S.localHits = localHits(q);
   b.appendChild(localBox(S.localHits));
-  b.appendChild(el('p', 'prog', '🔍 "' + q + '" వెతుకుతున్నాను… (Project Gutenberg, Open Library' + (/[ఀ-౿]/.test(q) ? ', తెలుగు వికీసోర్స్' : '') + ')'));
+  b.appendChild(el('p', 'prog', '🔍 "' + q + '" వెతుకుతున్నాను… (' + (/[ఀ-౿]/.test(q) ? 'తెలుగు వికీసోర్స్, Gutenberg తెలుగు, ' : 'Wikisource, ') + 'Project Gutenberg, Open Library, Internet Archive)'));
   $('q').blur();
   post({ t: 'search', q });
 }
 function showResults(m) {
   const b = $('sBody');
+  if (m.browse && (!S.browse || S.browse.kind !== m.browse)) return; // (he moved on)
   b.textContent = '';
+  if (m.browse) {
+    const top = el('div', 'row');
+    top.appendChild(btn('← అరలు', '', searchHome));
+    b.appendChild(top);
+    b.appendChild(el('div', 'sec2', S.browse.title + (S.browse.page > 1 ? ' · పేజీ ' + S.browse.page : '')));
+  }
   const loc = S.localHits || [];
   if (m.en) b.appendChild(el('p', 'saidEn', '🔁 ఇంగ్లీష్‌లో కూడా వెతికాను: “' + m.en + '” (ఫోన్ తెలుగు ప్యాక్, ₹0)'));
   b.appendChild(localBox(loc));
   S.results = (m.results || []).filter((r) => !loc.some((x) => x.id === r.id));
   if (m.problems && m.problems.length) b.appendChild(el('p', 'muted', '⚠️ ' + m.problems.join(' · ') + ' (ఇంటర్నెట్ చూడండి)'));
-  if (!S.results.length) { if (!loc.length) b.appendChild(el('p', '', 'ఏమీ దొరకలేదు. పేరు ఇంకోలా (English లో కూడా) రాసి / చెప్పి చూడండి.')); return; }
+  if (!S.results.length) { if (!loc.length) b.appendChild(el('p', '', m.browse ? 'ఈ అరలో ఇప్పుడు ఏమీ రాలేదు (ఇంటర్నెట్ చూడండి).' : 'ఏమీ దొరకలేదు. పేరు ఇంకోలా (English లో కూడా) రాసి / చెప్పి చూడండి.')); return; }
   if (loc.length) b.appendChild(el('h3', 'sec2', '🌐 ఉచిత పుస్తకాలు, వివరాలు'));
   S.results.forEach((r) => {
     const card = el('div', 'res');
@@ -835,7 +870,7 @@ function showResults(m) {
     card.appendChild(cvr);
     const i = el('div', 'i');
     i.appendChild(el('div', 't1', r.t || ''));
-    i.appendChild(el('div', 't2', [r.tt && r.tt !== r.t ? r.tt : '', r.a, K.yearSaid(r.y)].filter(Boolean).join(' · ')));
+    i.appendChild(el('div', 't2', [r.tt && r.tt !== r.t ? r.tt : '', r.a, K.yearSaid(r.y), SRC_NAME[r.src] || ''].filter(Boolean).join(' · ')));
     const mk = K.mark(r);
     i.appendChild(el('span', 'pill ' + mk.cls, mk.i + ' ' + mk.s));
     const row = el('div', 'row');
@@ -854,7 +889,10 @@ function showResults(m) {
     card.appendChild(i);
     b.appendChild(card);
   });
+  if (m.browse && m.more) b.appendChild(btn('తర్వాతి పేజీ ▶', 'wide', () => runBrowse(S.browse.kind, S.browse.title, (S.browse.page || 1) + 1)));
 }
+/** Where a free book comes from (shown on its search card). */
+const SRC_NAME = { pg: 'Project Gutenberg', se: 'Standard Ebooks', ws: 'తెలుగు వికీసోర్స్', wsi: 'తెలుగు వికీసోర్స్ · స్కాన్ పుటలు', wse: 'English Wikisource', ia: 'Internet Archive' };
 
 // ================================================================ ➕ his own books
 function openAdd() {

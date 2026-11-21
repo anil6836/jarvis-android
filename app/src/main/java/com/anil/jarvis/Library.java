@@ -293,21 +293,14 @@ final class Library {
                 if (s >= 0.6) seen.put(b.optString("id"), new JSONObject(b.toString()).put("rack", true).put("free", true));
             }
             final String world = en != null ? en : query; // (Gutenberg / Open Library are searched in English when he said it in Telugu)
-            // 2. Telugu Wikisource (Telugu words)
+            // 2. Telugu Wikisource (Telugu words): its books and its typed scans; Gutenberg's Telugu books
             if (telugu(query)) {
+                try { for (JSONObject o : wsSearch(WS_TE, query, 10, true)) if (!seen.containsKey(o.optString("id"))) seen.put(o.optString("id"), o); }
+                catch (Exception e) { probs.put("తెలుగు వికీసోర్స్ చేరలేదు"); }
                 try {
-                    JSONObject w = getJson("https://te.wikisource.org/w/api.php?action=query&list=search&srnamespace=0&srlimit=6&format=json&formatversion=2&srsearch=" + enc(query));
-                    JSONArray hits = w.optJSONObject("query") == null ? null : w.getJSONObject("query").optJSONArray("search");
-                    for (int i = 0; hits != null && i < hits.length(); i++) {
-                        String title = hits.getJSONObject(i).optString("title", "");
-                        if (title.isEmpty()) continue;
-                        String base = title.contains("/") ? title.substring(0, title.indexOf('/')) : title;
-                        String id = LibText.idFrom("ws", base);
-                        if (seen.containsKey(id)) continue;
-                        seen.put(id, new JSONObject().put("id", id).put("t", base).put("a", "").put("src", "ws").put("src_id", base)
-                                .put("lang", "te").put("sec", "telugu").put("era", "modern").put("free", true));
-                    }
-                } catch (Exception e) { probs.put("తెలుగు వికీసోర్స్ చేరలేదు"); }
+                    JSONArray r = getJson("https://gutendex.com/books?languages=te&search=" + enc(query)).optJSONArray("results");
+                    for (int i = 0; r != null && i < r.length() && i < 8; i++) { JSONObject o = LibText.fromGutendex(r.getJSONObject(i)); if (!seen.containsKey(o.optString("id"))) seen.put(o.optString("id"), o); }
+                } catch (Exception ignored) {} // (Gutenberg's English search below says if it is down)
             }
             // 3. Project Gutenberg's free books (through Gutendex)
             Map<String, JSONObject> pgById = new HashMap<>();
@@ -338,6 +331,12 @@ final class Library {
                     if (!seen.containsKey(o.optString("id"))) seen.put(o.optString("id"), o);
                 }
             } catch (Exception e) { probs.put("Open Library చేరలేదు"); }
+            // 5. English Wikisource (English words), 6. Internet Archive books marked free by their uploader
+            if (!telugu(world)) {
+                try { for (JSONObject o : wsSearch(WS_EN, world, 5, false)) if (!seen.containsKey(o.optString("id")) && LibText.score(world, o.optString("t"), "") >= 0.45) seen.put(o.optString("id"), o); }
+                catch (Exception ignored) {}
+            }
+            for (JSONObject o : iaSearch(telugu(query) && en == null ? query : world, telugu(query), 6)) if (!seen.containsKey(o.optString("id"))) seen.put(o.optString("id"), o);
             // (already on his phone: say so)
             for (JSONObject o : seen.values()) {
                 JSONObject b = book(c, o.optString("id"));
@@ -349,6 +348,300 @@ final class Library {
         } catch (Exception e) {
             try { return out.put("results", res).put("problems", probs.put(String.valueOf(e.getMessage()))); } catch (Exception x) { return out; }
         }
+    }
+
+    // ================================================================ 📜 more free shelves (Anil, 21 Nov: "Inka కలుపు… telugu పుస్తకాలు అన్ని కలుపు")
+    // Telugu Wikisource's scanned books (సూచిక / పుట: the pages people typed from free scans on Wikimedia Commons),
+    // English Wikisource, Project Gutenberg's Telugu books, and Internet Archive books whose uploader marked them free
+    // (a Creative Commons licence or the public-domain mark). Nothing else: no site without a clear free licence.
+
+    static final String WS_TE = "te.wikisource.org", WS_EN = "en.wikisource.org";
+
+    /** A Wikisource's scan namespaces: {page ns, its name ("పుట"), index ns, its name ("సూచిక")}; -1 when it has none. */
+    private static final Map<String, Object[]> WS_NS = new HashMap<>();
+
+    static Object[] wsNs(String host) throws Exception {
+        synchronized (WS_NS) { Object[] k = WS_NS.get(host); if (k != null) return k; }
+        JSONObject j = getJson("https://" + host + "/w/api.php?action=query&meta=siteinfo&siprop=namespaces&format=json&formatversion=2");
+        JSONObject ns = j.getJSONObject("query").getJSONObject("namespaces");
+        int pn = -1, in = -1;
+        String pp = "Page", ip = "Index";
+        for (java.util.Iterator<String> it = ns.keys(); it.hasNext(); ) {
+            JSONObject o = ns.optJSONObject(it.next());
+            if (o == null) continue;
+            String can = o.optString("canonical", "");
+            if ("Page".equals(can)) { pn = o.optInt("id", -1); pp = o.optString("name", "Page"); }
+            if ("Index".equals(can)) { in = o.optInt("id", -1); ip = o.optString("name", "Index"); }
+        }
+        Object[] k = new Object[]{pn, pp, in, ip};
+        synchronized (WS_NS) { WS_NS.put(host, k); }
+        return k;
+    }
+
+    /** One book's card from a Wikisource title (a main page, or a scan's సూచిక page with its fields). */
+    private static JSONObject wsEntry(String host, String title, JSONObject meta, boolean scan) throws Exception {
+        boolean te = WS_TE.equals(host);
+        String base = !scan && title.contains("/") ? title.substring(0, title.indexOf('/')) : title;
+        String t = scan ? (meta != null && !meta.optString("t").isEmpty() ? meta.optString("t") : LibText.fileTitle(base)) : base;
+        JSONObject o = new JSONObject().put("id", LibText.idFrom(scan ? "wsi" : te ? "ws" : "wse", base)).put("t", t)
+                .put("a", meta == null ? "" : meta.optString("a", "")).put("src", scan ? "wsi" : te ? "ws" : "wse").put("src_id", base)
+                .put("host", host).put("lang", te ? "te" : "en").put("sec", te ? "telugu" : "fic").put("era", "modern").put("free", true);
+        if (meta != null && meta.has("y")) o.put("y", meta.optInt("y")).put("era", LibText.eraOfYear(meta.optInt("y")));
+        if (scan) o.put("scan", true);
+        return o;
+    }
+
+    /** The Title / Author / Year of these సూచిక pages, in one call ({title → meta}). */
+    private static Map<String, JSONObject> wsIndexMeta(String host, List<String> titles) {
+        Map<String, JSONObject> out = new HashMap<>();
+        if (titles.isEmpty()) return out;
+        try {
+            JSONObject r = getJson("https://" + host + "/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&format=json&formatversion=2&titles="
+                    + enc(String.join("|", titles.subList(0, Math.min(40, titles.size())))));
+            JSONArray pages = r.getJSONObject("query").optJSONArray("pages");
+            for (int i = 0; pages != null && i < pages.length(); i++) {
+                JSONObject pg = pages.getJSONObject(i);
+                JSONArray rv = pg.optJSONArray("revisions");
+                String w = rv == null || rv.length() == 0 ? "" : rv.getJSONObject(0).optJSONObject("slots") == null ? "" : rv.getJSONObject(0).getJSONObject("slots").getJSONObject("main").optString("content", "");
+                out.put(pg.optString("title"), LibText.indexMeta(w));
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    /** Wikisource search: its books (main pages) and, on Telugu, its scanned books too. */
+    static List<JSONObject> wsSearch(String host, String q, int max, boolean scans) throws Exception {
+        List<JSONObject> out = new ArrayList<>();
+        Object[] ns = scans ? wsNs(host) : new Object[]{-1, "", -1, ""};
+        int in = (Integer) ns[2];
+        String nss = in >= 0 ? "0|" + in : "0";
+        JSONObject w = getJson("https://" + host + "/w/api.php?action=query&list=search&srnamespace=" + enc(nss) + "&srlimit=" + max + "&format=json&formatversion=2&srsearch=" + enc(q));
+        JSONArray hits = w.optJSONObject("query") == null ? null : w.getJSONObject("query").optJSONArray("search");
+        List<String> idx = new ArrayList<>();
+        Map<String, Boolean> seen = new HashMap<>();
+        for (int i = 0; hits != null && i < hits.length(); i++) {
+            JSONObject h = hits.getJSONObject(i);
+            String title = h.optString("title", "");
+            if (title.isEmpty()) continue;
+            if (h.optInt("ns", 0) == in && in >= 0) { idx.add(title); continue; }
+            String base = title.contains("/") ? title.substring(0, title.indexOf('/')) : title;
+            if (seen.put(base, true) != null) continue;
+            out.add(wsEntry(host, base, null, false));
+        }
+        Map<String, JSONObject> meta = wsIndexMeta(host, idx);
+        for (String t : idx) out.add(wsEntry(host, t, meta.get(t), true));
+        return out;
+    }
+
+    /** The scan (సూచిక) that best matches a book's name; null when none is close. */
+    static String bestIndex(String host, String q) throws Exception {
+        String best = null;
+        double bs = 0;
+        for (JSONObject o : wsSearch(host, q, 8, true)) {
+            if (!o.optBoolean("scan")) continue;
+            double sc = LibText.score(q, o.optString("t"), o.optString("a"));
+            if (sc > bs) { bs = sc; best = o.optString("src_id"); }
+        }
+        return bs >= 0.5 ? best : null;
+    }
+
+    /** A scanned book's typed pages (పుట:file/1, /2, …), 50 at a time, as chapters of 8 pages; honest when too few are typed yet. */
+    static List<String[]> wsScan(String host, String index, Progress p) throws Exception {
+        Object[] ns = wsNs(host);
+        String file = index.contains(":") ? index.substring(index.indexOf(':') + 1) : index;
+        String prefix = (String) ns[1];
+        int count = 0;
+        try {
+            JSONObject j = getJson("https://" + host + "/w/api.php?action=query&prop=imageinfo&iiprop=size&format=json&formatversion=2&titles=" + enc("File:" + file));
+            JSONArray pages = j.getJSONObject("query").optJSONArray("pages");
+            JSONArray ii = pages == null || pages.length() == 0 ? null : pages.getJSONObject(0).optJSONArray("imageinfo");
+            if (ii != null && ii.length() > 0) count = ii.getJSONObject(0).optInt("pagecount", 0);
+        } catch (Exception ignored) {}
+        if (count <= 0) count = 400; // (not told: read on until the typed pages end)
+        count = Math.min(count, 1200);
+        List<String> texts = new ArrayList<>();
+        int typed = 0, emptyRun = 0;
+        for (int from = 1; from <= count; from += 50) {
+            int to = Math.min(count, from + 49);
+            p.at("⬇️ " + (WS_TE.equals(host) ? "తెలుగు వికీసోర్స్" : "Wikisource") + ": పుటలు " + from + "–" + to + " / " + count + "…");
+            List<String> titles = new ArrayList<>();
+            for (int n = from; n <= to; n++) titles.add(prefix + ":" + file + "/" + n);
+            JSONObject r = getJson("https://" + host + "/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&format=json&formatversion=2&titles=" + enc(String.join("|", titles)));
+            Map<String, String> got = new HashMap<>();
+            JSONArray pages = r.getJSONObject("query").optJSONArray("pages");
+            for (int i = 0; pages != null && i < pages.length(); i++) {
+                JSONObject pg = pages.getJSONObject(i);
+                if (pg.optBoolean("missing")) continue;
+                JSONArray rv = pg.optJSONArray("revisions");
+                if (rv == null || rv.length() == 0) continue;
+                JSONObject slots = rv.getJSONObject(0).optJSONObject("slots");
+                got.put(pg.optString("title"), slots == null ? "" : LibText.wikiText(slots.getJSONObject("main").optString("content", "")));
+            }
+            for (String t : titles) {
+                String x = got.get(t.replace('_', ' '));
+                if (x == null) x = got.get(t);
+                texts.add(x == null ? "" : x);
+                if (x != null && x.length() > 40) { typed++; emptyRun = 0; } else emptyRun++;
+            }
+            if (count == 400 && emptyRun >= 60) break; // (an unknown length: 60 empty pages in a row is the end)
+            Thread.sleep(300); // (gently)
+        }
+        String all = String.join("\n", texts);
+        if (typed < 3 || all.length() < 1500)
+            throw new IOException("ఈ స్కాన్ పుస్తకం పుటలు వికీసోర్స్‌లో ఇంకా అక్షరాలుగా టైప్ కాలేదు (" + typed + " పుటలే ఉన్నాయి). వేరే కాపీ వెతకండి.");
+        if (LibText.textQuality(all, WS_TE.equals(host)) < 0.7) throw new IOException("ఈ స్కాన్ పుస్తకం అక్షరాలు సరిగా రాలేదు (స్కాన్ నుంచి తప్పులు). వేరే కాపీ వెతకండి.");
+        return LibText.pageParts(texts, 8);
+    }
+
+    // ---- Internet Archive (only books marked free by their uploader)
+
+    static List<JSONObject> iaSearch(String q, boolean te, int rows) {
+        List<JSONObject> out = new ArrayList<>();
+        String words = q.replaceAll("[\"():\\[\\]{}^~*?\\\\/]", " ").replaceAll("\\s+", " ").trim();
+        if (words.isEmpty() && !te) return out;
+        String base = (words.isEmpty() ? "" : "(title:(" + words + ") OR creator:(" + words + ")) AND ") + "mediatype:texts" + (te ? " AND (language:tel OR language:Telugu)" : "");
+        JSONArray docs = null;
+        for (int k = 0; k < 2 && docs == null; k++) {
+            String query = k == 0 ? base + " AND (licenseurl:*creativecommons* OR licenseurl:*publicdomain*)" : base;
+            try {
+                docs = getJson("https://archive.org/advancedsearch.php?q=" + enc(query) + "&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=creator&fl%5B%5D=date"
+                        + "&fl%5B%5D=language&fl%5B%5D=licenseurl&sort%5B%5D=downloads+desc&rows=" + (k == 0 ? rows : rows * 4) + "&output=json")
+                        .getJSONObject("response").optJSONArray("docs");
+                if (docs != null && docs.length() == 0 && k == 0) docs = null; // (the licence words not understood there: filter here instead)
+            } catch (Exception e) { if (k == 1) return out; }
+        }
+        for (int i = 0; docs != null && i < docs.length() && out.size() < rows; i++) {
+            JSONObject d = docs.optJSONObject(i);
+            if (d == null || !LibText.iaFree(one(d, "licenseurl"))) continue;
+            String id = d.optString("identifier", "");
+            if (!id.matches("[A-Za-z0-9._-]{3,100}")) continue;
+            String lang = one(d, "language").toLowerCase(Locale.ROOT);
+            boolean tel = lang.startsWith("tel") || telugu(one(d, "title"));
+            try {
+                JSONObject o = new JSONObject().put("id", LibText.idFrom("ia", id)).put("t", LibText.cut(one(d, "title"), 160)).put("a", one(d, "creator"))
+                        .put("src", "ia").put("src_id", id).put("lang", tel ? "te" : "en").put("sec", tel ? "telugu" : "fic").put("era", "modern")
+                        .put("free", true).put("cover_url", "https://archive.org/services/img/" + id);
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("(1[5-9]\\d\\d|20\\d\\d)").matcher(one(d, "date"));
+                if (m.find()) { int y = Integer.parseInt(m.group(1)); o.put("y", y).put("era", LibText.eraOfYear(y)); }
+                out.add(o);
+            } catch (Exception ignored) {}
+        }
+        return out;
+    }
+
+    /** A field that may be one value or a list: its first value. */
+    private static String one(JSONObject d, String k) {
+        Object v = d.opt(k);
+        if (v instanceof JSONArray) return ((JSONArray) v).optString(0, "");
+        return v == null ? "" : String.valueOf(v);
+    }
+
+    static List<String[]> iaBook(String id, String wanted, Progress p) throws Exception {
+        if (!id.matches("[A-Za-z0-9._-]{3,100}")) throw new IOException("Internet Archive గుర్తు సరిగా లేదు");
+        p.at("Internet Archive లో చూస్తున్నాను…");
+        JSONObject meta = getJson("https://archive.org/metadata/" + id);
+        JSONObject md = meta.optJSONObject("metadata");
+        if (md == null || !LibText.iaFree(one(md, "licenseurl")))
+            throw new IOException("ఈ పుస్తకానికి ఉచితంగా పంచుకోవచ్చనే గుర్తు లేదు; దించను");
+        String[] f = LibText.iaFile(meta);
+        if (f == null) throw new IOException("ఈ పుస్తకానికి చదవగలిగే అక్షరాల ఫైల్ లేదు (స్కాన్ బొమ్మలు మాత్రమే)");
+        StringBuilder path = new StringBuilder();
+        for (String seg : f[0].split("/")) { if (path.length() > 0) path.append('/'); path.append(enc(seg).replace("+", "%20")); }
+        p.at("⬇️ Internet Archive నుంచి దించుతున్నాను…");
+        byte[] data = get("https://archive.org/download/" + id + "/" + path, MAX_BOOK);
+        List<String[]> ch;
+        boolean te = one(md, "language").toLowerCase(Locale.ROOT).startsWith("tel");
+        if ("epub".equals(f[1])) ch = epubChapters(data, null);
+        else {
+            String text = new String(data, StandardCharsets.UTF_8);
+            if (LibText.textQuality(text, te || telugu(wanted)) < 0.7) throw new IOException("ఈ పుస్తకం అక్షరాలు స్కాన్ నుంచి సరిగా రాలేదు; వేరే కాపీ వెతకండి");
+            ch = LibText.chapters(text);
+            if (ch == null || ch.isEmpty()) ch = LibText.bound(LibText.parts(text, ""));
+        }
+        return ch;
+    }
+
+    // ---- 📚 shelves to browse (no typing): Telugu first
+
+    /** kind: ws_featured, ws_satakam, ws_kandukuri, ws_granthamala, pg_te, ia_te, ws_en_featured. → {results, problems, browse, page, more}. */
+    static JSONObject browse(Context c, String kind, int page) {
+        JSONObject out = new JSONObject();
+        JSONArray res = new JSONArray(), probs = new JSONArray();
+        boolean more = false;
+        try {
+            List<JSONObject> list = new ArrayList<>();
+            switch (kind) {
+                case "pg_te": {
+                    try {
+                        JSONObject g = getJson("https://gutendex.com/books?languages=te&page=" + Math.max(1, page));
+                        JSONArray r = g.optJSONArray("results");
+                        for (int i = 0; r != null && i < r.length(); i++) list.add(LibText.fromGutendex(r.getJSONObject(i)));
+                        more = !g.isNull("next") && g.has("next");
+                    } catch (Exception e) { probs.put("Project Gutenberg చేరలేదు"); }
+                    break;
+                }
+                case "ia_te": list.addAll(iaSearch("", true, 30)); if (list.isEmpty()) probs.put("Internet Archive లో ఉచిత లైసెన్స్ ఉన్న తెలుగు పుస్తకాలు ఇప్పుడు రాలేదు"); break;
+                case "ws_satakam": list.addAll(wsCategory(WS_TE, "వర్గం:శతకములు")); break;
+                case "ws_kandukuri": list.addAll(wsCategory(WS_TE, "వర్గం:కందుకూరి వీరేశలింగం రచనలు")); break;
+                case "ws_featured": list.addAll(wsLinks(WS_TE, "వికీసోర్స్:విశేష గ్రంథాలు")); break;
+                case "ws_granthamala": list.addAll(wsLinks(WS_TE, "వేదిక:ఆంధ్ర గ్రంథమాల")); break;
+                default:
+            }
+            for (JSONObject o : list) {
+                JSONObject b = book(c, o.optString("id"));
+                if (b != null && "ready".equals(b.optString("state"))) o.put("have", true);
+                res.put(o);
+            }
+        } catch (Exception e) { probs.put(e.getMessage() == null ? "చేరలేదు" : e.getMessage()); }
+        try { return out.put("results", res).put("problems", probs).put("browse", kind).put("page", page).put("more", more); } catch (Exception e) { return out; }
+    }
+
+    /** A Wikisource category's books (main pages and scans). */
+    static List<JSONObject> wsCategory(String host, String cat) throws Exception {
+        List<JSONObject> out = new ArrayList<>();
+        Object[] ns = wsNs(host);
+        int in = (Integer) ns[2];
+        JSONObject j = getJson("https://" + host + "/w/api.php?action=query&list=categorymembers&cmlimit=150&format=json&formatversion=2&cmnamespace="
+                + enc(in >= 0 ? "0|" + in : "0") + "&cmtitle=" + enc(cat));
+        JSONArray m = j.getJSONObject("query").optJSONArray("categorymembers");
+        List<String> titles = new ArrayList<>();
+        for (int i = 0; m != null && i < m.length(); i++) titles.add(m.getJSONObject(i).optString("title"));
+        return wsEntries(host, titles, in);
+    }
+
+    /** The books a Wikisource page links to (its featured list, a portal). */
+    static List<JSONObject> wsLinks(String host, String page) throws Exception {
+        Object[] ns = wsNs(host);
+        int in = (Integer) ns[2];
+        JSONObject j = getJson("https://" + host + "/w/api.php?action=parse&prop=links&format=json&formatversion=2&page=" + enc(page));
+        JSONArray l = j.getJSONObject("parse").optJSONArray("links");
+        List<String> titles = new ArrayList<>();
+        for (int i = 0; l != null && i < l.length(); i++) {
+            JSONObject o = l.getJSONObject(i);
+            int n = o.optInt("ns", -99);
+            if (!o.optBoolean("exists", true) || (n != 0 && n != in)) continue;
+            titles.add(o.optString("title"));
+        }
+        return wsEntries(host, titles, in);
+    }
+
+    private static List<JSONObject> wsEntries(String host, List<String> titles, int indexNs) throws Exception {
+        List<JSONObject> out = new ArrayList<>();
+        List<String> idx = new ArrayList<>();
+        Map<String, Boolean> seen = new HashMap<>();
+        Object[] ns = wsNs(host);
+        String ip = ns[3] + ":";
+        for (String t : titles) {
+            if (t == null || t.isEmpty()) continue;
+            if (indexNs >= 0 && t.startsWith(ip)) { if (idx.size() < 40) idx.add(t); continue; }
+            String base = t.contains("/") ? t.substring(0, t.indexOf('/')) : t;
+            if (seen.put(base, true) != null) continue;
+            out.add(wsEntry(host, base, null, false));
+            if (out.size() >= 120) break;
+        }
+        Map<String, JSONObject> meta = wsIndexMeta(host, idx);
+        for (String t : idx) out.add(wsEntry(host, t, meta.get(t), true));
+        return out;
     }
 
     // ================================================================ ⬇️ a free book onto the phone
@@ -399,11 +692,31 @@ final class Library {
             if (title.isEmpty()) {
                 p.at("తెలుగు వికీసోర్స్‌లో వెతుకుతున్నాను…");
                 title = bestWikisource(entry.optString("q", entry.optString("t")));
-                if (title == null) throw new IOException("ఈ పుస్తకం తెలుగు వికీసోర్స్‌లో ఇప్పుడు దొరకలేదు");
             }
-            b.put("src_id", title);
-            ch = wikisource(title, p);
-            b.put("credit", "తెలుగు వికీసోర్స్ (ఉచితం)");
+            if (title != null) {
+                b.put("src_id", title);
+                ch = wikisource(title, p);
+                b.put("credit", "తెలుగు వికీసోర్స్ (ఉచితం)");
+            } else { // (not typed as a book page yet: its scan's typed pages)
+                p.at("తెలుగు వికీసోర్స్ స్కాన్ పుస్తకాల్లో వెతుకుతున్నాను…");
+                String idx = bestIndex(WS_TE, entry.optString("q", entry.optString("t")));
+                if (idx == null) throw new IOException("ఈ పుస్తకం తెలుగు వికీసోర్స్‌లో ఇప్పుడు దొరకలేదు");
+                b.put("src", "wsi").put("src_id", idx).put("host", WS_TE);
+                ch = wsScan(WS_TE, idx, p);
+                b.put("credit", "తెలుగు వికీసోర్స్ · స్కాన్ నుంచి టైప్ చేసిన పుటలు (ఉచితం)");
+            }
+        } else if ("wsi".equals(src)) {
+            String host = WS_EN.equals(entry.optString("host")) ? WS_EN : WS_TE;
+            ch = wsScan(host, entry.optString("src_id", ""), p);
+            b.put("credit", (WS_TE.equals(host) ? "తెలుగు వికీసోర్స్" : "Wikisource") + " · స్కాన్ నుంచి టైప్ చేసిన పుటలు (ఉచితం)");
+        } else if ("wse".equals(src)) {
+            String title = entry.optString("src_id", "");
+            if (title.isEmpty()) throw new IOException("Wikisource పుస్తకం గుర్తు సరిగా లేదు");
+            ch = wikisource(WS_EN, title, p);
+            b.put("credit", "English Wikisource (ఉచితం, కాపీరైట్ లేదు)");
+        } else if ("ia".equals(src)) {
+            ch = iaBook(entry.optString("src_id", ""), entry.optString("t"), p);
+            b.put("credit", "Internet Archive · ఉచిత లైసెన్స్ ఉన్న పుస్తకం");
         } else throw new IOException("ఈ పుస్తకం ఉచితంగా దించుకునేది కాదు");
         if (ch == null || ch.isEmpty()) throw new IOException("పుస్తకంలో చదవగలిగే అక్షరాలు దొరకలేదు");
         p.at("రాక్‌లో పెడుతున్నాను…");
@@ -534,9 +847,11 @@ final class Library {
     }
 
     /** A Telugu Wikisource book: its own page, and its sub-pages in the order the page lists them (≤ 150). */
-    static List<String[]> wikisource(String title, Progress p) throws Exception {
-        p.at("⬇️ తెలుగు వికీసోర్స్ నుంచి దించుతున్నాను…");
-        String html = wsPage(title);
+    static List<String[]> wikisource(String title, Progress p) throws Exception { return wikisource(WS_TE, title, p); }
+
+    static List<String[]> wikisource(String host, String title, Progress p) throws Exception {
+        p.at("⬇️ " + (WS_TE.equals(host) ? "తెలుగు వికీసోర్స్" : "English Wikisource") + " నుంచి దించుతున్నాను…");
+        String html = wsPage(host, title);
         List<String> subs = LibText.subpages(html, title);
         String prefix = title.replace(' ', '_') + "/";
         List<String[]> out = new ArrayList<>();
@@ -546,7 +861,7 @@ final class Library {
             for (int i = 0; i < subs.size(); i++) {
                 p.at("⬇️ " + (i + 1) + " / " + subs.size() + " భాగాలు…");
                 try {
-                    String t = LibText.htmlToText(wsPage(subs.get(i)));
+                    String t = LibText.htmlToText(wsPage(host, subs.get(i)));
                     if (t.length() > 100) out.add(new String[]{subs.get(i).substring(prefix.length()).replace('_', ' '), t});
                 } catch (Exception ignored) {}
                 Thread.sleep(250); // (gently: one page at a time)
@@ -556,8 +871,8 @@ final class Library {
         return LibText.bound(LibText.parts(own, ""));
     }
 
-    private static String wsPage(String title) throws Exception {
-        JSONObject j = getJson("https://te.wikisource.org/w/api.php?action=parse&prop=text&redirects=1&format=json&formatversion=2&page=" + enc(title));
+    private static String wsPage(String host, String title) throws Exception {
+        JSONObject j = getJson("https://" + host + "/w/api.php?action=parse&prop=text&redirects=1&format=json&formatversion=2&page=" + enc(title));
         JSONObject p = j.optJSONObject("parse");
         if (p == null) throw new IOException("వికీసోర్స్ పేజీ దొరకలేదు");
         Object t = p.opt("text");

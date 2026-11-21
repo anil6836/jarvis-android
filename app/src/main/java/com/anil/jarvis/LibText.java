@@ -795,4 +795,113 @@ final class LibText {
         while (days.optDouble(f.format(d.getTime()), 0) >= 60 && n < 3650) { n++; d.add(java.util.Calendar.DAY_OF_MONTH, -1); }
         return n;
     }
+
+    // ================================================================ 📜 more free shelves: Wikisource scans (సూచిక / పుట), Internet Archive
+
+    /** One Wikisource page's wikitext → plain text (header / footer, references, templates' markup and link brackets left out). */
+    static String wikiText(String w) {
+        if (w == null) return "";
+        String t = w.replaceAll("(?is)<noinclude>.*?</noinclude>", " ")
+                .replaceAll("(?is)<ref[^>]*/>", "").replaceAll("(?is)<ref[^>]*>.*?</ref>", "")
+                .replaceAll("(?s)<!--.*?-->", "");
+        // templates: the innermost first; a few that only wrap words keep their words ({{center|…}}, {{larger|…}}, {{bold|…}})
+        for (int k = 0; k < 10 && t.contains("{{"); k++) {
+            String n = t.replaceAll("(?i)\\{\\{\\s*(?:c|center|centre|larger|large|x-larger|x-large|smaller|small|bold|b|italic|i|u|underline|big|font|nop|right|left|block center)\\s*\\|([^{}|]*)(?:\\|[^{}]*)?\\}\\}", "$1")
+                    .replaceAll("\\{\\{[^{}]*\\}\\}", " ");
+            if (n.equals(t)) break;
+            t = n;
+        }
+        t = t.replaceAll("(?i)\\[\\[\\s*(?:file|image|దస్త్రం|బొమ్మ|category|వర్గం)\\s*:[^\\]]*\\]\\]", " ")
+                .replaceAll("\\[\\[(?:[^\\]|]*\\|)?([^\\]]*)\\]\\]", "$1")
+                .replaceAll("\\[https?://\\S+\\s+([^\\]]*)\\]", "$1")
+                .replaceAll("'{2,5}", "")
+                .replaceAll("(?i)<br\\s*/?>", "\n")
+                .replaceAll("(?i)</?(?:div|p|center|poem|section|table|tr|td|th|blockquote)\\b[^>]*>", "\n")
+                .replaceAll("(?i)</?(?:span|big|small|font|sup|sub|b|i|u|s|em|strong)\\b[^>]*>", "")
+                .replaceAll("(?m)^\\s*\\{\\|.*$|^\\s*\\|[-}].*$", "")
+                .replaceAll("(?m)^\\s*(=+)\\s*(.*?)\\s*\\1\\s*$", "$2")
+                .replaceAll("(?m)^[:;*#]+\\s*", "")
+                .replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+                .replaceAll("[ \\t\\u00A0]+", " ").replaceAll(" *\\n *", "\n").replaceAll("\\n{3,}", "\n\n");
+        return t.trim();
+    }
+
+    /** A scan's సూచిక (Index) page wikitext → {t, a, y} from its Title / Author / Year fields (Telugu names too); empty when missing. */
+    static JSONObject indexMeta(String w) {
+        JSONObject o = new JSONObject();
+        try {
+            o.put("t", field(w, "Title|శీర్షిక|పేరు")).put("a", field(w, "Author|రచయిత|కర్త|రచయితలు"));
+            String y = field(w, "Year|సంవత్సరం|ప్రచురణ సంవత్సరం");
+            Matcher m = Pattern.compile("(1[5-9]\\d\\d|20\\d\\d)").matcher(y);
+            if (m.find()) o.put("y", Integer.parseInt(m.group(1)));
+        } catch (Exception ignored) {}
+        return o;
+    }
+
+    private static String field(String w, String names) {
+        if (w == null) return "";
+        Matcher m = Pattern.compile("(?im)^\\s*\\|\\s*(?:" + names + ")\\s*=\\s*(.*)$").matcher(w);
+        if (!m.find()) return "";
+        return cut(wikiText(m.group(1)).replaceAll("\\s+", " ").trim(), 120);
+    }
+
+    /** A scan file's name as a book name when its index says nothing ("Kanyashulkamu020647mbp.pdf" → "Kanyashulkamu"). */
+    static String fileTitle(String file) {
+        String s = file == null ? "" : file.replaceAll("^[^:]*:", "");
+        s = s.replaceAll("(?i)\\.(pdf|djvu|tiff?)$", "").replace('_', ' ');
+        s = s.replaceAll("(?i)\\d{4,}mbp$", "").replaceAll("(?i)^in\\.ernet\\.dli\\.\\d+\\.\\d+$", "").replaceAll("\\s+", " ").trim();
+        return s.isEmpty() ? (file == null ? "" : file) : s;
+    }
+
+    /** How clean a scan's text is, 0–1: letters, digits, spaces and plain punctuation out of all; Telugu books also need Telugu letters. */
+    static double textQuality(String s, boolean telugu) {
+        if (s == null || s.length() < 200) return 0;
+        int good = 0, letters = 0, te = 0, n = 0;
+        for (int i = 0; i < s.length() && n < 200_000; i++, n++) {
+            char c = s.charAt(i);
+            boolean t = c >= 0x0C00 && c <= 0x0C7F;
+            boolean l = Character.isLetter(c) || t;
+            if (l) { letters++; if (t) te++; }
+            if (l || Character.isDigit(c) || Character.isWhitespace(c) || ".,;:!?'\"()-–—".indexOf(c) >= 0) good++;
+        }
+        double q = (double) good / Math.max(1, n);
+        if (telugu) q = Math.min(q, letters == 0 ? 0 : (double) te / letters + 0.15);
+        return Math.max(0, Math.min(1, q));
+    }
+
+    /** Internet Archive: only a book its uploader marked free to share (a Creative Commons licence or the public-domain mark). */
+    static boolean iaFree(String licenseUrl) {
+        String l = licenseUrl == null ? "" : licenseUrl.toLowerCase(Locale.ROOT);
+        return l.contains("creativecommons.org") || l.contains("publicdomain");
+    }
+
+    /** Internet Archive item metadata → the file to read: its plain text ("…_djvu.txt"), else an EPUB, else a .txt; null when none. */
+    static String[] iaFile(JSONObject meta) {
+        JSONArray files = meta == null ? null : meta.optJSONArray("files");
+        String txt = null, epub = null, other = null;
+        for (int i = 0; files != null && i < files.length(); i++) {
+            JSONObject f = files.optJSONObject(i);
+            if (f == null) continue;
+            String n = f.optString("name", ""), fmt = f.optString("format", ""), low = n.toLowerCase(Locale.ROOT);
+            if (low.endsWith("_djvu.txt") || "DjVuTXT".equals(fmt)) { if (txt == null) txt = n; }
+            else if (low.endsWith(".epub") && !low.contains("_lcp")) { if (epub == null) epub = n; }
+            else if (low.endsWith(".txt") && !low.endsWith("_meta.txt") && !low.contains("_page_numbers") && other == null) other = n;
+        }
+        if (txt != null) return new String[]{txt, "txt"};
+        if (epub != null) return new String[]{epub, "epub"};
+        if (other != null) return new String[]{other, "txt"};
+        return null;
+    }
+
+    /** A scan's pages as chapters: every `per` pages one "పుటలు a–b" part (empty pages skipped). */
+    static List<String[]> pageParts(List<String> pages, int per) {
+        List<String[]> out = new ArrayList<>();
+        for (int i = 0; i < pages.size(); i += per) {
+            StringBuilder b = new StringBuilder();
+            int to = Math.min(pages.size(), i + per);
+            for (int k = i; k < to; k++) { String t = pages.get(k); if (t != null && !t.trim().isEmpty()) { if (b.length() > 0) b.append("\n\n"); b.append(t.trim()); } }
+            if (b.length() > 0) out.add(new String[]{"పుటలు " + (i + 1) + "–" + to, b.toString()});
+        }
+        return bound(out);
+    }
 }
