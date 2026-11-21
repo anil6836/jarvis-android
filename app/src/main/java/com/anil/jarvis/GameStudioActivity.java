@@ -305,6 +305,7 @@ public class GameStudioActivity extends Activity {
         chip.setBackground(Ui.round(this, 0x2216303F, Ui.CYAN_DIM, 999));
         chip.setPadding(dp(10), dp(4), dp(10), dp(4));
         top.addView(chip);
+        chip.setOnClickListener(v -> pickModel()); // 💰 every model with its cost for one job; his tap picks this studio's AI
         TextView close = Ui.text(this, "✕", 22, Ui.TEXT);
         close.setPadding(dp(16), dp(6), dp(8), dp(6));
         close.setContentDescription("మూసేయి");
@@ -454,6 +455,17 @@ public class GameStudioActivity extends Activity {
         lp.rightMargin = dp(8);
         t.setLayoutParams(lp);
         return t;
+    }
+
+    /** 💰 The AI for this studio, picked by his tap from every model his keys can use, each with its cost for one job. */
+    private void pickModel() {
+        Models.pick(this, Workshop.studioName(Workshop.GAMES) + " AI ఎంచుకోండి", new String[]{Prefs.OPENAI, Prefs.ANTHROPIC, Prefs.GEMINI},
+                new String[]{p.openAiKey(), p.anthropicKey(), p.geminiKey()}, Workshop.modelFor(p, Workshop.GAMES), Workshop.costWhat(Workshop.GAMES), Workshop.costOf(Workshop.GAMES), it -> {
+                    p.setStudioModel(Workshop.GAMES, it.id);
+                    showChip();
+                    refresh();
+                    android.widget.Toast.makeText(this, "✓ " + Workshop.studioName(Workshop.GAMES) + " AI: " + it.id + " (వర్క్‌షాప్ AI మారలేదు)", android.widget.Toast.LENGTH_LONG).show();
+                });
     }
 
     private void showChip() {

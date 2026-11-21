@@ -422,6 +422,7 @@ public class WorkshopActivity extends Activity {
         chip.setBackground(Ui.round(this, 0x2216303F, Ui.CYAN_DIM, 999));
         chip.setPadding(dp(10), dp(4), dp(10), dp(4));
         top.addView(chip);
+        chip.setOnClickListener(v -> pickModel()); // 💰 every model with its cost for one job; his tap picks this studio's AI
         rotBtn = Ui.text(this, "🔄", 19, Ui.TEXT);
         rotBtn.setPadding(dp(14), dp(6), dp(4), dp(6));
         rotBtn.setContentDescription("అడ్డంగా / నిలువుగా");
@@ -738,6 +739,16 @@ public class WorkshopActivity extends Activity {
         t.setLayoutParams(lp);
         t.setOnClickListener(l);
         return t;
+    }
+
+    /** 💰 The AI for this studio, picked by his tap from every model his keys can use, each with its cost for one job. */
+    private void pickModel() {
+        Models.pick(this, "🛠️ వర్క్‌షాప్ AI ఎంచుకోండి", new String[]{Prefs.OPENAI, Prefs.ANTHROPIC, Prefs.GEMINI},
+                new String[]{p.openAiKey(), p.anthropicKey(), p.geminiKey()}, p.workshopModel().trim(), Workshop.costWhat(null), Workshop.costOf(null), it -> {
+                    p.sp.edit().putString("workshop_model", it.id).apply();
+                    showChip();
+                    android.widget.Toast.makeText(this, "✓ వర్క్‌షాప్ AI: " + it.id + " (🎮 ⚡ 📱 📚 కి సొంత AI ఎంచుకోకపోతే అవీ ఇదే వాడతాయి)", android.widget.Toast.LENGTH_LONG).show();
+                });
     }
 
     private void showChip() {

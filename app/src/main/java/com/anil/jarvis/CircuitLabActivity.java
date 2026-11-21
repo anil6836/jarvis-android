@@ -230,6 +230,7 @@ public class CircuitLabActivity extends Activity {
         chip.setBackground(Ui.round(this, 0x2216303F, Ui.CYAN_DIM, 999));
         chip.setPadding(dp(10), dp(4), dp(10), dp(4));
         top.addView(chip);
+        chip.setOnClickListener(v -> pickModel()); // 💰 every model with its cost for one job; his tap picks this studio's AI
         TextView fullBtn = Ui.text(this, "⛶", 20, Ui.TEXT);
         fullBtn.setPadding(dp(12), dp(4), dp(6), dp(4));
         fullBtn.setContentDescription("పూర్తి స్క్రీన్");
@@ -352,6 +353,17 @@ public class CircuitLabActivity extends Activity {
         lp.rightMargin = dp(7);
         t.setLayoutParams(lp);
         return t;
+    }
+
+    /** 💰 The AI for this studio, picked by his tap from every model his keys can use, each with its cost for one job. */
+    private void pickModel() {
+        Models.pick(this, Workshop.studioName(Workshop.LAB) + " AI ఎంచుకోండి", new String[]{Prefs.OPENAI, Prefs.ANTHROPIC, Prefs.GEMINI},
+                new String[]{p.openAiKey(), p.anthropicKey(), p.geminiKey()}, Workshop.modelFor(p, Workshop.LAB), Workshop.costWhat(Workshop.LAB), Workshop.costOf(Workshop.LAB), it -> {
+                    p.setStudioModel(Workshop.LAB, it.id);
+                    showChip();
+                    refresh();
+                    android.widget.Toast.makeText(this, "✓ " + Workshop.studioName(Workshop.LAB) + " AI: " + it.id + " (వర్క్‌షాప్ AI మారలేదు)", android.widget.Toast.LENGTH_LONG).show();
+                });
     }
 
     private void showChip() {

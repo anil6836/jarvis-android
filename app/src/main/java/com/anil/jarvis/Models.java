@@ -211,11 +211,22 @@ final class Models {
 
     interface Picked { void on(Item it); }
 
+    /** 💰 What one job of that kind costs on a model ("₹9–35"); the list shows it beside each model, cheapest first. */
+    interface Cost { String said(String model); }
+
+    /** The order for "cheapest first": a usual answer's size (mostly what the model writes) at its price. */
+    static double costKey(String model) { return Usage.cost(model, 3000, 0, 6000); }
+
     /**
      * Fetches the lists (one company, or every company he has a key for) in the background and shows
      * them with a search box; tapping one hands it back.
      */
     static void pick(Activity a, String title, String[] providers, String[] keys, String current, Picked done) {
+        pick(a, title, providers, keys, current, null, null, done);
+    }
+
+    /** The same with each model's cost for one job (what = which job, said above the list); cheapest first, or newest first on a tap. */
+    static void pick(Activity a, String title, String[] providers, String[] keys, String current, String what, Cost cost, Picked done) {
         List<String> tried = new ArrayList<>();
         for (int i = 0; i < providers.length; i++) if (!keys[i].trim().isEmpty() || fixedList(providers[i])) tried.add(providers[i]);
         if (tried.isEmpty()) {
@@ -246,7 +257,7 @@ final class Models {
                             .setPositiveButton("సరే", null).show();
                     return;
                 }
-                show(a, title, all, problems.toString().trim(), current, providers.length > 1, done);
+                show(a, title, all, problems.toString().trim(), current, providers.length > 1, what, cost, done);
             });
         }, "jarvis-models").start();
     }
@@ -261,7 +272,7 @@ final class Models {
         return String.valueOf(e.getMessage());
     }
 
-    private static void show(Activity a, String title, List<Item> all, String problems, String current, boolean withCompany, Picked done) {
+    private static void show(Activity a, String title, List<Item> all, String problems, String current, boolean withCompany, String what, Cost cost, Picked done) {
         int pad = Ui.dp(a, 16);
         LinearLayout box = new LinearLayout(a);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -274,6 +285,25 @@ final class Models {
                 + (problems.isEmpty() ? "" : "\n⚠ " + problems), 13, Ui.MUTED);
         info.setPadding(0, Ui.dp(a, 4), 0, Ui.dp(a, 8));
         box.addView(info);
+        // 💰 each model's cost for one job: the costs worked out once; "cheapest first" (a guessed price after the known ones)
+        final java.util.Map<String, String> said = new java.util.HashMap<>();
+        final java.util.Map<String, Integer> born = new java.util.HashMap<>();
+        for (int i = 0; i < all.size(); i++) born.put(all.get(i).id, i);
+        final boolean[] cheap = {cost != null};
+        LinearLayout orderRow = null;
+        if (cost != null) {
+            for (Item it : all) {
+                String c;
+                try { c = cost.said(it.id); } catch (Exception e) { c = ""; }
+                said.put(it.id, c == null ? "" : c + (Usage.knownPrice(it.id) ? "" : " (అంచనా)"));
+            }
+            sortItems(all, true, born);
+            TextView w = Ui.text(a, "💰 " + (what == null ? "ఒక పనికి సుమారు ఖర్చు" : what) + " (సుమారు; \"అంచనా\" = ఆ మోడల్ ధర నా లిస్ట్‌లో లేదు). ఎంచుకున్నది మీ ఇష్టం.", 13, Ui.MUTED);
+            w.setPadding(0, 0, 0, Ui.dp(a, 6));
+            box.addView(w);
+            orderRow = new LinearLayout(a);
+            box.addView(orderRow);
+        }
 
         EditText search = new EditText(a);
         search.setHint("వెతకండి (ఉదా: flash, pro, mini, opus)");
@@ -301,6 +331,12 @@ final class Models {
                 SpannableStringBuilder s = new SpannableStringBuilder();
                 s.append(now ? "✓ " : "").append(it.id);
                 s.setSpan(new ForegroundColorSpan(now ? Ui.CYAN : Ui.TEXT), 0, s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                String money = said.get(it.id);
+                if (money != null && !money.isEmpty()) {
+                    int at = s.length();
+                    s.append("   ").append(money);
+                    s.setSpan(new ForegroundColorSpan(money.endsWith("(అంచనా)") ? Ui.MUTED : Ui.OK), at, s.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                }
                 String sub = (withCompany ? company(it.provider) : "") + (it.name.isEmpty() || it.name.equals(it.id) ? "" : (withCompany ? " · " : "") + it.name)
                         + (now ? (withCompany || !it.name.isEmpty() ? " · " : "") + "ఇప్పుడు ఇదే" : "");
                 if (!sub.isEmpty()) {
@@ -321,6 +357,22 @@ final class Models {
         lp.topMargin = Ui.dp(a, 8);
         box.addView(lv, lp);
 
+        if (orderRow != null) {
+            TextView byCost = Ui.text(a, "  చౌక మొదట  ", 14, Ui.CYAN), byNew = Ui.text(a, "  కొత్తవి మొదట  ", 14, Ui.MUTED);
+            byCost.setPadding(0, Ui.dp(a, 4), Ui.dp(a, 12), Ui.dp(a, 8));
+            byNew.setPadding(0, Ui.dp(a, 4), Ui.dp(a, 12), Ui.dp(a, 8));
+            Runnable resort = () -> {
+                sortItems(all, cheap[0], born);
+                sortItems(shown, cheap[0], born);
+                byCost.setTextColor(cheap[0] ? Ui.CYAN : Ui.MUTED);
+                byNew.setTextColor(cheap[0] ? Ui.MUTED : Ui.CYAN);
+                adapter.notifyDataSetChanged();
+            };
+            byCost.setOnClickListener(v -> { cheap[0] = true; resort.run(); });
+            byNew.setOnClickListener(v -> { cheap[0] = false; resort.run(); });
+            orderRow.addView(byCost);
+            orderRow.addView(byNew);
+        }
         search.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int st, int c, int af) {}
             @Override public void onTextChanged(CharSequence s, int st, int b, int c) {}
@@ -346,6 +398,20 @@ final class Models {
             done.on(shown.get(p));
         });
         d.show();
+    }
+
+    /** Cheapest first (models with a guessed price after those with a known one), else the companies' own order (newest first). */
+    static void sortItems(List<Item> list, boolean cheap, java.util.Map<String, Integer> born) {
+        java.util.Collections.sort(list, (x, y) -> {
+            if (cheap) {
+                boolean kx = Usage.knownPrice(x.id), ky = Usage.knownPrice(y.id);
+                if (kx != ky) return kx ? -1 : 1;
+                int c = Double.compare(costKey(x.id), costKey(y.id));
+                if (c != 0) return c;
+            }
+            Integer bx = born.get(x.id), by = born.get(y.id);
+            return Integer.compare(bx == null ? 0 : bx, by == null ? 0 : by);
+        });
     }
 
     // ---------------------------------------------------------------- errors in plain words

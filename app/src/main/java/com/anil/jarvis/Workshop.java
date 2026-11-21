@@ -104,6 +104,30 @@ final class Workshop {
         return new Engine(prov, m, key);
     }
 
+    // ---- 💰 each model's cost for one job of that studio (beside each model in the lists, cheapest first)
+
+    /** About what one usual 3D model costs to build (the answer and a repair or two): "₹60–110" on Fable 5.2. */
+    static String buildMoney(String model) {
+        double lo = rupees(model, 4000, 0, 15000), hi = rupees(model, 5000, 0, 28000);
+        return "₹" + Math.max(1, (int) Math.floor(lo)) + "–" + Math.max(2, (int) Math.ceil(hi));
+    }
+
+    static Models.Cost costOf(String which) {
+        if (GAMES.equals(which)) return m -> "ఒక ఆట " + GameStudio.aboutMoney(m);
+        if (LAB.equals(which)) return m -> "కొత్త బోర్డ్ " + CircuitLab.aboutMoney(m, 0, false);
+        if (APPS.equals(which)) return m -> "ప్లాన్ " + AppStudio.planMoney(m) + " · యాప్ " + AppStudio.buildMoney(m, "");
+        if (BOOKS.equals(which)) return m -> "ఒక అధ్యాయం " + money(Library.cost(m, 50000));
+        return m -> "ఒక బొమ్మ " + buildMoney(m);
+    }
+
+    static String costWhat(String which) {
+        if (GAMES.equals(which)) return "ఒక ఆట తయారీకి ఖర్చు";
+        if (LAB.equals(which)) return "ఒక కొత్త బోర్డ్ గీయడానికి ఖర్చు";
+        if (APPS.equals(which)) return "ఒక యాప్ ప్లాన్‌కి, మామూలు సైజు యాప్ తయారీకి ఖర్చు";
+        if (BOOKS.equals(which)) return "ఒక అధ్యాయం (సుమారు 50,000 అక్షరాలు) AI తెలుగుకి ఖర్చు";
+        return "ఒక 3D బొమ్మకి మామూలుగా అయ్యే ఖర్చు";
+    }
+
     // ================================================================ money
 
     private static SharedPreferences sp(Context c) { return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE); }

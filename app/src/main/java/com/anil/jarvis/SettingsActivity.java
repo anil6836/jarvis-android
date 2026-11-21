@@ -520,7 +520,7 @@ public class SettingsActivity extends Activity {
         wsAll.setOnClickListener(v -> Models.pick(this, "వర్క్‌షాప్ AI ఎంచుకోండి",
                 new String[]{Prefs.OPENAI, Prefs.ANTHROPIC, Prefs.GEMINI},
                 new String[]{openAiKey.getText().toString(), anthropicKey.getText().toString(), geminiKey.getText().toString()},
-                workshopModel.getText().toString(), it -> chose(workshopModel, "workshop_model", it.id)));
+                workshopModel.getText().toString(), Workshop.costWhat(null), Workshop.costOf(null), it -> chose(workshopModel, "workshop_model", it.id)));
         boxOf(workshopModel).addView(wsAll);
         final TextView wsTestInfo = Ui.text(this, "", 14, Ui.MUTED);
         TextView wsTest = Ui.text(this, "🧪 టెస్ట్ చేయి (కొన్ని పైసలు)", 14.5f, Ui.CYAN);
@@ -6530,7 +6530,7 @@ public class SettingsActivity extends Activity {
         all.setOnClickListener(v -> Models.pick(this, Workshop.studioName(key) + " AI ఎంచుకోండి",
                 new String[]{Prefs.OPENAI, Prefs.ANTHROPIC, Prefs.GEMINI},
                 new String[]{openAiKey.getText().toString(), anthropicKey.getText().toString(), geminiKey.getText().toString()},
-                f.getText().toString(), it -> chose(f, key, it.id)));
+                f.getText().toString(), Workshop.costWhat(key), Workshop.costOf(key), it -> chose(f, key, it.id)));
         boxOf(f).addView(all);
         TextView back = Ui.text(this, "↩ ఖాళీ చేయి (పైన 🛠️ వర్క్‌షాప్ AI నే వాడు)", 14, Ui.CYAN);
         back.setPadding(0, Ui.dp(this, 2), 0, Ui.dp(this, 8));
