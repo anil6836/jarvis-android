@@ -88,6 +88,7 @@ public class LibraryActivity extends Activity {
     /** What he picked to add, waiting for the form. */
     private Uri pickedFile;
     private List<Uri> pickedPhotos;
+    private java.io.File webPdf; // (a publisher's PDF fetched for ➕: deleted once read or cancelled; never kept)
     private volatile Library.AiJob addJob;
 
     @Override protected void onCreate(Bundle b) {
@@ -350,7 +351,8 @@ public class LibraryActivity extends Activity {
             case "remove": io.execute(() -> { Library.remove(this, id); say("🗑️ ఫోన్ నుంచి తీసేశాను"); sendShelf(); }); break;
             case "add": addStart(m.optString("kind", "file")); break;
             case "add_go": addGo(m.optJSONObject("form")); break;
-            case "add_cancel": pickedFile = null; pickedPhotos = null; break;
+            case "add_cancel": pickedFile = null; pickedPhotos = null; dropWebPdf(); break;
+            case "pdfadd": pdfAdd(m.optString("url", ""), m.optString("title", ""), m.optString("author", "")); break;
             case "site": site(m.optString("url", "")); break;
             case "prefs": {
                 android.content.SharedPreferences.Editor e = getSharedPreferences("jarvis_library_ui", MODE_PRIVATE).edit();
@@ -713,7 +715,9 @@ public class LibraryActivity extends Activity {
     /** Only these free sites open in his browser, on his tap. */
     private void site(String url) {
         if (!(url.startsWith("https://openlibrary.org/") || url.startsWith("https://www.gutenberg.org/") || url.startsWith("https://te.wikisource.org/")
-                || url.startsWith("https://standardebooks.org/") || url.startsWith("https://www.teluguthesis.com/") || url.startsWith("https://archive.org/details/"))) return;
+                || url.startsWith("https://standardebooks.org/") || url.startsWith("https://www.teluguthesis.com/") || url.startsWith("https://archive.org/details/")
+                || url.startsWith("https://www.koumudi.net/") || url.startsWith("https://www.marxists.org/telugu/") || url.startsWith("https://telugubhagavatam.org/")
+                || url.startsWith("https://www.gitapress.org/ebook"))) return;
         try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) {}
     }
 
@@ -785,17 +789,56 @@ public class LibraryActivity extends Activity {
         return "";
     }
 
+    /** 📄 A publisher's free PDF (Koumudi, Marxists Internet Archive) into ➕'s own form: pages, cost, his choice. */
+    private void pdfAdd(String url, String t, String a) {
+        if (!Library.pdfAllowed(url)) return;
+        say("⬇️ PDF దించుతున్నాను…");
+        io.execute(() -> {
+            java.io.File f = new java.io.File(getCacheDir(), "web-" + System.currentTimeMillis() + ".pdf");
+            try {
+                Library.getTo(url, f, 150L << 20, this::say);
+                Uri u = Uri.fromFile(f);
+                JSONObject info = Library.inspect(this, u, "web.pdf").put("t", LibText.cut(t, 160)).put("a", LibText.cut(a, 100)).put("web", true).put("sec", "telugu");
+                JSONObject msg = json("addinfo").put("info", info).put("quote1", Library.pagesQuote(new Prefs(this), 1));
+                ui.post(() -> {
+                    if (destroyed) { //noinspection ResultOfMethodCallIgnored
+                        f.delete(); return; }
+                    dropWebPdf();
+                    webPdf = f;
+                    webFrom = url.contains("koumudi.net") ? "కౌముది గ్రంథాలయం (koumudi.net), ఉచితం" : "Marxists Internet Archive (ఉచితం)";
+                    pickedFile = u;
+                    pickedPhotos = null;
+                    send(msg);
+                });
+            } catch (Exception e) { //noinspection ResultOfMethodCallIgnored
+                f.delete(); say("PDF దించలేకపోయాను: " + e.getMessage()); }
+        });
+    }
+
+    private String webFrom;
+
+    private void dropWebPdf() {
+        if (webPdf != null) { //noinspection ResultOfMethodCallIgnored
+            webPdf.delete(); }
+        webPdf = null;
+    }
+
     private void addGo(JSONObject form) {
         if (form == null || (pickedFile == null && pickedPhotos == null)) return;
         Uri f = pickedFile;
         List<Uri> ph = pickedPhotos;
         pickedFile = null;
         pickedPhotos = null;
+        final java.io.File wf = webPdf;
+        webPdf = null;
+        form.remove("credit");
+        if (wf != null) try { form.put("credit", webFrom); } catch (Exception ignored) {}
         Library.AiJob job = new Library.AiJob("add", new ArrayList<>());
         addJob = job;
         if ("te".equals(form.optString("lang")) && ("pdf".equals(form.optString("kind")) || ph != null)) {
             String over = Workshop.overLimit(this, new Prefs(this));
-            if (over != null) { say(over); return; }
+            if (over != null) { say(over); if (wf != null) //noinspection ResultOfMethodCallIgnored
+                wf.delete(); return; }
         }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         new Thread(() -> {
@@ -808,6 +851,8 @@ public class LibraryActivity extends Activity {
                 try { send(json("fail").put("id", "add").put("s", "➕ కాలేదు: " + e.getMessage() + (job.rupees > 0 ? " (ఖర్చు " + Workshop.money(job.rupees) + ")" : ""))); } catch (Exception ignored) {}
             } finally {
                 addJob = null;
+                if (wf != null) //noinspection ResultOfMethodCallIgnored
+                    wf.delete(); // (the PDF copy is not kept: only its text)
                 ui.post(() -> getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON));
             }
         }, "jarvis-library-add").start();
@@ -929,6 +974,7 @@ public class LibraryActivity extends Activity {
 
     @Override protected void onDestroy() {
         destroyed = true;
+        dropWebPdf();
         open = Math.max(0, open - 1);
         if (WakeService.workshopWake == wakeR) WakeService.workshopWake = null;
         if (earWake == earR) earWake = null;

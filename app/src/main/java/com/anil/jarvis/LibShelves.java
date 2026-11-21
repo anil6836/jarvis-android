@@ -29,7 +29,9 @@ final class LibShelves {
         String[] tt;     // teluguthesis.com labels
         String se;       // Standard Ebooks subject ("" = every book), English only
         String[] wsLinks; // Wikisource pages whose links are the shelf (featured lists)
+        String km;        // Koumudi library section (its PDFs), Telugu only
         Cat(String key) { this.key = key; }
+        Cat km(String section) { km = section; return this; }
         Cat ws(String... w) { ws = w; return this; }
         Cat pg(String t) { pg = t; return this; }
         Cat ia(String... w) { ia = w; return this; }
@@ -39,7 +41,7 @@ final class LibShelves {
     }
 
     static final Cat[] TE = {
-        new Cat("novel").ws("నవలలు", "నవల").pg("fiction").ia("నవల", "నవలలు", "novel", "novels", "fiction").tt("Novel", "నవల"),
+        new Cat("novel").ws("నవలలు", "నవల").pg("fiction").ia("నవల", "నవలలు", "novel", "novels", "fiction").tt("Novel", "నవల").km("novel"),
         new Cat("story").ws("కథలు", "కథా").pg("stories").ia("కథలు", "కథ", "కథానికలు", "stories", "katha", "kathalu").tt("కథలు", "Stories", "Telugu Story", "కథానిక"),
         new Cat("poetry").ws("శతకములు", "శతకాలు", "కావ్యములు", "కవిత్వం", "పద్యాలు").pg("poetry")
                 .ia("శతకము", "శతకం", "పద్యాలు", "కవిత్వం", "కవితలు", "poetry", "satakam").tt("Shatakam", "Kavya-Prabandham", "ప్రబంధం", "కావ్యం", "Adhunika Kavyam"),
@@ -87,6 +89,7 @@ final class LibShelves {
         if (en && c.se != null) s.add("se");
         if (!en && has(c.ia)) s.add("ia");
         if (!en && has(c.tt)) s.add("tt");
+        if (!en && c.km != null) s.add("km");
         return s;
     }
 
@@ -94,7 +97,7 @@ final class LibShelves {
     static String[] kind(String kind) {
         if (kind == null || !kind.startsWith("cat:")) return null;
         String[] p = kind.split(":");
-        if (p.length != 4 || !p[1].matches("te|en") || !p[2].matches("[a-z]{2,12}") || !p[3].matches("all|ws|wse|pg|ia|tt|se")) return null;
+        if (p.length != 4 || !p[1].matches("te|en") || !p[2].matches("[a-z]{2,12}") || !p[3].matches("all|ws|wse|pg|ia|tt|se|km")) return null;
         return new String[]{p[1], p[2], p[3]};
     }
 
@@ -216,6 +219,75 @@ final class LibShelves {
     /** There is a next page on a Standard Ebooks list. */
     static boolean seMore(String html, int page) {
         return html != null && html.contains("page=" + (page + 1) + "\"");
+    }
+
+    // ---- Koumudi (a Telugu web monthly): its own free book library, PDFs under koumudi.net/books/
+
+    private static final Pattern KM_LINK = Pattern.compile("href\\s*=\\s*[\"']?((?:https?://(?:www\\.)?koumudi\\.net)?/?books/([A-Za-z0-9_\\-.%]+?)\\.pdf)[\"'\\s>]", Pattern.CASE_INSENSITIVE);
+    private static final Pattern KM_IMG = Pattern.compile("src\\s*=\\s*[\"']?((?:https?://(?:www\\.)?koumudi\\.net)?/?images/[A-Za-z0-9_/\\-.%]+\\.(?:jpe?g|png|gif))", Pattern.CASE_INSENSITIVE);
+    /** Koumudi's section headings → {key, author}. */
+    static final String[][] KM_SECTIONS = {
+        {"తాజాగా విడుదలైన", "new", ""}, {"కౌముది ప్రత్యేక", "special", ""}, {"కొమ్మూరి సాంబశివరావు", "kommuri", "కొమ్మూరి సాంబశివరావు"},
+        {"గొల్లపూడి మారుతి", "gollapudi", "గొల్లపూడి మారుతీరావు"}, {"నవలలు", "novel", ""},
+    };
+
+    /** The library page's books: {pdf url, title (from the file name), section key, cover url or "", author or ""}. */
+    static List<String[]> koumudi(String html) {
+        List<String[]> out = new ArrayList<>();
+        if (html == null) return out;
+        Set<String> seen = new LinkedHashSet<>();
+        Matcher m = KM_LINK.matcher(html);
+        while (m.find()) {
+            String name = m.group(2);
+            if (name.contains("..") || name.contains("/")) continue;
+            String url = "https://www.koumudi.net/books/" + name + ".pdf";
+            if (!seen.add(url)) continue;
+            String[] sec = {"", "other", ""};
+            int best = -1;
+            for (String[] h : KM_SECTIONS) { int at = html.lastIndexOf(h[0], m.start()); if (at > best) { best = at; sec = h; } }
+            String cover = "";
+            Matcher im = KM_IMG.matcher(html.substring(m.end(), Math.min(html.length(), m.end() + 600)));
+            if (im.find()) {
+                String c = im.group(1);
+                cover = c.startsWith("http") ? c.replaceFirst("^http://", "https://") : "https://www.koumudi.net/" + c.replaceFirst("^/", "");
+            }
+            out.add(new String[]{url, kmTitle(name), sec[1], cover, sec[2]});
+        }
+        return out;
+    }
+
+    /** "KOUMUDI_SUBHA_MANGALAM" → "Subha Mangalam". */
+    static String kmTitle(String file) {
+        String x = file.replace("%20", " ").replaceFirst("(?i)^koumudi[_\\- ]*", "").replaceAll("[_\\-]+", " ").trim().toLowerCase(Locale.ROOT);
+        StringBuilder b = new StringBuilder();
+        for (String w : x.split(" ")) { if (w.isEmpty()) continue; if (b.length() > 0) b.append(' '); b.append(Character.toUpperCase(w.charAt(0))).append(w.substring(1)); }
+        return b.length() == 0 ? "Koumudi" : b.toString();
+    }
+
+    // ---- Marxists Internet Archive, Telugu section (public domain; the archive's own work under Creative Commons)
+
+    private static final Pattern MIA_LINK = Pattern.compile("<a[^>]+href\\s*=\\s*\"([^\"#]+\\.(?:pdf|htm))\"[^>]*>(.*?)</a>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+    /** The Telugu section's works: {url, title, "pdf" | "htm"} (only under marxists.org/telugu/, Telugu titles). */
+    static List<String[]> mia(String html, String base) {
+        List<String[]> out = new ArrayList<>();
+        if (html == null) return out;
+        Set<String> seen = new LinkedHashSet<>();
+        Matcher m = MIA_LINK.matcher(html);
+        while (m.find()) {
+            String url;
+            try { url = new java.net.URL(new java.net.URL(base), m.group(1).trim()).toString().replaceFirst("^http://", "https://"); } catch (Exception e) { continue; }
+            String title = unescape(m.group(2).replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim());
+            if (!url.startsWith("https://www.marxists.org/telugu/") || url.endsWith("/telugu/index.htm") || !title.matches("(?s).*[\\u0C00-\\u0C7F].*") || !seen.add(url)) continue;
+            out.add(new String[]{url, LibText.cut(title, 140), url.toLowerCase(Locale.ROOT).endsWith(".pdf") ? "pdf" : "htm"});
+        }
+        return out;
+    }
+
+    /** Only these publishers' PDFs come onto the phone (https, their own library folders). */
+    static boolean pdfAllowed(String url) {
+        return url != null && url.length() < 400 && !url.contains("..")
+                && (url.matches("https://www\\.koumudi\\.net/books/[A-Za-z0-9_\\-.%]+\\.pdf") || url.matches("https://www\\.marxists\\.org/telugu/[A-Za-z0-9_\\-./%]+\\.pdf"));
     }
 
     static String slugTitle(String s) {

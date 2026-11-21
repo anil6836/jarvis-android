@@ -800,6 +800,15 @@ const SHELVES = [
   ['pg_te', '📘 Project Gutenberg లోని తెలుగు పుస్తకాలు'],
   ['ia_te', '🗄️ Internet Archive తెలుగు (ఉచిత లైసెన్స్ ఉన్నవి)'],
   ['tt_all', '🎓 తెలుగు థీసిస్ (teluguthesis.com) అన్ని పుస్తకాలు'],
+  ['km_all', '📰 కౌముది గ్రంథాలయం (koumudi.net): PDF పుస్తకాలు'],
+  ['mia_te', '🚩 Marxists Internet Archive: తెలుగు'],
+  ['web_links', '🌐 సైట్‌లోనే చదివే ఉచిత పుస్తకాలు (బ్రౌజర్‌లో)'],
+];
+/** Free reading on the publishers' own sites (opened in his browser, on his tap only). */
+const WEB_LINKS = [
+  { id: 'w-bhagavatam', t: 'పోతన తెలుగు భాగవతము: పద్యాలు, ప్రతిపదార్థం, వివరణ', a: 'telugubhagavatam.org (లాభాపేక్ష లేని సైట్)', src: 'web', mark: 'site', url: 'https://telugubhagavatam.org/?tebha', lang: 'te' },
+  { id: 'w-gitapress', t: 'గీతా ప్రెస్: ఉచిత ఈ-పుస్తకాలు', a: 'gitapress.org (ఎక్కువగా హిందీ / English)', src: 'web', mark: 'site', url: 'https://www.gitapress.org/ebook/free', lang: 'te' },
+  { id: 'w-mia', t: 'మార్క్స్, ఎంగెల్స్, లెనిన్ రచనలు (తెలుగు)', a: 'Marxists Internet Archive', src: 'web', mark: 'site', url: 'https://www.marxists.org/telugu/index.htm', lang: 'te' },
 ];
 const SHELVES_EN = [
   ['pg_en', '📘 Project Gutenberg: ఎక్కువ మంది చదివినవి'],
@@ -808,7 +817,7 @@ const SHELVES_EN = [
 /** 📚 Shelves by subject (Anil, 22 Nov: "A చేయి"): one shelf holds every free site's books. src = the sites asked (as LibShelves.java). */
 const CATS = {
   te: [
-    { k: 'novel', n: '📖 నవలలు', src: ['ws', 'pg', 'ia', 'tt'] },
+    { k: 'novel', n: '📖 నవలలు', src: ['ws', 'pg', 'ia', 'tt', 'km'] },
     { k: 'story', n: '📝 కథలు', src: ['ws', 'pg', 'ia', 'tt'] },
     { k: 'poetry', n: '🪔 కవిత్వం / శతకాలు', src: ['ws', 'pg', 'ia', 'tt'] },
     { k: 'bhakti', n: '🕉️ భక్తి / పురాణాలు', src: ['ws', 'ia', 'tt'] },
@@ -839,7 +848,7 @@ const AUTHORS = {
   en: ['William Shakespeare', 'Charles Dickens', 'Jane Austen', 'Arthur Conan Doyle', 'Mark Twain', 'Rabindranath Tagore', 'Leo Tolstoy', 'Jules Verne', 'Oscar Wilde', 'Lewis Carroll'],
 };
 /** The short site names on a subject's chips and tiles. */
-const SITE_SHORT = { ws: 'వికీసోర్స్', wse: 'Wikisource', pg: 'Gutenberg', ia: 'Archive', tt: 'తెలుగు థీసిస్', se: 'Standard Ebooks' };
+const SITE_SHORT = { ws: 'వికీసోర్స్', wse: 'Wikisource', pg: 'Gutenberg', ia: 'Archive', tt: 'తెలుగు థీసిస్', se: 'Standard Ebooks', km: 'కౌముది' };
 function searchHome() {
   S.browse = null; S.localHits = [];
   const lang = S.shelfLang === 'en' ? 'en' : 'te';
@@ -876,6 +885,7 @@ function runBrowse(kind, title, page) {
   const top = el('div', 'row');
   top.appendChild(btn('← అరలు', '', searchHome)); // (a slow site: he need not wait)
   b.appendChild(top);
+  if (kind === 'web_links') { showResults({ browse: kind, page: 1, results: WEB_LINKS.slice(), problems: [] }); return; }
   b.appendChild(el('p', 'prog', '⏳ ' + title + ': తెస్తున్నాను…'));
   post({ t: 'browse', kind, page });
 }
@@ -951,6 +961,10 @@ function showResults(m) {
     const prog = el('div', 'prog', S.busy[r.id] || '');
     prog.id = 'rp-' + r.id;
     if (r.have || (S.byId[r.id] && S.byId[r.id].state === 'ready')) row.appendChild(btn('📖 రాక్‌లో చూపించు', 'gold', () => { $('search').hidden = true; show(r.id); }));
+    else if (r.pdf) { // (a publisher's free PDF: on their site, or onto the rack through ➕'s form with its cost)
+      row.appendChild(btn('📄 PDF దించి రాక్‌లో పెట్టు', 'gold', () => { prog.textContent = '⬇️ PDF దించుతున్నాను… (తర్వాత పేజీలు, ఖర్చు చూపిస్తాను)'; post({ t: 'pdfadd', url: r.pdf, title: r.t, author: r.a || '' }); }));
+      row.appendChild(btn('🌐 సైట్‌లో చూడు', '', () => post({ t: 'site', url: r.pdf })));
+    } else if (r.mark === 'site' && r.url) row.appendChild(btn('🌐 సైట్‌లో చదువు (₹0)', 'gold', () => post({ t: 'site', url: r.url })));
     else if (r.free) {
       row.appendChild(btn('⬇️ రాక్‌లోకి దించు', 'gold', () => { S.busy[r.id] = '⬇️ మొదలుపెడుతున్నాను…'; prog.textContent = S.busy[r.id]; post({ t: 'download', item: r, then: '' }); }));
       row.appendChild(btn('⬇️ దించి చదువు', '', () => { S.busy[r.id] = '⬇️ మొదలుపెడుతున్నాను…'; prog.textContent = S.busy[r.id]; post({ t: 'download', item: r, then: 'read' }); }));
@@ -967,7 +981,8 @@ function showResults(m) {
   if (m.browse && m.more) b.appendChild(btn('తర్వాతి పేజీ ▶', 'wide', () => runBrowse(S.browse.kind, S.browse.title, (S.browse.page || 1) + 1)));
 }
 /** Where a free book comes from (shown on its search card). */
-const SRC_NAME = { pg: 'Project Gutenberg', se: 'Standard Ebooks', ws: 'తెలుగు వికీసోర్స్', wsi: 'తెలుగు వికీసోర్స్ · స్కాన్ పుటలు', wse: 'English Wikisource', ia: 'Internet Archive', tt: 'తెలుగు థీసిస్' };
+const SRC_NAME = { pg: 'Project Gutenberg', se: 'Standard Ebooks', ws: 'తెలుగు వికీసోర్స్', wsi: 'తెలుగు వికీసోర్స్ · స్కాన్ పుటలు', wse: 'English Wikisource', ia: 'Internet Archive', tt: 'తెలుగు థీసిస్',
+  km: 'కౌముది గ్రంథాలయం', mia: 'Marxists Internet Archive', web: '' };
 
 // ================================================================ ➕ his own books
 function openAdd() {
@@ -1003,12 +1018,13 @@ function addForm(m) {
   const era = el('select', 'f');
   K.ERAS.forEach((s) => { const o = el('option', '', s.e + ' ' + s.n + ' (' + s.s + ')'); o.value = s.k; if (s.k === 'now') o.selected = true; era.appendChild(o); });
   a.appendChild(era);
-  let lang = 'en';
+  let lang = info.web ? '' : 'en'; // (a publisher's PDF: he picks the pages' language himself; the Telugu one shows its cost)
   const pages = info.kind === 'pdf' || info.kind === 'photos';
+  if (info.web) { $('search').hidden = true; K.SECTIONS.some((x) => x.k === 'telugu') && (sec.value = 'telugu'); }
   if (pages) {
     a.appendChild(el('label', 'l', 'పేజీల్లో భాష'));
     const n = info.pages || 0;
-    const r1 = el('div', 'radio on', '🔤 English: ఫోన్ తానే చదువుతుంది · ₹0');
+    const r1 = el('div', 'radio' + (lang === 'en' ? ' on' : ''), '🔤 English: ఫోన్ తానే చదువుతుంది · ₹0');
     const cost = m.quote1 > 0 ? K.money(m.quote1 * n) : '';
     const r2 = el('div', 'radio', '🇮🇳 తెలుగు: మీ AI చదువుతుంది · ' + (cost ? 'సుమారు ' + cost + ' (' + n + ' పేజీలు)' : 'వర్క్‌షాప్ AI ఎంచుకోవాలి'));
     r1.onclick = () => { lang = 'en'; r1.classList.add('on'); r2.classList.remove('on'); };
@@ -1018,6 +1034,7 @@ function addForm(m) {
   const prog = el('div', 'prog', ''); prog.id = 'addProg';
   const row = el('div', 'row');
   const go = btn('➕ రాక్‌లో పెట్టు', 'gold', () => {
+    if (!lang) { prog.textContent = 'ముందు పేజీల్లో భాష ఎంచుకోండి (English ₹0 / తెలుగు: ఖర్చు పైన ఉంది).'; return; }
     go.disabled = true;
     prog.textContent = 'మొదలుపెడుతున్నాను…';
     post({ t: 'add_go', form: { kind: info.kind, t: t.value.trim(), a: au.value.trim(), sec: sec.value, era: era.value, lang } });

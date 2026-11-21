@@ -154,6 +154,8 @@
     if (m === 'borrow') return { i: '🏛️', s: 'Open Library లో అరువు (మీరే సైన్ ఇన్ అయి)', cls: 'web' };
     if (m === 'buy') return { i: '🔒', s: 'కాపీరైట్ ఉంది: కొనాలి / గ్రంథాలయంలో', cls: 'lock' };
     if (m === 'nolicence') return { i: '📖', s: 'వివరాలు మాత్రమే: ఉచిత గుర్తు ఉన్న కాపీ లేదు', cls: 'info' };
+    if (m === 'pdf') return { i: '📄', s: 'ఉచిత PDF: తెలుగు పేజీలు మీ AI చదువుతుంది (ఖర్చు ముందే చూపిస్తాను)', cls: 'web' };
+    if (m === 'site') return { i: '🌐', s: 'ఆ సైట్‌లోనే ఉచితంగా చదవొచ్చు', cls: 'web' };
     return { i: '📖', s: 'వివరాలు మాత్రమే', cls: 'info' };
   }
 

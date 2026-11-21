@@ -578,7 +578,7 @@ final class Library {
     /** kind: ws_featured, ws_satakam, ws_kandukuri, ws_granthamala, pg_te, ia_te, ws_en_featured. → {results, problems, browse, page, more}. */
     static JSONObject browse(Context c, String kind, int page) {
         if (LibShelves.kind(kind) != null) return catBrowse(c, kind, page);
-        if ("tt_all".equals(kind) || "pg_en".equals(kind) || "se_all".equals(kind)) return siteBrowse(c, kind, page);
+        if (kind != null && kind.matches("tt_all|pg_en|se_all|km_all|mia_te")) return siteBrowse(c, kind, page);
         JSONObject out = new JSONObject();
         JSONArray res = new JSONArray(), probs = new JSONArray();
         boolean more = false;
@@ -690,7 +690,7 @@ final class Library {
     static final Map<String, String> SITE = new HashMap<>();
     static {
         SITE.put("ws", "తెలుగు వికీసోర్స్"); SITE.put("wse", "English Wikisource"); SITE.put("pg", "Project Gutenberg");
-        SITE.put("ia", "Internet Archive"); SITE.put("tt", "తెలుగు థీసిస్"); SITE.put("se", "Standard Ebooks");
+        SITE.put("ia", "Internet Archive"); SITE.put("tt", "తెలుగు థీసిస్"); SITE.put("se", "Standard Ebooks"); SITE.put("km", "కౌముది");
     }
 
     /** kind "cat:te:novel:all" → {results, problems, browse, page, more, sources}. */
@@ -759,6 +759,7 @@ final class Library {
                 if (d.length() < 30) f.done = true;
             };
             case "tt": return f -> ttMore(f, cat.tt);
+            case "km": return f -> kmMore(f, cat.km);
             case "se": return f -> seMore(f, cat.se);
             default: return f -> f.done = true;
         }
@@ -872,13 +873,81 @@ final class Library {
         f.next++;
     }
 
+    // ---- PDF books from publishers' own free libraries (Anil, 22 Nov: "A"): 🌐 read on their site (₹0), or 📄 the PDF onto his
+    // rack through ➕'s own form (English pages read by the phone ₹0; Telugu pages by his AI, the cost shown first, his tap).
+
+    static final String KOUMUDI = "https://www.koumudi.net/library.html", MIA_TE = "https://www.marxists.org/telugu/index.htm";
+
+    /** Koumudi's library (one page of 261 PDFs); section null = every book. */
+    static void kmMore(Feed f, String section) throws Exception {
+        for (String[] b : LibShelves.koumudi(new String(get(KOUMUDI, 4_000_000), StandardCharsets.UTF_8))) {
+            if (section != null && !section.equals(b[2])) continue;
+            JSONObject o = new JSONObject().put("id", LibText.idFrom("km", b[0])).put("t", b[1]).put("a", b[4]).put("src", "km").put("lang", "te").put("sec", "telugu")
+                    .put("era", "now").put("free", false).put("mark", "pdf").put("pdf", b[0]);
+            if (!b[3].isEmpty()) o.put("cover_url", b[3]);
+            f.items.add(o);
+        }
+        f.done = true;
+    }
+
+    /** Marxists Internet Archive's Telugu section: PDFs (📄) and its pages to read on the site (🌐). */
+    static void miaMore(Feed f) throws Exception {
+        for (String[] b : LibShelves.mia(new String(get(MIA_TE, 2_000_000), StandardCharsets.UTF_8), MIA_TE)) {
+            JSONObject o = new JSONObject().put("id", LibText.idFrom("mia", b[0])).put("t", b[1]).put("a", "").put("src", "mia").put("lang", "te").put("sec", "telugu")
+                    .put("era", "modern").put("free", false);
+            if ("pdf".equals(b[2])) o.put("mark", "pdf").put("pdf", b[0]); else o.put("mark", "site").put("url", b[0]);
+            f.items.add(o);
+        }
+        f.done = true;
+    }
+
+    static boolean pdfAllowed(String url) { return LibShelves.pdfAllowed(url); }
+
+    /** A PDF onto a file (streamed; at most max bytes), telling how far it got. */
+    static void getTo(String url, File out, long max, Progress p) throws IOException {
+        String u = url;
+        for (int hop = 0; hop < 6; hop++) {
+            if (!u.startsWith("https://")) throw new IOException("https కాని లింక్");
+            HttpURLConnection c = (HttpURLConnection) new URL(u).openConnection();
+            try {
+                c.setInstanceFollowRedirects(false);
+                c.setConnectTimeout(15000);
+                c.setReadTimeout(60000);
+                c.setRequestProperty("User-Agent", UA);
+                int s = c.getResponseCode();
+                if (s >= 300 && s < 400) {
+                    String loc = c.getHeaderField("Location");
+                    if (loc == null) throw new IOException("HTTP " + s + " (" + host(u) + ")");
+                    u = new URL(new URL(u), loc).toString();
+                    continue;
+                }
+                if (s >= 400) throw new IOException("HTTP " + s + " (" + host(u) + ")");
+                long all = c.getContentLengthLong();
+                if (all > max) throw new IOException("PDF చాలా పెద్దది (" + (all >> 20) + " MB)");
+                try (InputStream in = c.getInputStream(); java.io.FileOutputStream o = new java.io.FileOutputStream(out)) {
+                    byte[] buf = new byte[65536];
+                    long got = 0, told = 0;
+                    for (int r; (r = in.read(buf)) > 0; ) {
+                        o.write(buf, 0, r);
+                        got += r;
+                        if (got > max) throw new IOException("PDF చాలా పెద్దది");
+                        if (got - told > 1_000_000) { told = got; p.at("⬇️ PDF దించుతున్నాను… " + (got >> 20) + (all > 0 ? " / " + (all >> 20) : "") + " MB"); }
+                    }
+                }
+                return;
+            } finally { c.disconnect(); }
+        }
+        throw new IOException("చాలా redirects");
+    }
+
     /** The shelves by site that are new on 22 Nov: all of teluguthesis, Gutenberg's most-read English books, Standard Ebooks. */
     static JSONObject siteBrowse(Context c, String kind, int page) {
         JSONObject out = new JSONObject();
         JSONArray res = new JSONArray(), probs = new JSONArray();
         boolean[] m = {false};
         try {
-            Fill fl = "tt_all".equals(kind) ? (f -> ttMore(f, null)) : "se_all".equals(kind) ? (f -> seMore(f, "")) : fill("en", LibShelves.find("en", "classic"), "pg");
+            Fill fl = "tt_all".equals(kind) ? (f -> ttMore(f, null)) : "se_all".equals(kind) ? (f -> seMore(f, "")) : "km_all".equals(kind) ? (f -> kmMore(f, null))
+                    : "mia_te".equals(kind) ? Library::miaMore : fill("en", LibShelves.find("en", "classic"), "pg");
             for (JSONObject o : feedPage("site|" + kind, fl, (Math.max(1, page) - 1) * 24, 24, m)) {
                 JSONObject b = book(c, o.optString("id"));
                 if (b != null && "ready".equals(b.optString("state"))) o.put("have", true);
@@ -1199,7 +1268,7 @@ final class Library {
         String kind = form.optString("kind", "txt"), lang = "te".equals(form.optString("lang")) ? "te" : "en";
         JSONObject b = new JSONObject().put("id", id).put("t", LibText.cut(form.optString("t", "నా పుస్తకం").trim(), 160)).put("a", LibText.cut(form.optString("a", "").trim(), 100))
                 .put("src", photos != null ? "scan" : "file").put("lang", lang).put("sec", form.optString("sec", "mine")).put("era", form.optString("era", "now"))
-                .put("at", System.currentTimeMillis()).put("credit", photos != null ? "మీ ఫోటోల నుంచి" : "మీ ఫోన్ నుంచి");
+                .put("at", System.currentTimeMillis()).put("credit", photos != null ? "మీ ఫోటోల నుంచి" : form.optString("credit", "").isEmpty() ? "మీ ఫోన్ నుంచి" : LibText.cut(form.optString("credit"), 80));
         if (b.optString("t").isEmpty()) b.put("t", "నా పుస్తకం");
         if (!java.util.Arrays.asList(LibText.SECTIONS).contains(b.optString("sec"))) b.put("sec", "mine");
         if (!java.util.Arrays.asList(LibText.ERAS).contains(b.optString("era"))) b.put("era", "now");
