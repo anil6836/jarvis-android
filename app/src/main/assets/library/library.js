@@ -799,22 +799,83 @@ const SHELVES = [
   ['ws_granthamala', '🏛️ ఆంధ్ర గ్రంథమాల (తెలుగు వికీసోర్స్)'],
   ['pg_te', '📘 Project Gutenberg లోని తెలుగు పుస్తకాలు'],
   ['ia_te', '🗄️ Internet Archive తెలుగు (ఉచిత లైసెన్స్ ఉన్నవి)'],
+  ['tt_all', '🎓 తెలుగు థీసిస్ (teluguthesis.com) అన్ని పుస్తకాలు'],
 ];
+const SHELVES_EN = [
+  ['pg_en', '📘 Project Gutenberg: ఎక్కువ మంది చదివినవి'],
+  ['se_all', '📗 Standard Ebooks: అన్ని పుస్తకాలు'],
+];
+/** 📚 Shelves by subject (Anil, 22 Nov: "A చేయి"): one shelf holds every free site's books. src = the sites asked (as LibShelves.java). */
+const CATS = {
+  te: [
+    { k: 'novel', n: '📖 నవలలు', src: ['ws', 'pg', 'ia', 'tt'] },
+    { k: 'story', n: '📝 కథలు', src: ['ws', 'pg', 'ia', 'tt'] },
+    { k: 'poetry', n: '🪔 కవిత్వం / శతకాలు', src: ['ws', 'pg', 'ia', 'tt'] },
+    { k: 'bhakti', n: '🕉️ భక్తి / పురాణాలు', src: ['ws', 'ia', 'tt'] },
+    { k: 'history', n: '🏛️ చరిత్ర', src: ['ws', 'pg', 'ia', 'tt'] },
+    { k: 'bio', n: '👤 జీవిత చరిత్రలు', src: ['ws', 'pg', 'ia'] },
+    { k: 'kids', n: '🧒 పిల్లల పుస్తకాలు', src: ['ws', 'pg', 'ia', 'tt'] },
+    { k: 'drama', n: '🎭 నాటకాలు', src: ['ws', 'pg', 'ia', 'tt'] },
+    { k: 'science', n: '🔬 సైన్స్ / ఆరోగ్యం', src: ['ws', 'pg', 'ia'] },
+    { k: 'classic', n: '⭐ విశేష గ్రంథాలు', src: ['ws', 'tt'] },
+    { k: 'lang', n: '🔤 భాష: వ్యాకరణం, నిఘంటువులు', src: ['ws', 'ia', 'tt'] },
+    { k: 'thesis', n: '🎓 పరిశోధన గ్రంథాలు (Ph.D.)', src: ['ia', 'tt'] },
+  ],
+  en: [
+    { k: 'novel', n: '📖 నవలలు (Novels)', src: ['wse', 'pg', 'se'] },
+    { k: 'story', n: '📝 కథలు (Short stories)', src: ['wse', 'pg', 'se'] },
+    { k: 'poetry', n: '🪶 కవిత్వం (Poetry)', src: ['wse', 'pg', 'se'] },
+    { k: 'bhakti', n: '🕉️ మతం / పురాణ కథలు', src: ['wse', 'pg', 'se'] },
+    { k: 'history', n: '🏛️ చరిత్ర (History)', src: ['wse', 'pg'] },
+    { k: 'bio', n: '👤 జీవిత చరిత్రలు (Biography)', src: ['wse', 'pg', 'se'] },
+    { k: 'kids', n: '🧒 పిల్లల పుస్తకాలు', src: ['wse', 'pg', 'se'] },
+    { k: 'drama', n: '🎭 నాటకాలు (Plays)', src: ['wse', 'pg', 'se'] },
+    { k: 'science', n: '🔬 సైన్స్ (Science)', src: ['wse', 'pg'] },
+    { k: 'classic', n: '⭐ ప్రసిద్ధ క్లాసిక్స్', src: ['pg', 'se'] },
+  ],
+};
+const AUTHORS = {
+  te: ['వేమన', 'పోతన', 'శ్రీనాథుడు', 'అన్నమయ్య', 'కందుకూరి వీరేశలింగం', 'గురజాడ అప్పారావు', 'చిలకమర్తి లక్ష్మీనరసింహం', 'పానుగంటి లక్ష్మీనరసింహారావు', 'తిరుపతి వేంకట కవులు', 'మహీధర రామమోహనరావు'],
+  en: ['William Shakespeare', 'Charles Dickens', 'Jane Austen', 'Arthur Conan Doyle', 'Mark Twain', 'Rabindranath Tagore', 'Leo Tolstoy', 'Jules Verne', 'Oscar Wilde', 'Lewis Carroll'],
+};
+/** The short site names on a subject's chips and tiles. */
+const SITE_SHORT = { ws: 'వికీసోర్స్', wse: 'Wikisource', pg: 'Gutenberg', ia: 'Archive', tt: 'తెలుగు థీసిస్', se: 'Standard Ebooks' };
 function searchHome() {
   S.browse = null; S.localHits = [];
+  const lang = S.shelfLang === 'en' ? 'en' : 'te';
   const b = $('sBody');
   b.textContent = '';
-  b.appendChild(el('p', 'muted', 'పేరు టైప్ చేయండి లేదా 🎤 తో చెప్పండి (తెలుగు / English). ఉచితంగా దొరికేవి (✅) రాక్‌లోకి దించుకోవచ్చు; కాపీరైట్ ఉన్నవాటికి వివరాలు మాత్రమే.'));
-  b.appendChild(el('div', 'sec2', '🇮🇳 తెలుగు పుస్తకాల అరలు (టైప్ చేయకుండా చూడండి)'));
-  SHELVES.forEach(([k, n]) => b.appendChild(btn(n, 'wide', () => runBrowse(k, n, 1))));
+  b.appendChild(el('p', 'muted', 'పేరు టైప్ చేయండి లేదా 🎤 తో చెప్పండి (తెలుగు / English). లేదా కింద ఒక విషయం నొక్కండి. ఉచితంగా దొరికేవి (✅) రాక్‌లోకి దించుకోవచ్చు; కాపీరైట్ ఉన్నవాటికి వివరాలు మాత్రమే.'));
+  const tabs = el('div', 'tabs');
+  [['te', '🇮🇳 తెలుగు'], ['en', '🇬🇧 English']].forEach(([k, n]) => tabs.appendChild(btn(n, 'chip' + (k === lang ? ' on' : ''), () => { S.shelfLang = k; searchHome(); })));
+  b.appendChild(tabs);
+  b.appendChild(el('div', 'sec2', '📚 విషయం వారీగా (అన్ని సైట్ల నుంచి)'));
+  const g = el('div', 'tiles');
+  CATS[lang].forEach((c) => {
+    const t = el('button', 'tile');
+    t.appendChild(el('b', '', c.n));
+    t.appendChild(el('small', '', c.src.map((x) => SITE_SHORT[x]).join(' · ')));
+    t.onclick = () => runBrowse('cat:' + lang + ':' + c.k + ':all', c.n, 1);
+    g.appendChild(t);
+  });
+  b.appendChild(g);
+  b.appendChild(el('div', 'sec2', '✍️ రచయితల వారీగా'));
+  const au = el('div', 'chips2');
+  AUTHORS[lang].forEach((a) => au.appendChild(btn(a, 'chip', () => { $('q').value = a; runSearch(); })));
+  b.appendChild(au);
+  b.appendChild(el('div', 'sec2', '🌐 సైట్ వారీగా కూడా'));
+  (lang === 'en' ? SHELVES_EN : SHELVES).forEach(([k, n]) => b.appendChild(btn(n, 'wide', () => runBrowse(k, n, 1))));
   b.appendChild(el('div', 'sec2', '🌐 పుస్తకాలు ఎక్కడి నుంచి'));
-  b.appendChild(el('p', 'muted', 'Project Gutenberg · Standard Ebooks · తెలుగు వికీసోర్స్ (స్కాన్ నుంచి టైప్ చేసిన పుటలు కూడా) · English Wikisource · Internet Archive (ఉచిత లైసెన్స్ ఉన్నవి మాత్రమే) · Open Library (వివరాలు). అన్నీ ఉచితం, చట్టబద్ధం; పైరసీ సైట్లు కావు.'));
+  b.appendChild(el('p', 'muted', 'Project Gutenberg · Standard Ebooks · తెలుగు వికీసోర్స్ (స్కాన్ నుంచి టైప్ చేసిన పుటలు కూడా) · English Wikisource · Internet Archive (ఉచిత లైసెన్స్ ఉన్నవి మాత్రమే) · తెలుగు థీసిస్ (వాళ్ళ Archive కాపీలలో ఉచిత గుర్తు ఉన్నవి మాత్రమే దించుతాను) · Open Library (వివరాలు). అన్నీ ఉచితం, చట్టబద్ధం; పైరసీ సైట్లు కావు.'));
 }
 function runBrowse(kind, title, page) {
   S.browse = { kind, title, page };
   S.localHits = [];
   const b = $('sBody');
   b.textContent = '';
+  const top = el('div', 'row');
+  top.appendChild(btn('← అరలు', '', searchHome)); // (a slow site: he need not wait)
+  b.appendChild(top);
   b.appendChild(el('p', 'prog', '⏳ ' + title + ': తెస్తున్నాను…'));
   post({ t: 'browse', kind, page });
 }
@@ -854,14 +915,27 @@ function showResults(m) {
     const top = el('div', 'row');
     top.appendChild(btn('← అరలు', '', searchHome));
     b.appendChild(top);
-    b.appendChild(el('div', 'sec2', S.browse.title + (S.browse.page > 1 ? ' · పేజీ ' + S.browse.page : '')));
+    const cat = /^cat:(te|en):([a-z]+):([a-z]+)$/.exec(m.browse);
+    b.appendChild(el('div', 'sec2', S.browse.title + (cat ? (cat[1] === 'te' ? ' · తెలుగు' : ' · English') : '') + (S.browse.page > 1 ? ' · పేజీ ' + S.browse.page : '')));
+    if (cat) { // (all the sites, or one)
+      const ch = el('div', 'chips2');
+      const c = (CATS[cat[1]] || []).find((x) => x.k === cat[2]);
+      const go = (s) => runBrowse('cat:' + cat[1] + ':' + cat[2] + ':' + s, S.browse.title, 1);
+      ch.appendChild(btn('అన్ని చోట్లు', 'chip' + (cat[3] === 'all' ? ' on' : ''), () => go('all')));
+      (c ? c.src : []).forEach((s) => ch.appendChild(btn(SITE_SHORT[s], 'chip' + (cat[3] === s ? ' on' : ''), () => go(s))));
+      b.appendChild(ch);
+    }
   }
   const loc = S.localHits || [];
   if (m.en) b.appendChild(el('p', 'saidEn', '🔁 ఇంగ్లీష్‌లో కూడా వెతికాను: “' + m.en + '” (ఫోన్ తెలుగు ప్యాక్, ₹0)'));
   b.appendChild(localBox(loc));
   S.results = (m.results || []).filter((r) => !loc.some((x) => x.id === r.id));
   if (m.problems && m.problems.length) b.appendChild(el('p', 'muted', '⚠️ ' + m.problems.join(' · ') + ' (ఇంటర్నెట్ చూడండి)'));
-  if (!S.results.length) { if (!loc.length) b.appendChild(el('p', '', m.browse ? 'ఈ అరలో ఇప్పుడు ఏమీ రాలేదు (ఇంటర్నెట్ చూడండి).' : 'ఏమీ దొరకలేదు. పేరు ఇంకోలా (English లో కూడా) రాసి / చెప్పి చూడండి.')); return; }
+  if (!S.results.length) {
+    if (!loc.length) b.appendChild(el('p', '', !m.browse ? 'ఏమీ దొరకలేదు. పేరు ఇంకోలా (English లో కూడా) రాసి / చెప్పి చూడండి.'
+      : S.browse.page > 1 ? 'ఈ అరలో ఇంకా పుస్తకాలు లేవు.' : /:(ws|wse|pg|ia|tt|se)$/.test(m.browse) ? 'ఈ సైట్‌లో ఈ విషయం పుస్తకాలు ఇప్పుడు రాలేదు. "అన్ని చోట్లు" నొక్కి చూడండి.' : 'ఈ అరలో ఇప్పుడు ఏమీ రాలేదు (ఇంటర్నెట్ చూడండి).'));
+    return;
+  }
   if (loc.length) b.appendChild(el('h3', 'sec2', '🌐 ఉచిత పుస్తకాలు, వివరాలు'));
   S.results.forEach((r) => {
     const card = el('div', 'res');
@@ -870,7 +944,7 @@ function showResults(m) {
     card.appendChild(cvr);
     const i = el('div', 'i');
     i.appendChild(el('div', 't1', r.t || ''));
-    i.appendChild(el('div', 't2', [r.tt && r.tt !== r.t ? r.tt : '', r.a, K.yearSaid(r.y), SRC_NAME[r.src] || ''].filter(Boolean).join(' · ')));
+    i.appendChild(el('div', 't2', [r.tt && r.tt !== r.t ? r.tt : '', r.a, K.yearSaid(r.y), r.via ? SRC_NAME[r.via] + (r.src === 'ia' ? ' → Internet Archive' : '') : SRC_NAME[r.src] || ''].filter(Boolean).join(' · ')));
     const mk = K.mark(r);
     i.appendChild(el('span', 'pill ' + mk.cls, mk.i + ' ' + mk.s));
     const row = el('div', 'row');
@@ -883,6 +957,7 @@ function showResults(m) {
     } else {
       row.appendChild(btn('🔖 కోరికల రాక్‌లో పెట్టు', '', () => post({ t: 'wish', item: r })));
       if (r.ol) row.appendChild(btn('🌐 చూడు', '', () => post({ t: 'site', url: 'https://openlibrary.org' + r.ol })));
+      else if (r.url) row.appendChild(btn('🌐 సైట్‌లో చూడు', '', () => post({ t: 'site', url: r.url })));
     }
     i.appendChild(row);
     i.appendChild(prog);
@@ -892,7 +967,7 @@ function showResults(m) {
   if (m.browse && m.more) b.appendChild(btn('తర్వాతి పేజీ ▶', 'wide', () => runBrowse(S.browse.kind, S.browse.title, (S.browse.page || 1) + 1)));
 }
 /** Where a free book comes from (shown on its search card). */
-const SRC_NAME = { pg: 'Project Gutenberg', se: 'Standard Ebooks', ws: 'తెలుగు వికీసోర్స్', wsi: 'తెలుగు వికీసోర్స్ · స్కాన్ పుటలు', wse: 'English Wikisource', ia: 'Internet Archive' };
+const SRC_NAME = { pg: 'Project Gutenberg', se: 'Standard Ebooks', ws: 'తెలుగు వికీసోర్స్', wsi: 'తెలుగు వికీసోర్స్ · స్కాన్ పుటలు', wse: 'English Wikisource', ia: 'Internet Archive', tt: 'తెలుగు థీసిస్' };
 
 // ================================================================ ➕ his own books
 function openAdd() {

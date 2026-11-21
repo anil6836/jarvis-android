@@ -713,7 +713,7 @@ public class LibraryActivity extends Activity {
     /** Only these free sites open in his browser, on his tap. */
     private void site(String url) {
         if (!(url.startsWith("https://openlibrary.org/") || url.startsWith("https://www.gutenberg.org/") || url.startsWith("https://te.wikisource.org/")
-                || url.startsWith("https://standardebooks.org/"))) return;
+                || url.startsWith("https://standardebooks.org/") || url.startsWith("https://www.teluguthesis.com/") || url.startsWith("https://archive.org/details/"))) return;
         try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) {}
     }
 

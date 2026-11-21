@@ -496,23 +496,35 @@ final class Library {
     // ---- Internet Archive (only books marked free by their uploader)
 
     static List<JSONObject> iaSearch(String q, boolean te, int rows) {
-        List<JSONObject> out = new ArrayList<>();
         String words = q.replaceAll("[\"():\\[\\]{}^~*?\\\\/]", " ").replaceAll("\\s+", " ").trim();
-        if (words.isEmpty() && !te) return out;
+        if (words.isEmpty() && !te) return new ArrayList<>();
         String base = (words.isEmpty() ? "" : "(title:(" + words + ") OR creator:(" + words + ")) AND ") + "mediatype:texts" + (te ? " AND (language:tel OR language:Telugu)" : "");
+        try { return iaEntries(iaDocs(base, rows, 1), rows); } catch (Exception e) { return new ArrayList<>(); }
+    }
+
+    /** Internet Archive's answer for a query, only items marked free by their uploader (asked there; else filtered here). */
+    static JSONArray iaDocs(String base, int rows, int page) throws Exception {
         JSONArray docs = null;
+        Exception last = null;
         for (int k = 0; k < 2 && docs == null; k++) {
             String query = k == 0 ? base + " AND (licenseurl:*creativecommons* OR licenseurl:*publicdomain*)" : base;
             try {
                 docs = getJson("https://archive.org/advancedsearch.php?q=" + enc(query) + "&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=creator&fl%5B%5D=date"
-                        + "&fl%5B%5D=language&fl%5B%5D=licenseurl&sort%5B%5D=downloads+desc&rows=" + (k == 0 ? rows : rows * 4) + "&output=json")
+                        + "&fl%5B%5D=language&fl%5B%5D=licenseurl&sort%5B%5D=downloads+desc&rows=" + (k == 0 ? rows : rows * 4) + "&page=" + Math.max(1, page) + "&output=json")
                         .getJSONObject("response").optJSONArray("docs");
-                if (docs != null && docs.length() == 0 && k == 0) docs = null; // (the licence words not understood there: filter here instead)
-            } catch (Exception e) { if (k == 1) return out; }
+                if (docs != null && docs.length() == 0 && k == 0 && page == 1) docs = null; // (the licence words not understood there: filter here instead)
+            } catch (Exception e) { last = e; }
         }
+        if (docs == null && last != null) throw last;
+        return docs == null ? new JSONArray() : docs;
+    }
+
+    /** IA answers → cards (free-marked only; no newspapers). */
+    static List<JSONObject> iaEntries(JSONArray docs, int rows) {
+        List<JSONObject> out = new ArrayList<>();
         for (int i = 0; docs != null && i < docs.length() && out.size() < rows; i++) {
             JSONObject d = docs.optJSONObject(i);
-            if (d == null || !LibText.iaFree(one(d, "licenseurl"))) continue;
+            if (d == null || !LibText.iaFree(one(d, "licenseurl")) || LibShelves.newspaper(one(d, "title"))) continue;
             String id = d.optString("identifier", "");
             if (!id.matches("[A-Za-z0-9._-]{3,100}")) continue;
             String lang = one(d, "language").toLowerCase(Locale.ROOT);
@@ -565,6 +577,8 @@ final class Library {
 
     /** kind: ws_featured, ws_satakam, ws_kandukuri, ws_granthamala, pg_te, ia_te, ws_en_featured. → {results, problems, browse, page, more}. */
     static JSONObject browse(Context c, String kind, int page) {
+        if (LibShelves.kind(kind) != null) return catBrowse(c, kind, page);
+        if ("tt_all".equals(kind) || "pg_en".equals(kind) || "se_all".equals(kind)) return siteBrowse(c, kind, page);
         JSONObject out = new JSONObject();
         JSONArray res = new JSONArray(), probs = new JSONArray();
         boolean more = false;
@@ -611,6 +625,10 @@ final class Library {
 
     /** The books a Wikisource page links to (its featured list, a portal). */
     static List<JSONObject> wsLinks(String host, String page) throws Exception {
+        return wsEntries(host, wsLinkTitles(host, page), (Integer) wsNs(host)[2]);
+    }
+
+    static List<String> wsLinkTitles(String host, String page) throws Exception {
         Object[] ns = wsNs(host);
         int in = (Integer) ns[2];
         JSONObject j = getJson("https://" + host + "/w/api.php?action=parse&prop=links&format=json&formatversion=2&page=" + enc(page));
@@ -622,7 +640,7 @@ final class Library {
             if (!o.optBoolean("exists", true) || (n != 0 && n != in)) continue;
             titles.add(o.optString("title"));
         }
-        return wsEntries(host, titles, in);
+        return titles;
     }
 
     private static List<JSONObject> wsEntries(String host, List<String> titles, int indexNs) throws Exception {
@@ -642,6 +660,232 @@ final class Library {
         Map<String, JSONObject> meta = wsIndexMeta(host, idx);
         for (String t : idx) out.add(wsEntry(host, t, meta.get(t), true));
         return out;
+    }
+
+    // ================================================================ 📚 shelves by subject (Anil, 22 Nov: "A చేయి")
+    // One subject shelf ("📖 నవలలు") asks every free site that has such books and shows them together, a page at a time;
+    // a chip shows one site only. Each site's list is kept in memory a while so the next page is quick.
+
+    /** One site's list behind a shelf, filled as he pages. */
+    static final class Feed { final List<JSONObject> items = new ArrayList<>(); boolean done; int next = 1; List<?> todo; int at; final long made = System.currentTimeMillis(); }
+    interface Fill { void more(Feed f) throws Exception; }
+    private static final Map<String, Feed> FEEDS = new LinkedHashMap<String, Feed>(16, 0.75f, true) {
+        @Override protected boolean removeEldestEntry(Map.Entry<String, Feed> e) { return size() > 40; }
+    };
+
+    /** Items [from, from + n) of a site's list (filling it as needed); more[0]: there is more after them. */
+    static List<JSONObject> feedPage(String key, Fill fill, int from, int n, boolean[] more) throws Exception {
+        Feed f;
+        synchronized (FEEDS) {
+            f = FEEDS.get(key);
+            if (f == null || System.currentTimeMillis() - f.made > 30 * 60_000L) { f = new Feed(); FEEDS.put(key, f); }
+        }
+        synchronized (f) {
+            for (int tries = 0; !f.done && f.items.size() < from + n && tries < 6; tries++) fill.more(f);
+            more[0] = !f.done || f.items.size() > from + n;
+            return new ArrayList<>(f.items.subList(Math.min(from, f.items.size()), Math.min(from + n, f.items.size())));
+        }
+    }
+
+    static final Map<String, String> SITE = new HashMap<>();
+    static {
+        SITE.put("ws", "తెలుగు వికీసోర్స్"); SITE.put("wse", "English Wikisource"); SITE.put("pg", "Project Gutenberg");
+        SITE.put("ia", "Internet Archive"); SITE.put("tt", "తెలుగు థీసిస్"); SITE.put("se", "Standard Ebooks");
+    }
+
+    /** kind "cat:te:novel:all" → {results, problems, browse, page, more, sources}. */
+    static JSONObject catBrowse(Context c, String kind, int page) {
+        JSONObject out = new JSONObject();
+        JSONArray res = new JSONArray(), probs = new JSONArray();
+        String[] k = LibShelves.kind(kind);
+        LibShelves.Cat cat = LibShelves.find(k[0], k[1]);
+        List<String> all = LibShelves.sources(k[0], cat), srcs = new ArrayList<>();
+        for (String s : all) if ("all".equals(k[2]) || s.equals(k[2])) srcs.add(s);
+        int n = srcs.size() > 1 ? 8 : 24, from = (Math.max(1, page) - 1) * n;
+        boolean more = false;
+        List<List<JSONObject>> parts = new ArrayList<>();
+        for (String s : srcs) {
+            try {
+                boolean[] m = {false};
+                parts.add(feedPage(k[0] + "|" + k[1] + "|" + s, fill(k[0], cat, s), from, n, m));
+                more |= m[0];
+            } catch (Exception e) { probs.put(SITE.get(s) + " చేరలేదు"); }
+        }
+        Map<String, Boolean> seen = new HashMap<>();
+        for (int i = 0; ; i++) { // (one from each site in turn)
+            boolean any = false;
+            for (List<JSONObject> l : parts) {
+                if (i >= l.size()) continue;
+                any = true;
+                JSONObject o = l.get(i);
+                if (seen.put(o.optString("id"), true) != null) continue;
+                JSONObject b = book(c, o.optString("id"));
+                try { if (b != null && "ready".equals(b.optString("state"))) o.put("have", true); } catch (Exception ignored) {}
+                res.put(o);
+            }
+            if (!any) break;
+        }
+        JSONArray sa = new JSONArray();
+        for (String s : all) sa.put(s);
+        try { return out.put("results", res).put("problems", probs).put("browse", kind).put("page", page).put("more", more).put("sources", sa); } catch (Exception e) { return out; }
+    }
+
+    /** How one site fills a subject's list. */
+    static Fill fill(String lang, LibShelves.Cat cat, String src) {
+        boolean en = "en".equals(lang);
+        switch (src) {
+            case "ws": case "wse": {
+                String host = "wse".equals(src) ? WS_EN : WS_TE;
+                return f -> {
+                    if (f.todo == null) f.todo = wsCatTitles(host, cat.ws, cat.wsLinks);
+                    @SuppressWarnings("unchecked") List<String> t = (List<String>) f.todo;
+                    int to = Math.min(t.size(), f.at + 24);
+                    f.items.addAll(wsEntries(host, t.subList(f.at, to), (Integer) wsNs(host)[2]));
+                    f.at = to;
+                    if (f.at >= t.size()) f.done = true;
+                };
+            }
+            case "pg": return f -> {
+                JSONObject g = getJson("https://gutendex.com/books?languages=" + (en ? "en" : "te") + (cat.pg == null || cat.pg.isEmpty() ? "" : "&topic=" + enc(cat.pg)) + "&page=" + f.next);
+                JSONArray r = g.optJSONArray("results");
+                for (int i = 0; r != null && i < r.length(); i++) f.items.add(LibText.fromGutendex(r.getJSONObject(i)));
+                f.next++;
+                if (r == null || r.length() == 0 || g.isNull("next") || !g.has("next")) f.done = true;
+            };
+            case "ia": return f -> {
+                JSONArray d = iaDocs(LibShelves.iaQuery(cat.ia), 30, f.next);
+                f.items.addAll(iaEntries(d, 30));
+                f.next++;
+                if (d.length() < 30) f.done = true;
+            };
+            case "tt": return f -> ttMore(f, cat.tt);
+            case "se": return f -> seMore(f, cat.se);
+            default: return f -> f.done = true;
+        }
+    }
+
+    /** A Wikisource's books for these category words (categories found by name there) and featured pages. */
+    static List<String> wsCatTitles(String host, String[] words, String[] linkPages) throws Exception {
+        java.util.LinkedHashSet<String> titles = new java.util.LinkedHashSet<>();
+        if (linkPages != null) for (String p : linkPages) try { titles.addAll(wsLinkTitles(host, p)); } catch (Exception ignored) {}
+        if (words != null && words.length > 0) {
+            java.util.LinkedHashSet<String> cats = new java.util.LinkedHashSet<>();
+            for (String w : words) {
+                if (cats.size() >= 4) break;
+                JSONObject j = getJson("https://" + host + "/w/api.php?action=query&list=search&srnamespace=14&srlimit=10&format=json&formatversion=2&srsearch=" + enc("intitle:" + w));
+                JSONArray h = j.optJSONObject("query") == null ? null : j.getJSONObject("query").optJSONArray("search");
+                for (int i = 0; h != null && i < h.length() && cats.size() < 4; i++) {
+                    String t = h.getJSONObject(i).optString("title", "");
+                    if (LibShelves.catTitleMatch(t, w)) cats.add(t);
+                }
+            }
+            int in = (Integer) wsNs(host)[2];
+            for (String cat : cats) {
+                if (titles.size() >= 600) break;
+                JSONObject j = getJson("https://" + host + "/w/api.php?action=query&list=categorymembers&cmlimit=200&format=json&formatversion=2&cmnamespace="
+                        + enc(in >= 0 ? "0|" + in : "0") + "&cmtitle=" + enc(cat));
+                JSONArray m = j.getJSONObject("query").optJSONArray("categorymembers");
+                for (int i = 0; m != null && i < m.length(); i++) titles.add(m.getJSONObject(i).optString("title"));
+            }
+        }
+        return new ArrayList<>(titles);
+    }
+
+    // ---- teluguthesis.com: the posts under these labels; each post's archive.org copies (free-marked ones download)
+
+    static final String TT = "https://www.teluguthesis.com";
+
+    static void ttMore(Feed f, String[] labels) throws Exception {
+        boolean all = labels == null || labels.length == 0;
+        if (f.todo == null) {
+            Map<String, String[]> posts = new LinkedHashMap<>();
+            Exception last = null;
+            if (all) {
+                for (String[] p : LibShelves.bloggerPosts(getJson(TT + "/feeds/posts/default?alt=json&max-results=50&start-index=1"))) posts.put(p[1], p);
+                f.next = 51;
+            } else for (String l : labels) {
+                try { for (String[] p : LibShelves.bloggerPosts(getJson(TT + "/feeds/posts/default/-/" + enc(l).replace("+", "%20") + "?alt=json&max-results=60"))) posts.put(p[1], p); }
+                catch (Exception e) { last = e; }
+            }
+            if (posts.isEmpty() && last != null) throw last;
+            List<String[]> l = new ArrayList<>(posts.values());
+            if (!all) java.util.Collections.sort(l, (x, y) -> y[2].compareTo(x[2]));
+            f.todo = l;
+        }
+        @SuppressWarnings("unchecked") List<String[]> l = (List<String[]>) f.todo;
+        if (all && f.next > 0 && f.at + 10 > l.size()) { // (every post, newest first: 50 more when these run out)
+            List<String[]> got = LibShelves.bloggerPosts(getJson(TT + "/feeds/posts/default?alt=json&max-results=50&start-index=" + f.next));
+            l.addAll(got);
+            f.next = got.size() < 50 ? -1 : f.next + 50;
+        }
+        int to = Math.min(l.size(), f.at + 10);
+        List<String[]> batch = l.subList(f.at, to);
+        List<String> ids = new ArrayList<>();
+        for (String[] p : batch) for (String id : LibShelves.archiveIds(p[3])) if (ids.size() < 60) ids.add(id);
+        Map<String, JSONObject> lic = iaById(ids);
+        for (String[] p : batch) {
+            List<String> pid = LibShelves.archiveIds(p[3]);
+            String title = LibShelves.postTitle(p[0]);
+            if (pid.isEmpty()) { f.items.add(ttCard(title, p[1], null, null, 0, 0)); continue; }
+            for (int i = 0; i < pid.size() && i < 12; i++) f.items.add(ttCard(title, p[1], pid.get(i), lic.get(pid.get(i)), i + 1, pid.size()));
+        }
+        f.at = to;
+        if (f.at >= l.size() && (!all || f.next < 0)) f.done = true;
+    }
+
+    /** These archive.org items' details (licence, title, author), in one call. */
+    static Map<String, JSONObject> iaById(List<String> ids) {
+        Map<String, JSONObject> out = new HashMap<>();
+        List<String> ok = new ArrayList<>();
+        for (String id : ids) if (id.matches("[A-Za-z0-9._-]{3,100}")) ok.add("\"" + id + "\"");
+        if (ok.isEmpty()) return out;
+        try {
+            JSONArray d = getJson("https://archive.org/advancedsearch.php?q=" + enc("identifier:(" + String.join(" OR ", ok) + ")")
+                    + "&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=creator&fl%5B%5D=licenseurl&fl%5B%5D=date&rows=" + ok.size() + "&output=json")
+                    .getJSONObject("response").optJSONArray("docs");
+            for (int i = 0; d != null && i < d.length(); i++) { JSONObject o = d.optJSONObject(i); if (o != null) out.put(o.optString("identifier"), o); }
+        } catch (Exception ignored) {} // (not known: shown as details only; the download checks again anyway)
+        return out;
+    }
+
+    /** One teluguthesis book: free-marked on archive.org → it downloads from there; otherwise details and the post's link only. */
+    static JSONObject ttCard(String title, String post, String iaId, JSONObject doc, int part, int parts) throws Exception {
+        String t = title + (parts > 1 ? " · భాగం " + part : "");
+        boolean free = iaId != null && doc != null && LibText.iaFree(one(doc, "licenseurl"));
+        JSONObject o = new JSONObject().put("t", t).put("a", doc == null ? "" : one(doc, "creator")).put("lang", "te").put("sec", "telugu").put("era", "modern")
+                .put("via", "tt").put("url", post);
+        if (free) o.put("id", LibText.idFrom("ia", iaId)).put("src", "ia").put("src_id", iaId).put("free", true).put("cover_url", "https://archive.org/services/img/" + iaId);
+        else o.put("id", LibText.idFrom("tt", post + "#" + part)).put("src", "tt").put("free", false).put("mark", "nolicence");
+        return o;
+    }
+
+    // ---- Standard Ebooks: a subject's books (their own list pages; free, no login)
+
+    static void seMore(Feed f, String subject) throws Exception {
+        String url = subject == null || subject.isEmpty() ? "https://standardebooks.org/ebooks?page=" + f.next : "https://standardebooks.org/subjects/" + subject + "?page=" + f.next;
+        String html = new String(get(url, 3_000_000), StandardCharsets.UTF_8);
+        List<String[]> l = LibShelves.seList(html);
+        for (String[] b : l)
+            f.items.add(new JSONObject().put("id", LibText.idFrom("se", b[0])).put("t", b[1]).put("a", b[2]).put("src", "se").put("src_id", b[0])
+                    .put("lang", "en").put("sec", "fic").put("era", "modern").put("free", true));
+        if (l.isEmpty() || !LibShelves.seMore(html, f.next)) f.done = true;
+        f.next++;
+    }
+
+    /** The shelves by site that are new on 22 Nov: all of teluguthesis, Gutenberg's most-read English books, Standard Ebooks. */
+    static JSONObject siteBrowse(Context c, String kind, int page) {
+        JSONObject out = new JSONObject();
+        JSONArray res = new JSONArray(), probs = new JSONArray();
+        boolean[] m = {false};
+        try {
+            Fill fl = "tt_all".equals(kind) ? (f -> ttMore(f, null)) : "se_all".equals(kind) ? (f -> seMore(f, "")) : fill("en", LibShelves.find("en", "classic"), "pg");
+            for (JSONObject o : feedPage("site|" + kind, fl, (Math.max(1, page) - 1) * 24, 24, m)) {
+                JSONObject b = book(c, o.optString("id"));
+                if (b != null && "ready".equals(b.optString("state"))) o.put("have", true);
+                res.put(o);
+            }
+        } catch (Exception e) { probs.put(e.getMessage() == null ? "చేరలేదు" : e.getMessage()); }
+        try { return out.put("results", res).put("problems", probs).put("browse", kind).put("page", page).put("more", m[0]); } catch (Exception e) { return out; }
     }
 
     // ================================================================ ⬇️ a free book onto the phone

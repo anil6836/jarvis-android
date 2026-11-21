@@ -153,6 +153,7 @@
     if (m === 'web') return { i: '🌐', s: 'Open Library సైట్‌లో ఉచితంగా చదవొచ్చు', cls: 'web' };
     if (m === 'borrow') return { i: '🏛️', s: 'Open Library లో అరువు (మీరే సైన్ ఇన్ అయి)', cls: 'web' };
     if (m === 'buy') return { i: '🔒', s: 'కాపీరైట్ ఉంది: కొనాలి / గ్రంథాలయంలో', cls: 'lock' };
+    if (m === 'nolicence') return { i: '📖', s: 'వివరాలు మాత్రమే: ఉచిత గుర్తు ఉన్న కాపీ లేదు', cls: 'info' };
     return { i: '📖', s: 'వివరాలు మాత్రమే', cls: 'info' };
   }
 
