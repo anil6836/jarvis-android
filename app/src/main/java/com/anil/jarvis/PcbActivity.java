@@ -50,7 +50,7 @@ public class PcbActivity extends Activity {
     private static final String HOST = "appassets.androidplatform.net";
     private static final String PATH = "/assets/pcb/";
     private static final String PAGE = "https://" + HOST + PATH + "pcb.html";
-    private static final Set<String> FILES = new HashSet<>(Arrays.asList("pcb.html", "pcb.js", "pcbparts.js", "pcbcore.js", "pcbfab.js", "pcbprojects.js", "pcb3d.js"));
+    private static final Set<String> FILES = new HashSet<>(Arrays.asList("pcb.html", "pcb.js", "pcbparts.js", "pcbcore.js", "pcbfab.js", "pcbprojects.js", "pcbbuy.js", "pcb3d.js"));
     /** 🧊 The 3D view uses the workshop's bundled three.js (one copy in the app), served here under the studio's own path. */
     private static final Set<String> SHARED = new HashSet<>(Arrays.asList("three.module.min.js", "OrbitControls.js"));
     /** The factories' own sites (opened in his browser only when he taps 🌐; nothing is sent to them by Jarvis). */
@@ -61,6 +61,16 @@ public class PcbActivity extends Activity {
         SITES.put("lion", "https://www.lioncircuits.com/");
         SITES.put("pcbpower", "https://www.pcbpower.com/");
     }
+    /** 🛒 (24 Nov) Indian shops: a search there for a part (his tap only), and the part pages we looked up (only these two sites). */
+    private static final Map<String, String> SEARCH = new HashMap<>();
+    static {
+        SEARCH.put("robu", "https://robu.in/?post_type=product&s=");
+        SEARCH.put("robocraze", "https://robocraze.com/search?q=");
+        SEARCH.put("amazon", "https://www.amazon.in/s?k=");
+        SEARCH.put("flipkart", "https://www.flipkart.com/search?q=");
+        SEARCH.put("probots", "https://probots.co.in/catalogsearch/result/?q=");
+    }
+    private static final Set<String> SHOP_HOSTS = new HashSet<>(Arrays.asList("robu.in", "robocraze.com"));
     private static final Set<String> TABS = new HashSet<>(Arrays.asList("home", "sch", "pcb", "drc", "d3", "fab", "calc"));
     private static final Set<String> PROJECTS = new HashSet<>(Arrays.asList("flasher", "usb", "soil", "esp32", "irboard"));
 
@@ -248,6 +258,9 @@ public class PcbActivity extends Activity {
             case "zip": saveZip(m.optString("name"), m.optString("data")); break;
             case "share": shareZip(); break;
             case "site": openSite(m.optString("fab")); break;
+            case "shopsearch": shopSearch(m.optString("shop"), m.optString("q")); break;
+            case "shop": shopPage(m.optString("url")); break;
+            case "sharetext": shareText(m.optString("text")); break;
             case "close": finish(); break;
             case "back": {
                 if (backTimeout != null) { ui.removeCallbacks(backTimeout); backTimeout = null; }
@@ -306,6 +319,50 @@ public class PcbActivity extends Activity {
             startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE));
         } catch (ActivityNotFoundException e) {
             say("బ్రౌజర్ తెరవలేకపోయాను. " + url + " ని బ్రౌజర్‌లో తెరవండి.");
+        }
+    }
+
+    // ================================================================ 🛒 where to buy: his browser, his tap; nothing is bought by Jarvis
+
+    /** A shop's own search for one part (the words are made by the page from the part's kind and value). */
+    private void shopSearch(String shop, String q) {
+        String base = SEARCH.get(shop);
+        String words = q == null ? "" : q.replaceAll("[\\p{Cntrl}]", " ").trim();
+        if (base == null || words.isEmpty() || words.length() > 120) return;
+        try {
+            browse(base + java.net.URLEncoder.encode(words, "UTF-8"));
+        } catch (Exception e) {
+            say("వెతకలేకపోయాను: " + e.getMessage());
+        }
+    }
+
+    /** A part page we looked up: only https pages on the two shops' own sites. */
+    private void shopPage(String url) {
+        Uri u;
+        try { u = Uri.parse(url == null ? "" : url); } catch (Exception e) { return; }
+        String host = u == null || u.getHost() == null ? "" : u.getHost().toLowerCase(java.util.Locale.ROOT);
+        if (host.startsWith("www.")) host = host.substring(4);
+        if (u == null || !"https".equals(u.getScheme()) || !SHOP_HOSTS.contains(host) || url.length() > 400) return;
+        browse(url);
+    }
+
+    private void browse(String url) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE));
+        } catch (ActivityNotFoundException e) {
+            say("బ్రౌజర్ తెరవలేకపోయాను.");
+        }
+    }
+
+    /** 📋 The parts list as text, sent where he chooses (his tap). */
+    private void shareText(String text) {
+        String t = text == null ? "" : text.trim();
+        if (t.isEmpty() || t.length() > 6000) return;
+        try {
+            Intent s = new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, t);
+            startActivity(Intent.createChooser(s, "ఎక్కడికి పంపాలి?"));
+        } catch (Exception e) {
+            say("పంపలేకపోయాను: " + e.getMessage());
         }
     }
 

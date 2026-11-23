@@ -1067,19 +1067,75 @@
       d.appendChild(el('div', 'muted', 'మీకు కనిపించేది: ' + s2[1] + ' (' + s2[2] + ')'));
       h.appendChild(d);
     });
-    h.appendChild(el('h3', null, '📄 కొనాల్సిన భాగాలు'));
+    buyList(h);
+  }
+
+  // ================================================================ 🛒 where to buy (A: a search in the shop he picks; B: pages looked up on 24 Nov)
+
+  let shop = 'robu';
+  function buyList(h) {
+    const B = window.PcbBuy;
     const pr = D.proj && J.PROJECTS.find((q) => q.id === D.proj);
-    const bt = el('table');
-    const bh = el('tr'); ['భాగం', 'విలువ', 'ఎన్ని', 'ఎక్కడ'].forEach((t) => bh.appendChild(el('th', null, t))); bt.appendChild(bh);
-    const g = new Map();
-    D.parts.forEach((pt) => { const k = pt.lib + '|' + pt.val; if (!g.has(k)) g.set(k, { pt, refs: [] }); g.get(k).refs.push(pt.ref); });
-    g.forEach((v) => {
-      const tr = el('tr');
-      tr.appendChild(el('td', null, (P.LIB[v.pt.lib] || {}).te || v.pt.lib)); tr.appendChild(el('td', null, v.pt.val || '')); tr.appendChild(el('td', 'num', v.refs.length)); tr.appendChild(el('td', null, v.refs.join(', ')));
-      bt.appendChild(tr);
+    h.appendChild(el('h3', null, '📄 కొనాల్సిన భాగాలు · 🛒 ఎక్కడ దొరుకుతాయి'));
+    h.appendChild(el('div', 'muted', '🛒 = ఎంచుకున్న షాప్‌లో ఆ భాగం కోసం వెతికిన పేజీ. 🔗 = ' + B.CHECKED + ' న మేము చూసిన ఆ భాగం పేజీ (ధర, స్టాక్ మారవచ్చు). రెండూ మీరు నొక్కితేనే మీ బ్రౌజర్‌లో తెరుచుకుంటాయి.'));
+    const sr = el('div', 'seg');
+    B.SHOPS.forEach((q) => {
+      const b = btn(q[1], shop === q[0] ? 'on small' : 'small', () => { shop = q[0]; sr.querySelectorAll('.btn').forEach((x) => x.classList.toggle('on', x === b)); });
+      sr.appendChild(b);
     });
-    h.appendChild(bt);
-    if (pr && pr.buy) { h.appendChild(el('div', 'muted', '\n🛒 దుకాణంలో అడగాల్సినవి: ' + pr.buy.join(' · ') + '. (' + pr.cost + ')')); }
+    h.appendChild(sr);
+    const rows = [];
+    const g = new Map();
+    D.parts.forEach((pt) => { const k = pt.lib + '|' + pt.val + '|' + (pt.color || ''); if (!g.has(k)) g.set(k, { pt, refs: [] }); g.get(k).refs.push(pt.ref); });
+    g.forEach((v) => rows.push({ te: ((P.LIB[v.pt.lib] || {}).te || v.pt.lib) + (v.pt.val ? ' · ' + v.pt.val : ''), refs: v.refs.join(', '), n: v.refs.length, q: B.query(v.pt), pages: B.pages(B.key(v.pt)), tip: sizeTip(v.pt) }));
+    ((pr && pr.extra) || []).forEach((x) => rows.push({ te: x.te + (x.val ? ' · ' + x.val : ''), refs: x.why || '', n: x.n || 1, q: x.q, pages: B.pages(x.k) }));
+    rows.forEach((r) => {
+      const it = el('div', 'item');
+      const x = el('div', 'x');
+      x.appendChild(el('div', null, r.te + '  × ' + r.n));
+      if (r.refs) x.appendChild(el('div', 'f', r.refs));
+      if (r.tip) x.appendChild(el('div', 'f', r.tip));
+      if (r.pages.length) {
+        const lk = el('div', 'seg');
+        lk.style.marginTop = '4px';
+        r.pages.forEach((pg) => lk.appendChild(btn('🔗 ' + pg[0] + (pg[2] ? ' · ' + pg[2] : ''), 'small', () => post({ t: 'shop', url: pg[1] }))));
+        x.appendChild(lk);
+      }
+      it.appendChild(x);
+      it.appendChild(btn('🛒', 'small', () => post({ t: 'shopsearch', shop, q: r.q })));
+      h.appendChild(it);
+    });
+    const kc = el('div', 'card');
+    kc.appendChild(el('div', null, '🧰 కిట్‌లు: ఒకసారి కొంటే తర్వాతి బోర్డ్‌లకి కూడా సరిపోతాయి'));
+    B.KITS.forEach((k) => {
+      const r = el('div', 'row');
+      r.appendChild(el('div', 'k', k.te));
+      k.pages.forEach((pg) => r.appendChild(btn('🔗 ' + pg[0], 'small', () => post({ t: 'shop', url: pg[1] }))));
+      r.appendChild(btn('🛒', 'small', () => post({ t: 'shopsearch', shop, q: k.q })));
+      kc.appendChild(r);
+    });
+    h.appendChild(kc);
+    const r4 = el('div', 'row');
+    r4.appendChild(btn('📋 జాబితా పంపు (దుకాణానికి / మీకు)', '', () => {
+      const lines = ['🔌 ' + D.name + ': కొనాల్సిన భాగాలు'];
+      rows.forEach((r) => lines.push('• ' + r.q + ' × ' + r.n + (r.refs ? ' (' + r.refs + ')' : '')));
+      lines.push('(Jarvis PCB స్టూడియో)');
+      post({ t: 'sharetext', text: lines.join('\n') });
+    }));
+    h.appendChild(r4);
+    h.appendChild(el('div', 'muted', '💡 రెసిస్టర్లు, LED లు సాధారణంగా 10 / 50 / 100 ప్యాక్‌లలో వస్తాయి. కొనే ముందు పేజీలో విలువ, సైజు ఒకసారి చూడండి. ' + (pr ? '(' + pr.cost + ') ' : '') +
+      'కొనడం, పేమెంట్ మీరే; Jarvis కార్ట్‌లో పెట్టదు, కొనదు.'));
+  }
+  /** The size the board expects (electrolytic capacitors come in many sizes). */
+  function sizeTip(pt) {
+    const f = P.fpOf(pt);
+    if (!f || !f.body) return '';
+    if (f.body.t === 'radial') {
+      const pd = f.pads.length > 1 ? Math.abs(f.pads[1].x - f.pads[0].x) : 0;
+      return '📏 బోర్డ్ మీద చోటు: వ్యాసం ' + f.body.D + ' mm వరకు, కాళ్ళ దూరం ' + r2(pd) + ' mm. వోల్టేజ్ ' + (String(pt.val).match(/\d+\s*V/) || ['?'])[0] + ' లేదా ఎక్కువ.';
+    }
+    if (f.verify) return '📏 ' + f.verify + '.';
+    return '';
   }
 
   // ================================================================ 🧮 the numbers
