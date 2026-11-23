@@ -113,7 +113,7 @@ public class SettingsActivity extends Activity {
     private Spinner voicePick;
     private EditText realtimeModel, codeModel, githubToken, geminiKey, geminiModel;
     private EditText workshopModel, workshopLimit, workshopImageModel; // 🛠️
-    private EditText gameModel, labModel, appModel, libModel; // 🎮 ⚡ 📱 📚 each studio's own AI (empty = the workshop's, as before)
+    private EditText gameModel, labModel, appModel, libModel, pcbModel; // 🎮 ⚡ 📱 📚 🔌 each studio's own AI (empty = the workshop's, as before)
     private TextView wsSpent; // (this month's workshop spend: shown again after 🧪 and when he comes back)
     private TextView voiceInfo, notifyInfo, checkInfo, crashInfo, crashCopy, crashClear;
     private TextView backupInfo, backupSetBtn;
@@ -617,14 +617,17 @@ public class SettingsActivity extends Activity {
         rmOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         rmOpen.setOnClickListener(v -> { autosave(); RoomMeasureActivity.open(this, null); });
         box.addView(rmOpen);
-        // 🔌 the PCB studio: real boards a factory can make; our own code, no AI in build 1 (23 Nov)
+        // 🔌 the PCB studio: real boards a factory can make; our own code (23 Nov); 💡 his idea / voice / a sketch photo → a board by this AI (build 2, 24 Nov)
         note("🔌 PCB స్టూడియో: నిజమైన PCB బోర్డ్‌లు. 5 రెడీ బోర్డ్‌లు (LED ఫ్లాషర్, 12V→5V USB ఛార్జర్, మట్టి అలారం, ESP32 సెన్సార్, Jarvis IR), "
-                + "స్కీమాటిక్ (ప్రతి భాగం తెలుగులో), PCB (ఆటో రూట్, GND నింపు), ఫ్యాక్టరీ చెక్, 🧊 3D, Gerber .zip (Downloads/Jarvis/pcb), లెక్కలు. ₹0, AI లేదు. "
+                + "స్కీమాటిక్ (ప్రతి భాగం తెలుగులో), PCB (ఆటో రూట్, GND నింపు), ఫ్యాక్టరీ చెక్, 🧊 3D, Gerber .zip (Downloads/Jarvis/pcb), లెక్కలు: ₹0, AI లేదు. "
+                + "💡 మీ ఐడియా / మాట / చేతి బొమ్మ ఫోటో నుంచి కొత్త బోర్డ్, AI తో మార్పులు, ✅ చెక్ లో 🤖 AI సహాయం: కింద ఎంచుకున్న AI (ఖాళీ అయితే పైన 🛠️ AI), ఇదే నెల హద్దు; "
+                + "ఖర్చు ముందే చూపిస్తుంది, మీరు నొక్కితేనే (మాటతో అడిగితే ✋ 3 సెకన్లు). చిన్న మార్పులు (విలువ, తిప్పు, జరుపు, రంగు, సైజు) మాటతో కూడా ₹0. "
                 + "ఫ్యాక్టరీ సైట్‌లో అప్‌లోడ్, పేమెంట్ మీరే; తక్కువ వోల్టేజ్ DC బోర్డ్‌లు మాత్రమే.");
         TextView pcbOpen = Ui.text(this, "🔌 PCB స్టూడియో తెరువు →", 15, accent);
         pcbOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         pcbOpen.setOnClickListener(v -> { autosave(); PcbActivity.open(this, null, null); });
         box.addView(pcbOpen);
+        pcbModel = studioModelBox("🔌 PCB బోర్డ్‌లు గీసే AI (ఖాళీ = పైన 🛠️ వర్క్‌షాప్ AI)", Workshop.PCB);
         // 📚 the book library: free books and his own, read aloud; Telugu by the phone (₹0) or this same AI in this same limit (20 Nov)
         note("📚 పుస్తకాల లైబ్రరీ: చెక్క రాక్‌లలో ఉచిత పుస్తకాలు (Project Gutenberg, తెలుగు వికీసోర్స్), మీ PDF / EPUB / TXT / పేజీల ఫోటోలు. "
                 + "చదివి వినిపించడం, ఫోన్ తెలుగు అనువాదం (ఒకసారి 30 MB ప్యాక్) ₹0. ✨ AI తెలుగు, తెలుగు పేజీల ఫోటోలు చదవడం: కింద ఎంచుకున్న AI (ఖాళీ అయితే పైన 🛠️ AI), ఇదే నెల హద్దు; "
@@ -2508,6 +2511,7 @@ public class SettingsActivity extends Activity {
         if (labModel != null) e.putString(Workshop.LAB, labModel.getText().toString().trim().replaceFirst("^models/", ""));
         if (appModel != null) e.putString(Workshop.APPS, appModel.getText().toString().trim().replaceFirst("^models/", ""));
         if (libModel != null) e.putString(Workshop.BOOKS, libModel.getText().toString().trim().replaceFirst("^models/", ""));
+        if (pcbModel != null) e.putString(Workshop.PCB, pcbModel.getText().toString().trim().replaceFirst("^models/", ""));
         if (workshopLimit != null) {
             int lim = Workshop.DEFAULT_LIMIT;
             try { lim = Math.max(0, Math.min(1000000, Integer.parseInt(workshopLimit.getText().toString().trim()))); } catch (Exception ignored) {}

@@ -428,19 +428,24 @@ final class Tools {
                         + "'will the bed fit', paint / tile estimates for a room.",
                 schema(new String[][]{{"action", "string", "open | room | fit | plan | saved"}}, "action")));
         DEFS.add(new Def("pcb_studio",
-                "🔌 PCB స్టూడియో (phone only, free, no AI in this version): REAL printed circuit boards a factory can make. Ready boards: "
+                "🔌 PCB స్టూడియో (phone only): REAL printed circuit boards a factory can make. Ready boards (free): "
                         + "flasher (two LEDs blinking with a 555 timer, 9 V), usb (a bike / car 12 V to 5 V USB phone charger with a buck module), soil "
                         + "(an alarm when a plant's soil is dry), esp32 (an ESP32 sensor board: temperature / humidity, soil, I2C screen), irboard (the "
                         + "Jarvis speaker's IR board for the TV / AC remote). Inside: the schematic (tap a part: what it is in Telugu), the PCB (move / "
-                        + "turn parts, auto-route, ground fill), the checks against a factory's rules (JLCPCB, PCBWay, Lion Circuits, PCB Power), the "
-                        + "board in 3D, the factory files (a Gerber .zip saved in Downloads/Jarvis/pcb), the parts to buy with Indian shop search buttons "
+                        + "turn parts, auto-route, ground fill), the checks against a factory's rules (JLCPCB, PCBWay, Lion Circuits, PCB Power) with an "
+                        + "🤖 AI help for the problems, the board in 3D, the factory files (a Gerber .zip saved in Downloads/Jarvis/pcb), the parts to buy with Indian shop search buttons "
                         + "and part pages (Robu, Robocraze, Amazon, Flipkart, Probots; opened in his browser only on his tap, he buys himself) and calculators (LED resistor, track width "
                         + "for a current, battery life, voltage divider, resistor colour bands, 555 speed). open = the studio; project = open a ready "
-                        + "board (what = flasher | usb | soil | esp32 | irboard); tab = what = home | sch | pcb | drc | d3 | fab | calc. He uploads the "
-                        + "zip and pays on the factory's site himself: Jarvis never orders or pays. Low-voltage DC boards only (battery / USB / adapter): "
-                        + "never a 230 V mains board. Making a NEW board from his own idea / voice / a photo of a sketch (AI) comes in the next build: "
-                        + "say so honestly if he asks for that now.",
-                schema(new String[][]{{"action", "string", "open | project | tab"}, {"what", "string", "project: flasher | usb | soil | esp32 | irboard. tab: home | sch | pcb | drc | d3 | fab | calc"}},
+                        + "board (what = flasher | usb | soil | esp32 | irboard); tab = what = home | sch | pcb | drc | d3 | fab | calc; idea = the 💡 card "
+                        + "where he types / says his idea or adds a photo of a circuit drawn on paper (free until he taps make); build = the studio's AI "
+                        + "makes a NEW board of his idea (paid: the studio shows the cost and waits 3 seconds with ✋ వద్దు); change = his words about "
+                        + "the board that is open (a value, turn / move a part, the board size or colour, holes, route, add / remove parts...: small "
+                        + "changes are free on the phone, anything the AI must draw shows its cost first). He uploads the zip and pays on the factory's "
+                        + "site himself: Jarvis never orders or pays. Low-voltage DC boards only (battery / USB / adapter / bike 12 V, up to 24 V): "
+                        + "never a 230 V mains board; refuse weapons, shock devices, electric fences, jammers and meter bypass yourself.",
+                schema(new String[][]{{"action", "string", "open | project | tab | idea | build | change"},
+                        {"what", "string", "project: flasher | usb | soil | esp32 | irboard. tab: home | sch | pcb | drc | d3 | fab | calc. build: the board in "
+                                + "English with every detail he gave (what it does, the supply, parts, how many, ratings); keep Telugu names he used. change: his exact words"}},
                         "action")));
         DEFS.add(new Def("library",
                 "📚 Jarvis గ్రంథాలయం (phone only): his books on wooden racks — free classics (Project Gutenberg in English; Telugu Wikisource: "
@@ -1850,12 +1855,12 @@ final class Tools {
         return ok().put("next", "Say in one short Telugu line what is on the screen now and what to do (free, nothing sent anywhere).").toString();
     }
 
-    /** 🔌 The PCB studio (phone only; free, our own code): open it, a ready board, or one of its tabs. */
+    /** 🔌 The PCB studio (phone only): open it, a ready board, one of its tabs (free, our own code); 💡 the idea card; a new board / a change by the studio's AI (the studio shows the cost, ✋ 3 seconds). */
     private String pcbStudio(String action, String what) throws Exception {
         android.content.Context c = act();
         if (!Workshop.here(c)) return err("phone_only", "The PCB studio is on his phone only (not the home tablet or the car box). Say so in one line.");
         String a = action == null ? "open" : action.trim().toLowerCase(java.util.Locale.ROOT);
-        String w = what == null ? "" : what.trim().toLowerCase(java.util.Locale.ROOT);
+        String raw = what == null ? "" : what.trim(), w = raw.toLowerCase(java.util.Locale.ROOT);
         Intent i = new Intent(c, PcbActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         if ("project".equals(a)) {
             if (!java.util.Arrays.asList("flasher", "usb", "soil", "esp32", "irboard").contains(w)) {
@@ -1864,6 +1869,25 @@ final class Tools {
             }
             startIn(i.putExtra(PcbActivity.EXTRA_PROJECT, w));
             return ok().put("next", "Say in one short Telugu line that his own copy of this ready board is open on the PCB tab (free).").toString();
+        }
+        if ("idea".equals(a)) {
+            startIn(i.putExtra(PcbActivity.EXTRA_TAB, "idea"));
+            return ok().put("next", "Say in one short Telugu line that the 💡 idea card is open: he can type or say his board idea or add a photo of a circuit drawn on paper; "
+                    + "the cost shows before anything is made and nothing is spent until he taps ⚡ తయారు చేయి.").toString();
+        }
+        if ("change".equals(a) && !raw.isEmpty()) {
+            startIn(i.putExtra(PcbActivity.EXTRA_CHANGE, heard != null && !heard.trim().isEmpty() ? heard.trim() : raw));
+            return ok().put("next", "Say only: 'సరే Sir.' The studio does small changes itself for free and shows the cost first for anything the AI must draw.").toString();
+        }
+        if ("build".equals(a) && !raw.isEmpty()) {
+            Prefs p = new Prefs(c);
+            try { Pcb.engine(p); }
+            catch (Workshop.Problem x) { return err("no_ai", x.getMessage() + " Say exactly this to him. Do not pick or suggest a different AI yourself."); }
+            String over = Pcb.overLimit(c, p);
+            if (over != null) return err("limit_reached", over + " Say exactly this to him.");
+            startIn(i.putExtra(PcbActivity.EXTRA_WHAT, raw).putExtra(PcbActivity.EXTRA_HEARD, heard == null ? raw : heard));
+            return ok().put("next", "Say only: 'PCB స్టూడియోలో చూపిస్తున్నాను Sir, ఖర్చు అక్కడ కనిపిస్తుంది; వద్దంటే ✋ వద్దు అనండి.' The studio waits 3 seconds, "
+                    + "then the AI makes it and the studio says the cost when it is done.").toString();
         }
         if ("tab".equals(a) && java.util.Arrays.asList("home", "sch", "pcb", "drc", "d3", "fab", "calc").contains(w)) i.putExtra(PcbActivity.EXTRA_TAB, w);
         startIn(i);

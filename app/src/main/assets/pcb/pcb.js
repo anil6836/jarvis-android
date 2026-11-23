@@ -2,9 +2,11 @@
 // in Telugu), the PCB (move / turn parts, auto-route, ground fill), ✅ the factory checks with Telugu reasons, 🧊 the board in
 // 3D, 🏭 the factory files (.zip saved / shared / the factory's site only on his tap) and 🧮 the numbers. All our own code, ₹0,
 // no network: designs are data, every word goes in with textContent. Jarvis (the app) talks to this page through one port.
+// Build 2 (24 Nov): 💡 idea / voice / a sketch photo → a board by the studio's AI (Jarvis asks it; the cost first, his tap or ✋ 3 s),
+// 🗣️ his words change the board (small ones here, ₹0), 🤖 help for the checks. The AI's answer is data only (pcbai.js).
 'use strict';
 (function () {
-  const P = window.PcbParts, C = window.PcbCore, F = window.PcbFab, J = window.PcbProjects;
+  const P = window.PcbParts, C = window.PcbCore, F = window.PcbFab, J = window.PcbProjects, A = window.PcbAI;
   const $ = (id) => document.getElementById(id);
   const FONT = '"Noto Sans Telugu", system-ui, "Noto Color Emoji", sans-serif';
 
@@ -103,13 +105,29 @@
       case 'init':
         designs = Array.isArray(m.list) ? m.list : [];
         if (m.cur && m.cur.parts) open(m.cur, 'load');
-        showTab(typeof m.tab === 'string' && TABS.indexOf(m.tab) >= 0 ? m.tab : 'home');
+        if (m.tab === 'idea') { showTab('home'); toIdea(); }
+        else showTab(typeof m.tab === 'string' && TABS.indexOf(m.tab) >= 0 ? m.tab : 'home');
         break;
-      case 'designs': designs = Array.isArray(m.list) ? m.list : []; if (tab === 'home') home(); break;
+      case 'designs': designs = Array.isArray(m.list) ? m.list : []; if (tab === 'home') myDesigns(); break;
       case 'design': if (m.d && m.d.parts) { open(m.d, 'load'); showTab('pcb'); } break;
       case 'saved': saved = { where: String(m.where || '') }; if (tab === 'fab') fab(); toast('💾 సేవ్ అయింది: ' + saved.where, 4000); break;
       case 'say': toast(String(m.s || ''), 4000); break;
-      case 'tab': if (TABS.indexOf(m.tab) >= 0) showTab(m.tab); break;
+      case 'tab': if (m.tab === 'idea') { showTab('home'); toIdea(); } else if (TABS.indexOf(m.tab) >= 0) showTab(m.tab); break;
+      // ---- 🤖 the studio's AI (asked by Jarvis; this page never sees a key or the network)
+      case 'aiquote': { const cb = quoteCb[m.kind]; if (cb) cb(m); break; }
+      case 'aiwait': ai.wait = { kind: m.kind, words: String(m.words || ''), model: String(m.model || ''), money: String(m.money || ''), until: Date.now() + (m.secs || 3) * 1000 }; bar(); break;
+      case 'aicancelled': ai.wait = null; ai.pending = null; bar(); toast('✋ సరే, చేయలేదు · ఖర్చు ₹0', 3000); break;
+      case 'aistart': ai.wait = null; ai.job = { kind: m.kind, model: String(m.model || ''), money: String(m.money || ''), at: Date.now(), n: 0 }; bar(); break;
+      case 'aiprog': if (ai.job) { ai.job.n = m.n | 0; bar(); } break;
+      case 'aidone': aiDone(m); break;
+      case 'photoready': idea.photo = String(m.thumb || ''); if (tab !== 'home') showTab('home'); else home(); toIdea(); break;
+      case 'dictst': dict.on = !!m.on; dictLook(); break;
+      case 'dictated': dict.on = false; dictLook(); dictInto(String(m.s || '')); break;
+      case 'vheard': heard(String(m.s || ''), false); break;
+      case 'vline': if (m.s) toast(String(m.s), 2600); break;
+      case 'vmic': $('mic').classList.toggle('on', m.st === 1); break;
+      case 'idea': idea.text = String(m.s || ''); showTab('home'); toIdea(); if (m.go) makeIdea(true); break;
+      case 'change': heard(String(m.s || ''), true); break;
       case 'project': {
         const pr = J.PROJECTS.find((q) => q.id === m.id);
         if (!pr) break;
@@ -120,7 +138,8 @@
       }
       case 'back': {
         let used = true;
-        if ($('sheet').classList.contains('on')) closeSheet();
+        if (ai.wait) post({ t: 'aicancel' });
+        else if ($('sheet').classList.contains('on')) closeSheet();
         else if (pv.sel) { pv.sel = null; selBar(); redraw(); }
         else if (tab !== 'home') showTab('home');
         else used = false;
@@ -184,6 +203,7 @@
     intro.appendChild(el('div', null, '🔌 ఇక్కడ తయారయ్యేవి నిజమైన PCB బోర్డ్‌లు.'));
     intro.appendChild(el('div', 'muted', 'స్కీమాటిక్ → PCB → చెక్ → ఫ్యాక్టరీ ఫైల్స్ (Gerber .zip). ఆ zip మీరే ఫ్యాక్టరీ సైట్‌లో అప్‌లోడ్ చేసి, మీరే డబ్బులు కడితే అసలు బోర్డ్‌లు ఇంటికి వస్తాయి. బ్యాటరీ / USB / అడాప్టర్ (తక్కువ వోల్టేజ్ DC) బోర్డ్‌లు మాత్రమే; 230V కరెంట్ బోర్డ్‌లు ఇక్కడ చేయను.'));
     h.appendChild(intro);
+    ideaCard(h);
     if (D) {
       const cur = el('div', 'card tap');
       cur.appendChild(el('div', null, '▶️ ఇప్పుడు తెరిచి ఉంది: ' + D.name));
@@ -215,7 +235,21 @@
       requestAnimationFrame(() => thumb(cv, pr));
     });
     h.appendChild(el('h3', null, '📂 నా బోర్డ్‌లు'));
-    if (!designs.length) h.appendChild(el('div', 'muted', 'ఇంకా ఏమీ లేవు. పైన ఒక రెడీ బోర్డ్ తెరిచి మార్చితే ఇక్కడ దాచుకుంటుంది (తనంతట తానే).'));
+    const mine = el('div');
+    mine.id = 'mine';
+    h.appendChild(mine);
+    myDesigns();
+    const soon = el('div', 'card soon');
+    soon.appendChild(el('div', null, '🔜 త్వరలో (తర్వాతి బిల్డ్‌లలో)'));
+    soon.appendChild(el('div', 'muted', '⚡ PCB కి ముందు సిమ్యులేషన్ · 📏 AR లో అసలు సైజు · 🔧 టంకం గైడ్ · 💻 KiCad ఫైల్ · 🎓 5 రోజుల తెలుగు క్లాస్ · 📦 బోర్డ్ డబ్బా 3D · 🕑 పాత వెర్షన్లు'));
+    h.appendChild(soon);
+  }
+  /** His saved boards (only this part is drawn again when the list changes: what he is typing above stays). */
+  function myDesigns() {
+    const h = $('mine');
+    if (!h) return;
+    clear(h);
+    if (!designs.length) h.appendChild(el('div', 'muted', 'ఇంకా ఏమీ లేవు. పైన ఒక రెడీ బోర్డ్ తెరిచి మార్చినా, 💡 AI తో కొత్తది చేసినా ఇక్కడ దాచుకుంటుంది (తనంతట తానే).'));
     designs.slice(0, 100).forEach((d) => {
       const c = el('div', 'card');
       const row = el('div', 'row');
@@ -229,16 +263,12 @@
         c.appendChild(el('div', null, '🗑️ "' + d.name + '" నిజంగా తీసేయాలా? (తిరిగి రాదు)'));
         const r2b = el('div', 'row');
         r2b.appendChild(btn('అవును, తీసేయి', 'bad', () => { post({ t: 'remove', id: d.id }); if (D && D.id === d.id) { D = null; check = null; state(); } }));
-        r2b.appendChild(btn('వద్దు', '', () => home()));
+        r2b.appendChild(btn('వద్దు', '', () => myDesigns()));
         c.appendChild(r2b);
       }));
       c.appendChild(row);
       h.appendChild(c);
     });
-    const soon = el('div', 'card soon');
-    soon.appendChild(el('div', null, '🔜 త్వరలో (తర్వాతి బిల్డ్‌లలో)'));
-    soon.appendChild(el('div', 'muted', '💡 మీ ఐడియా / మాట / చేతి బొమ్మ ఫోటో నుంచి సర్క్యూట్ (AI, ఖర్చు ముందే చెబుతుంది) · 🗣️ మాటతో మార్పులు · ⚡ PCB కి ముందు సిమ్యులేషన్ · 📏 AR లో అసలు సైజు · 🔧 టంకం గైడ్ · 🛒 కొనే లింకులు · 💻 KiCad ఫైల్ · 🎓 5 రోజుల తెలుగు క్లాస్ · 📦 బోర్డ్ డబ్బా 3D · 🕑 పాత వెర్షన్లు'));
-    h.appendChild(soon);
   }
   function when(at) {
     if (!at) return '';
@@ -373,7 +403,7 @@
         const r = el('div', 'row');
         r.appendChild(btn('అవును, అమర్చు', 'main', () => {
           snap();
-          const ok = C.autoplace(D);
+          const ok = C.autoplace(D, { labels: true });
           if (!ok) { back1(); toast('బోర్డ్ చిన్నది: అన్ని భాగాలు పట్టలేదు. 📏 బోర్డ్ పెంచి మళ్ళీ చూడండి.'); closeSheet(); return; }
           reroute(); changed(); closeSheet();
         }));
@@ -381,6 +411,7 @@
         s.appendChild(r);
       });
     }));
+    t.appendChild(tool('✏️ మార్పు', '', () => editSheet('')));
     t.appendChild(tool('↩️', '', back1));
     t.appendChild(tool('🔍', '', () => { pv.fit = true; drawPcb(); }));
   }
@@ -638,12 +669,14 @@
     // parts without a place on the drawing get one (a grid in the order they join)
     const missing = D.parts.filter((p) => !p.sx && !p.sy);
     if (!missing.length) return;
+    const order = A.schOrder(D);
+    missing.sort((a, b) => order.indexOf(a.ref) - order.indexOf(b.ref));
     let x = 60, y = 60, rowH = 0;
     missing.forEach((pt) => {
       const pl = placed(Object.assign({}, pt, { sx: 0, sy: 0 })), w = pl.box[2] - pl.box[0], h = pl.box[3] - pl.box[1];
-      if (x + w > 700) { x = 60; y += rowH + 70; rowH = 0; }
+      if (x + w > 470 && x > 60) { x = 60; y += rowH + 85; rowH = 0; }
       pt.sx = Math.round(x - pl.box[0]); pt.sy = Math.round(y - pl.box[1]);
-      x += w + 70; rowH = Math.max(rowH, h);
+      x += w + 95; rowH = Math.max(rowH, h);
     });
   }
   function schLayout() {
@@ -720,6 +753,7 @@
   function schTools() {
     const t = clear($('schtools'));
     t.appendChild(tool(sv.vals ? '🏷️ విలువలు ✓' : '🏷️ విలువలు', sv.vals ? 'on' : '', () => { sv.vals = !sv.vals; schTools(); drawSch(); }));
+    t.appendChild(tool('✏️ మార్పు', '', () => editSheet('')));
     t.appendChild(tool('🔍', '', () => { sv.fit = true; drawSch(); }));
     t.appendChild(tool('🧩 PCB చూడు', '', () => showTab('pcb')));
   }
@@ -917,6 +951,7 @@
       top.appendChild(el('div', 'muted', 'ఇవి సరిచేసే వరకు బోర్డ్ పనిచేయకపోవచ్చు లేదా ఫ్యాక్టరీ తిరస్కరించవచ్చు. ఒక్కోదాని మీద నొక్కితే PCB లో ఆ చోటు చూపిస్తుంది.'));
     }
     h.appendChild(top);
+    helpCard(h);
     const fabRow = el('div', 'row');
     fabRow.appendChild(el('div', 'k muted', 'ఏ ఫ్యాక్టరీ నియమాలతో:'));
     Object.keys(C.FABS).forEach((k) => fabRow.appendChild(btn(C.FABS[k].name, D.fab === k ? 'on small' : 'small', () => { D.fab = k; changed(); drcList(); })));
@@ -1225,9 +1260,463 @@
     });
   }
 
+  // ================================================================ 💡 🗣️ 🤖 the studio's AI (build 2): Jarvis asks it, this page only shows and builds
+
+  const ai = { wait: null, job: null, pending: null, help: null };
+  const idea = { text: '', photo: null };
+  const dict = { on: false, to: 'idea' };
+  const quoteCb = {};
+  let quoteT = 0, barT = 0;
+  const KIND_TE = { new: 'కొత్త బోర్డ్', photo: 'ఫోటో నుంచి బోర్డ్', edit: 'బోర్డ్‌లో మార్పు', help: 'చెక్ కి సహాయం' };
+  const DOING = { new: 'బోర్డ్ గీస్తోంది…', photo: 'ఫోటో చూసి గీస్తోంది…', edit: 'మార్పు చేస్తోంది…', help: 'తప్పులు చూస్తోంది…' };
+
+  $('mic').addEventListener('click', () => post({ t: 'mic' }));
+
+  /** The cost of one job on his AI (asked from Jarvis, who knows the price list; the page never sees keys). */
+  function quote(kind, words, chars, cb) { quoteCb[kind] = cb; post({ t: 'aiquote', kind, words: String(words || ''), chars: chars | 0 }); }
+  function quoteLine(box, m, onPick) {
+    clear(box);
+    const r = el('div', 'quote');
+    if (m.model) { r.appendChild(document.createTextNode('🤖 ' + m.model + ' · సుమారు ')); r.appendChild(el('span', 'm', m.money || '?')); }
+    else r.appendChild(document.createTextNode('🤖 AI ఎంచుకోలేదు'));
+    r.appendChild(document.createTextNode('  '));
+    const ch = btn('🔁 మార్చు', 'small', onPick);
+    r.appendChild(ch);
+    box.appendChild(r);
+    if (!m.ok && m.why) box.appendChild(el('div', 'muted warnc', m.why));
+    if (m.month) box.appendChild(el('div', 'muted', m.month + ' (వర్క్‌షాప్, స్టూడియోలు అన్నిటికీ కలిపి)'));
+  }
+
+  // ---------------------------------------------------------------- the 💡 card on 📚 బోర్డ్‌లు
+
+  const IDEAS = [['🔋 బైక్ బ్యాటరీ అలారం', 'బైక్ 12V బ్యాటరీ 11.5V కంటే తగ్గితే ఎరుపు LED వెలగాలి, బజర్ మోగాలి'], ['🌡️ ESP32 + DHT11 + OLED', 'ESP32 కి DHT11, చిన్న OLED స్క్రీన్ (I2C) కలిపే బోర్డ్, USB 5V తో'],
+    ['🚦 ESP32 ట్రాఫిక్ లైట్', 'ESP32 తో మూడు LED ల ట్రాఫిక్ లైట్ (ఎరుపు, పసుపు, ఆకుపచ్చ)'], ['💡 USB LED లైట్', 'USB 5V తో నాలుగు తెల్ల LED ల చిన్న లైట్, ప్రతి LED కి రెసిస్టర్'],
+    ['🔔 555 బీప్ బజర్', '9V బ్యాటరీతో 555 టైమర్ బజర్: సెకనుకి ఒకసారి బీప్']];
+  function ideaCard(h) {
+    const c = el('div', 'card idea');
+    c.id = 'ideacard';
+    c.appendChild(el('div', 't', '💡 ఐడియాతో కొత్త బోర్డ్ (AI)'));
+    c.appendChild(el('div', 'muted', 'బోర్డ్ ఏం చేయాలో రాయండి / 🎤 చెప్పండి, లేదా కాగితం మీద గీసిన సర్క్యూట్ 📷 ఫోటో పెట్టండి. AI భాగాలు, కలుపులు ఇస్తుంది; అమర్చడం, దారులు, చెక్ ఫోన్‌లోనే.'));
+    const ta = el('textarea');
+    ta.id = 'ideatext'; ta.rows = 3; ta.maxLength = 1500; ta.value = idea.text;
+    ta.placeholder = 'ఉదా: బైక్ 12V బ్యాటరీ తగ్గితే ఎరుపు LED వెలగాలి';
+    ta.addEventListener('input', () => { idea.text = ta.value; ideaQuoteSoon(); });
+    c.appendChild(ta);
+    const r = el('div', 'row');
+    const mic = btn(dict.on && dict.to === 'idea' ? '🔴 వింటున్నాను… (ఆపు)' : '🎤 మాటతో', dict.on && dict.to === 'idea' ? 'on' : '', () => { dict.to = 'idea'; post({ t: 'dictate' }); });
+    mic.id = 'ideamic';
+    r.appendChild(mic);
+    r.appendChild(btn(idea.photo ? '📷 ఫోటో మార్చు' : '📷 చేతి బొమ్మ ఫోటో', '', photoSheet));
+    c.appendChild(r);
+    const q = el('div');
+    q.id = 'ideaquote';
+    c.appendChild(q);
+    const go = el('div', 'row');
+    const b = btn('⚡ తయారు చేయి', 'main', () => makeIdea(false));
+    b.id = 'ideago';
+    go.appendChild(b);
+    c.appendChild(go);
+    if (idea.photo) {
+      const ph = el('div', 'photo');
+      const img = el('img');
+      img.src = idea.photo; img.alt = 'మీ సర్క్యూట్ ఫోటో';
+      ph.appendChild(img);
+      const x = el('div', 'muted', 'ఈ ఫోటో ⚡ నొక్కాక AI కి ఒక్కసారే వెళ్తుంది; ఫోన్‌లో దాచను. పైన మాటల్లో ఏమైనా చెప్పాలంటే రాయండి (ఐచ్ఛికం).');
+      x.appendChild(el('br'));
+      x.appendChild(btn('✕ ఫోటో తీసేయి', 'small', () => { idea.photo = null; post({ t: 'photodrop' }); home(); }));
+      ph.appendChild(x);
+      c.appendChild(ph);
+    } else {
+      const ex = el('div');
+      ex.appendChild(el('span', 'muted', 'ఉదాహరణలు (నొక్కితే పైన రాస్తుంది): '));
+      IDEAS.forEach((w) => { const e = el('span', 'ex', w[0]); e.addEventListener('click', () => { idea.text = w[1]; ta.value = w[1]; ideaQuoteSoon(); }); ex.appendChild(e); });
+      c.appendChild(ex);
+    }
+    c.appendChild(el('div', 'muted', 'మీరు నొక్కితేనే AI కి వెళ్తుంది. తక్కువ వోల్టేజ్ DC (24V వరకు) బోర్డ్‌లు మాత్రమే. AI కూడా తప్పు చేయొచ్చు: ఆర్డర్ ముందు 📐 స్కీమాటిక్ ఒకసారి చూడండి.'));
+    h.appendChild(c);
+    ideaQuote();
+  }
+  function ideaQuoteSoon() { clearTimeout(quoteT); quoteT = setTimeout(ideaQuote, 450); }
+  function ideaQuote() {
+    const kind = idea.photo ? 'photo' : 'new';
+    const no = idea.text.trim() ? A.refuseWords(idea.text) : null;
+    quote(kind, idea.text, 0, (m) => {
+      const box = $('ideaquote'), b = $('ideago');
+      if (!box || !b) return;
+      quoteLine(box, m, () => post({ t: 'pickmodel', kind, words: idea.text, chars: 0 }));
+      if (no) box.appendChild(el('div', 'muted err', no));
+      b.disabled = !m.ok || !!no || !!ai.job || !!ai.wait;
+      b.textContent = m.ok && m.money ? '⚡ తయారు చేయి · ' + m.money : '⚡ తయారు చేయి';
+    });
+  }
+  function toIdea() { const c = $('ideacard'); if (c) $('home').scrollTop = Math.max(0, c.offsetTop - 8); }
+  function photoSheet() {
+    sheet((s) => {
+      s.appendChild(el('h2', null, '📷 కాగితం మీద గీసిన సర్క్యూట్'));
+      s.appendChild(el('div', 'muted', 'పెన్నుతో స్పష్టంగా గీసి, పైనుంచి వెలుతురులో ఫోటో తీయండి. భాగాల విలువలు (1k, 10uF…) రాస్తే బాగా అర్థమవుతుంది. ఫోటో ⚡ నొక్కాక మీ AI కి ఒక్కసారే వెళ్తుంది; ఎక్కడా దాచను.'));
+      const r = el('div', 'row');
+      r.appendChild(btn('📷 కెమెరాతో తీయి', 'main', () => { closeSheet(); post({ t: 'photo', from: 'cam' }); }));
+      r.appendChild(btn('🖼️ గ్యాలరీ నుంచి', '', () => { closeSheet(); post({ t: 'photo', from: 'gal' }); }));
+      s.appendChild(r);
+    });
+  }
+  function makeIdea(voice) {
+    const w = idea.text.trim();
+    if (!w && !idea.photo) { toast('ముందు మీ ఐడియా రాయండి / 🎤 చెప్పండి, లేదా 📷 ఫోటో పెట్టండి'); return; }
+    const no = A.refuseWords(w);
+    if (no) { resultSheet('🚫 చేయలేదు', [no]); if (voice) post({ t: 'vdone', say: no.replace(/\(.*\)$/, ''), voice: true }); return; }
+    if (ai.job || ai.wait) { toast('ఒక AI పని ఇంకా నడుస్తోంది; అది అయ్యాక అడగండి.'); return; }
+    const kind = idea.photo ? 'photo' : 'new';
+    ai.pending = { kind, words: w, voice: !!voice };
+    post({ t: 'aiask', kind, words: w, voice: !!voice });
+  }
+
+  // ---------------------------------------------------------------- 🎤 dictation into a box
+
+  function dictLook() {
+    const b = $('ideamic');
+    if (b) { const on = dict.on && dict.to === 'idea'; b.textContent = on ? '🔴 వింటున్నాను… (ఆపు)' : '🎤 మాటతో'; b.classList.toggle('on', on); }
+    const e = $('editmic');
+    if (e) { const on = dict.on && dict.to === 'edit'; e.textContent = on ? '🔴 వింటున్నాను…' : '🎤'; e.classList.toggle('on', on); }
+  }
+  function dictInto(w) {
+    if (!w) return;
+    if (dict.to === 'edit' && $('edittext')) { const t = $('edittext'); t.value = (t.value.trim() ? t.value.trim() + ' ' : '') + w; editHint(); return; }
+    idea.text = (idea.text.trim() ? idea.text.trim() + ' ' : '') + w;
+    const t = $('ideatext');
+    if (t) t.value = idea.text;
+    ideaQuoteSoon();
+  }
+
+  // ---------------------------------------------------------------- ✏️ a change to the open board (small ones here, ₹0)
+
+  /** Examples with this board's own part names. */
+  function editExamples() {
+    const first = (f) => D.parts.find(f);
+    const res = first((p) => p.lib === 'res'), led = first((p) => p.lib === 'led5' || p.lib === 'led3'), any = first((p) => !/^(term2|usba)$/.test(p.lib));
+    const out = [];
+    if (res) out.push(res.ref + ' ని ' + (res.val === '10k' ? '22k' : '10k') + ' చేయి');
+    if (any) out.push(any.ref + ' ని ఎడమకి 3 mm జరుపు', any.ref + ' తిప్పు');
+    if (led) out.push(led.ref + ' ' + (led.color === 'blue' ? 'ఆకుపచ్చ' : 'నీలం') + ' చేయి');
+    out.push('బోర్డ్ నీలం రంగు', 'స్క్రూ రంధ్రాలు పెట్టు', 'ఇంకో LED, దాని రెసిస్టర్ జోడించు');
+    return out;
+  }
+  function editSheet(prefill) {
+    if (!D) { toast('ముందు ఒక బోర్డ్ తెరవండి'); return; }
+    sheet((s) => {
+      s.appendChild(el('h2', null, '✏️ ఈ బోర్డ్‌లో మార్పు'));
+      s.appendChild(el('div', 'muted', 'రాయండి / 🎤 చెప్పండి. చిన్న మార్పులు (విలువ, తిప్పు, జరుపు, LED రంగు, బోర్డ్ సైజు / రంగు, రంధ్రాలు) ఫోన్‌లోనే ₹0. భాగాలు జోడించడం / తీయడం AI చేస్తుంది: ఖర్చు ముందే చూపిస్తుంది.'));
+      const ta = el('textarea');
+      ta.id = 'edittext'; ta.rows = 2; ta.maxLength = 600; ta.value = prefill || '';
+      ta.addEventListener('input', () => { clearTimeout(quoteT); quoteT = setTimeout(editHint, 350); });
+      s.appendChild(ta);
+      const ex = el('div');
+      editExamples().forEach((w) => { const e = el('span', 'ex', w); e.addEventListener('click', () => { ta.value = w; editHint(); }); ex.appendChild(e); });
+      s.appendChild(ex);
+      const hint = el('div');
+      hint.id = 'edithint';
+      s.appendChild(hint);
+      const r = el('div', 'row');
+      const mic = btn('🎤', '', () => { dict.to = 'edit'; post({ t: 'dictate' }); });
+      mic.id = 'editmic';
+      r.appendChild(mic);
+      const go = btn('✏️ చేయి', 'main', () => editGo(ta.value, false, false));
+      go.id = 'editgo';
+      r.appendChild(go);
+      r.appendChild(btn('మూసేయి', '', closeSheet));
+      s.appendChild(r);
+      editHint();
+    });
+  }
+  function editHint() {
+    const t = $('edittext'), h = $('edithint'), go = $('editgo');
+    if (!t || !h || !go) return;
+    const w = t.value.trim();
+    clear(h);
+    go.disabled = !w;
+    go.textContent = '✏️ చేయి';
+    if (!w) return;
+    const cmd = A.local(w, D);
+    if (cmd && cmd.k !== 'noref') { h.appendChild(el('div', 'quote okc', '₹0 · ఫోన్‌లోనే చేస్తాను (AI అక్కర్లేదు)')); go.textContent = '✏️ చేయి (₹0)'; return; }
+    if (cmd && cmd.k === 'noref') { h.appendChild(el('div', 'quote warnc', cmd.ref + ' అనే భాగం ఈ బోర్డ్‌లో లేదు. (📐 స్కీమాటిక్‌లో పేర్లు చూడండి)')); go.disabled = true; return; }
+    const no = A.refuseWords(w);
+    if (no) { h.appendChild(el('div', 'quote err', no)); go.disabled = true; return; }
+    const design = A.forEdit(D);
+    quote('edit', w, design.length, (m) => {
+      if (!$('edithint')) return;
+      clear(h);
+      h.appendChild(el('div', 'muted', '🤖 ఇది ఫోన్‌లో చేయలేను; AI చేస్తుంది. అలాగే ఉన్న భాగాలు అదే చోట ఉంటాయి.'));
+      const q = el('div');
+      quoteLine(q, m, () => post({ t: 'pickmodel', kind: 'edit', words: w, chars: design.length }));
+      h.appendChild(q);
+      go.disabled = !m.ok || !!ai.job || !!ai.wait;
+      go.textContent = m.ok && m.money ? '🤖 AI తో చేయి · ' + m.money : '🤖 AI తో చేయి';
+    });
+  }
+  /** His words about the board: a small change here (₹0), else the AI (his tap here; by voice ✋ 3 seconds). */
+  function editGo(words, voice, fromBrain) {
+    const w = String(words || '').trim();
+    if (!w) return false;
+    const cmd = A.local(w, D);
+    if (cmd) {
+      const said = doLocal(cmd);
+      if (cmd.k !== 'noref') closeSheet();
+      toast(said, 3500);
+      if (voice) post({ t: 'vdone', say: said, voice: true });
+      return true;
+    }
+    const no = A.refuseWords(w);
+    if (no) { resultSheet('🚫 చేయలేదు', [no]); if (voice) post({ t: 'vdone', say: no.replace(/\(.*\)$/, ''), voice: true }); return true; }
+    if (!D) { const t = 'ముందు ఒక బోర్డ్ తెరవండి Sir (📚 బోర్డ్‌లు).'; toast(t); if (voice) post({ t: 'vdone', say: t, voice: true }); return true; }
+    if (ai.job || ai.wait) { const t = 'ఒక AI పని ఇంకా నడుస్తోంది Sir.'; toast(t); if (voice) post({ t: 'vdone', say: t, voice: true }); return true; }
+    closeSheet();
+    ai.pending = { kind: 'edit', words: w, voice: !!voice, id: D.id };
+    post({ t: 'aiask', kind: 'edit', words: w, design: A.forEdit(D), voice: !!voice || !!fromBrain });
+    return true;
+  }
+  /** A small change done here; what was done, in a short Telugu line. */
+  function doLocal(cmd) {
+    const LED_TE = { red: 'ఎరుపు', green: 'ఆకుపచ్చ', blue: 'నీలం', yellow: 'పసుపు', white: 'తెలుపు', orange: 'నారింజ' };
+    const MASK_TE = { green: 'ఆకుపచ్చ', blue: 'నీలం', black: 'నలుపు', white: 'తెలుపు', purple: 'ఊదా' };
+    if (cmd.k === 'tab') { showTab(cmd.tab); return 'సరే Sir.'; }
+    if (!D) return 'ముందు ఒక బోర్డ్ తెరవండి Sir.';
+    const pt = cmd.ref ? D.parts.find((p) => p.ref === cmd.ref) : null;
+    switch (cmd.k) {
+      case 'undo': if (!undo.length) return 'వెనక్కి వెళ్ళడానికి ఏమీ లేదు Sir.'; back1(); return '↩️ ముందున్నట్టు చేశాను.';
+      case 'noref': return cmd.ref + ' అనే భాగం ఈ బోర్డ్‌లో లేదు Sir.';
+      case 'route': { snap(); const r = reroute(true); changed(); const miss = r.failed.reduce((a, f) => a + f.pins.length, 0); return miss ? '⚡ ' + miss + ' కలపలేకపోయాను; భాగాల్ని కొంచెం దూరం జరపండి.' : '⚡ దారులు మళ్ళీ వేశాను, అన్నీ కలిశాయి.'; }
+      case 'place': { snap(); if (!C.autoplace(D, { labels: true })) { back1(); return 'బోర్డ్ చిన్నది: అన్ని భాగాలు పట్టలేదు.'; } reroute(true); changed(); return '🔀 భాగాలు మళ్ళీ అమర్చి దారులు వేశాను.'; }
+      case 'fill': snap(); D.pour.B = !!cmd.on; changed(); if (tab === 'pcb') pcbTools(); return cmd.on ? '⏚ GND నింపాను.' : '⏚ GND నింపు తీసేశాను.';
+      case 'holes': snap(); D.board.holes = !!cmd.on; reroute(true); changed(); return cmd.on ? '🔩 4 మూలల్లో M3 స్క్రూ రంధ్రాలు పెట్టాను.' : '🔩 స్క్రూ రంధ్రాలు తీసేశాను.';
+      case 'fit': snap(); C.fitBoard(D); pv.fit = true; reroute(true); changed(); return '📐 బోర్డ్ ' + D.board.w + ' × ' + D.board.h + ' mm చేశాను.';
+      case 'size': {
+        snap();
+        if (cmd.w) D.board.w = Math.max(10, Math.min(200, cmd.w));
+        if (cmd.h) D.board.h = Math.max(10, Math.min(200, cmd.h));
+        pv.fit = true; reroute(true); changed();
+        return '📏 బోర్డ్ ' + D.board.w + ' × ' + D.board.h + ' mm.' + (check && check.errors ? ' ❌ ' + check.errors + ' తప్పులు: భాగాలు బయటికి వెళ్ళాయేమో, ✅ చెక్ చూడండి.' : '');
+      }
+      case 'color': D.board.color = cmd.c; changed(); return '🎨 బోర్డ్ రంగు ' + MASK_TE[cmd.c] + '.';
+      case 'rot': snap(); pt.rot = ((pt.rot || 0) + cmd.deg) % 360; afterMove(netsOfPart(pt.ref)); return '🔄 ' + pt.ref + ' ని ' + cmd.deg + '° తిప్పాను.';
+      case 'move': {
+        snap();
+        pt.x = r2(pt.x + cmd.dx); pt.y = r2(pt.y + cmd.dy);
+        afterMove(netsOfPart(pt.ref));
+        const dir = cmd.dx < 0 ? 'ఎడమకి' : cmd.dx > 0 ? 'కుడికి' : cmd.dy < 0 ? 'పైకి' : 'కిందికి';
+        return '↔️ ' + pt.ref + ' ని ' + dir + ' ' + r2(Math.abs(cmd.dx || cmd.dy)) + ' mm జరిపాను.';
+      }
+      case 'led': snap(); pt.color = cmd.color; pt.val = cmd.color.toUpperCase(); changed(); return '💡 ' + pt.ref + ' ఇప్పుడు ' + LED_TE[cmd.color] + ' LED. (రెసిస్టర్ విలువ 🧮 లెక్కలు లో చూడండి: నీలం / తెలుపు కి 3V.)';
+      case 'val': {
+        snap();
+        const old = pt.val;
+        pt.val = cmd.val;
+        let more = '';
+        if (pt.lib === 'elec') { const f = A.elecFp(cmd.val); if (f !== (P.fpOf(pt) || {}).id) { pt.fp = f; reroute(true); more = ' పెద్ద / చిన్న కెపాసిటర్ కాబట్టి బోర్డ్ మీద చోటు మార్చాను.'; } }
+        changed();
+        return '✏️ ' + pt.ref + ': ' + old + ' → ' + cmd.val + '.' + more;
+      }
+      default: return 'అర్థం కాలేదు Sir.';
+    }
+  }
+
+  // ---------------------------------------------------------------- 🎙️ his words heard here
+
+  function heard(words, fromBrain) {
+    const w = String(words || '').trim();
+    if (!w) return;
+    const cmd = A.local(w, D);
+    if (cmd) { const said = doLocal(cmd); toast(said, 3500); post({ t: 'vdone', say: said, voice: true }); return; }
+    if (A.newBoardWords(w)) { idea.text = w; showTab('home'); toIdea(); makeIdea(true); return; }
+    if (D && (fromBrain || A.boardWords(w))) { editGo(w, true, fromBrain); return; }
+    if (fromBrain) { const t = 'ముందు ఒక బోర్డ్ తెరవండి Sir (📚 బోర్డ్‌లు), తర్వాత మార్పు చెప్పండి.'; toast(t, 3500); post({ t: 'vdone', say: t, voice: true }); return; }
+    post({ t: 'vdone', brain: true, s: w });
+  }
+
+  // ---------------------------------------------------------------- the bar: ✋ 3 seconds, the AI at work, ⏹
+
+  function bar() {
+    const b = $('aibar');
+    clearTimeout(barT);
+    clear(b);
+    ['ideago', 'editgo'].forEach((id) => { const g = $(id); if (g && (ai.wait || ai.job)) g.disabled = true; });
+    if (ai.wait) {
+      const left = Math.max(0, Math.ceil((ai.wait.until - Date.now()) / 1000));
+      const x = el('div', 'x');
+      x.appendChild(el('div', null, '⏳ ' + KIND_TE[ai.wait.kind] + (ai.wait.words ? ': “' + ai.wait.words.slice(0, 60) + (ai.wait.words.length > 60 ? '…' : '') + '”' : '')));
+      x.appendChild(el('div', 'muted', '🤖 ' + ai.wait.model + ' · సుమారు ' + ai.wait.money + ' · ' + (left ? left + ' సెకన్లలో మొదలు' : 'మొదలవుతోంది…')));
+      b.appendChild(x);
+      b.appendChild(btn('✋ వద్దు', 'warn', () => post({ t: 'aicancel' })));
+      b.classList.add('on');
+      barT = setTimeout(bar, 300);
+      return;
+    }
+    if (ai.job) {
+      const secs = Math.round((Date.now() - ai.job.at) / 1000);
+      const x = el('div', 'x');
+      x.appendChild(el('div', null, '🧠 ' + ai.job.model + ' ' + DOING[ai.job.kind] + ' ' + secs + ' సె'));
+      x.appendChild(el('div', 'muted', 'సుమారు ' + ai.job.money + (ai.job.n ? ' · ' + ai.job.n + ' అక్షరాలు వచ్చాయి' : '')));
+      b.appendChild(x);
+      b.appendChild(btn('⏹ ఆపు', 'bad', () => sheet((s) => {
+        s.appendChild(el('h2', null, 'AI పని ఆపాలా?'));
+        s.appendChild(el('div', 'muted', 'ఇప్పటిదాకా అయిన ఖర్చు మాత్రం పడుతుంది.'));
+        const r = el('div', 'row');
+        r.appendChild(btn('⏹ ఆపు', 'bad', () => { closeSheet(); post({ t: 'aistop' }); }));
+        r.appendChild(btn('కొనసాగించు', '', closeSheet));
+        s.appendChild(r);
+      })));
+      b.classList.add('on');
+      barT = setTimeout(bar, 1000);
+      return;
+    }
+    b.classList.remove('on');
+    if (tab === 'home') ideaQuote();
+  }
+
+  // ---------------------------------------------------------------- the answer
+
+  function resultSheet(title, lines, buttons) {
+    sheet((s) => {
+      s.appendChild(el('h2', null, title));
+      lines.filter(Boolean).forEach((l) => s.appendChild(el('div', 'step', l)));
+      const r = el('div', 'row');
+      (buttons || []).forEach((b) => r.appendChild(b));
+      r.appendChild(btn('మూసేయి', '', closeSheet));
+      s.appendChild(r);
+    });
+  }
+  function aiDone(m) {
+    const pend = ai.pending || {};
+    ai.job = null; ai.wait = null; ai.pending = null;
+    bar();
+    const voice = !!m.voice, kind = m.kind;
+    const said = (t) => { if (voice) post({ t: 'vdone', say: t, voice: true }); };
+    if (!m.ok) {
+      const t = m.refuse ? '🚫 ' + m.refuse : m.fail;
+      resultSheet(m.stopped ? '⏹ ఆపేశాను' : m.refuse ? '🚫 AI చేయలేదు' : '✗ రాలేదు', [t, m.refuse || (!m.stopped && m.cost) ? '💰 ఖర్చు ' + m.cost : '']);
+      said(t.replace(/^🚫 /, ''));
+      return;
+    }
+    const a = m.ans || {};
+    if (kind === 'help') return helpDone(m, a, said);
+    const cost = '🤖 ' + (m.model || 'AI') + ' · 💰 ఖర్చు ' + m.cost;
+    if (!Array.isArray(a.parts)) {
+      const t = String(a.say || 'AI ఏమీ మార్చలేదు.');
+      resultSheet('💬 AI జవాబు', [t, cost]);
+      said(t + ' ఖర్చు ' + m.cost + '.');
+      return;
+    }
+    if (kind === 'edit') return editDone(m, a, pend, cost, said);
+    toast('⚡ భాగాలు అమర్చి దారులు వేస్తున్నాను…', 9000);
+    setTimeout(() => {
+      const r = A.build(a, { model: m.model, cost: m.cost, words: pend.words });
+      if (r.err) { resultSheet(r.refuse ? '🚫 బోర్డ్ చేయలేదు' : '✗ బోర్డ్ కాలేదు', [r.err, cost]); said(r.err + ' ఖర్చు ' + m.cost + '.'); return; }
+      $('toast').style.display = 'none';
+      open(r.D);
+      idea.text = ''; idea.photo = null;
+      showTab('pcb');
+      const info = r.info, warn = info.dropped.map((d) => '⚠️ వదిలేశాను: ' + d).concat(info.fixes.slice(0, 6).map((f) => '⚠️ ' + f));
+      if (m.cut) warn.unshift('⚠️ AI జవాబు హద్దు దగ్గర మధ్యలో ఆగిపోయింది: వచ్చినంత వరకు బోర్డ్ చేశాను, కొన్ని భాగాలు లేకపోవచ్చు.');
+      const head = D.parts.length + ' భాగాలు · ' + D.board.w + ' × ' + D.board.h + ' mm · ' + (r.miss ? '⚡ ' + r.miss + ' పిన్నులు కలపలేకపోయాను' : '🔗 అన్నీ కలిశాయి') + ' · ' + (check.errors ? '❌ ' + check.errors + ' తప్పులు (✅ చెక్ → 🤖 AI సహాయం)' : '✅ చెక్ అయింది');
+      resultSheet('✅ బోర్డ్ రెడీ: ' + D.name, [head, info.say ? '🤖 ' + info.say : ''].concat(warn, [cost,
+        '👉 ఆర్డర్ ముందు: 📐 స్కీమాటిక్‌లో కలుపులు ఒకసారి చూడండి (AI కూడా తప్పు చేయొచ్చు), 🏭 ఫ్యాక్టరీ లో "కొలిచి చూడాల్సినవి" చూడండి.']),
+      [btn('📐 స్కీమాటిక్', '', () => showTab('sch')), btn('🧊 3D', '', () => showTab('d3'))]);
+      said('బోర్డ్ రెడీ Sir: ' + D.parts.length + ' భాగాలు, ' + (r.miss ? r.miss + ' పిన్నులు కలపలేకపోయాను' : 'అన్నీ కలిశాయి') + '. ఖర్చు ' + m.cost + '.');
+    }, 40);
+  }
+  function editDone(m, a, pend, cost, said) {
+    if (!D || (pend.id && D.id !== pend.id)) { const t = 'మీరు వేరే బోర్డ్ తెరిచారు; ఈ మార్పు వేయలేదు.'; resultSheet('✗ మార్పు వేయలేదు', [t, cost]); said(t); return; }
+    if (m.cut) { const t = 'మార్పు జవాబు మధ్యలోనే ఆగిపోయింది Sir, అందుకే బోర్డ్ మార్చలేదు.'; resultSheet('✗ మార్పు వేయలేదు', [t, cost]); said(t + ' ఖర్చు ' + m.cost + '.'); return; }
+    const r = A.merge(D, a);
+    if (r.err) { resultSheet(r.refuse ? '🚫 మార్పు చేయలేదు' : '✗ మార్పు వేయలేదు', [r.err, cost]); said(r.err); return; }
+    snap();
+    const sizeWas = D.board.w + '×' + D.board.h;
+    ['board', 'parts', 'nets', 'tracks', 'vias', 'labels'].forEach((k) => { D[k] = r.D[k]; });
+    if (sizeWas !== D.board.w + '×' + D.board.h) pv.fit = true;
+    changed();
+    const lines = [];
+    if (r.added.length) lines.push('➕ కొత్తవి: ' + r.added.join(', '));
+    if (r.removed.length) lines.push('➖ తీసేసినవి: ' + r.removed.join(', '));
+    if (r.changed.length) lines.push('✏️ ' + r.changed.join(' · '));
+    if (!lines.length) lines.push('భాగాలు అలాగే ఉన్నాయి; కలుపులు మారాయి.');
+    lines.push((r.miss ? '⚡ ' + r.miss + ' పిన్నులు కలపలేకపోయాను' : '🔗 అన్నీ కలిశాయి') + ' · ' + (check.errors ? '❌ ' + check.errors + ' తప్పులు' : '✅ చెక్ అయింది') + (sizeWas !== D.board.w + '×' + D.board.h ? ' · 📏 బోర్డ్ ' + D.board.w + ' × ' + D.board.h + ' mm' : ''));
+    if (r.info.say) lines.push('🤖 ' + r.info.say);
+    r.info.dropped.forEach((d) => lines.push('⚠️ వదిలేశాను: ' + d));
+    lines.push(cost);
+    resultSheet('✅ మార్పు అయింది', lines, [btn('↩️ వెనక్కి', '', () => { back1(); closeSheet(); })]);
+    said('మార్పు అయింది Sir. ఖర్చు ' + m.cost + '.');
+  }
+
+  // ---------------------------------------------------------------- 🤖 help for the checks (moves he applies himself)
+
+  function helpCard(h) {
+    if (!D || !check) return;
+    const c = el('div', 'card idea');
+    const hp = ai.help && ai.help.id === D.id ? ai.help : null;
+    if (hp) {
+      c.appendChild(el('div', 't', '🤖 AI సహాయం'));
+      if (hp.say) c.appendChild(el('div', 'step', hp.say));
+      if (hp.moves.length && !hp.done) {
+        c.appendChild(el('div', 'muted', 'AI చెప్పిన జరుపులు:'));
+        hp.moves.forEach((mv) => {
+          const bits = [];
+          if (mv.dx) bits.push((mv.dx < 0 ? 'ఎడమకి ' : 'కుడికి ') + Math.abs(mv.dx) + ' mm');
+          if (mv.dy) bits.push((mv.dy < 0 ? 'పైకి ' : 'కిందికి ') + Math.abs(mv.dy) + ' mm');
+          if (mv.rot != null) bits.push(mv.rot + '° కి తిప్పు');
+          c.appendChild(el('div', 'item', '• ' + mv.ref + ': ' + bits.join(', ')));
+        });
+        const r = el('div', 'row');
+        r.appendChild(btn('✅ ఈ మార్పులు చేయి', 'main', () => {
+          const before = check.errors;
+          snap();
+          A.applyMoves(D, hp.moves);
+          reroute(true);
+          changed();
+          hp.done = true;
+          drcList();
+          toast('❌ ' + before + ' → ' + (check.errors ? '❌ ' + check.errors : '✅ 0 తప్పులు') + ' (↩️ తో వెనక్కి రావచ్చు)', 4000);
+        }));
+        r.appendChild(btn('వద్దు', '', () => { ai.help = null; drcList(); }));
+        c.appendChild(r);
+      } else if (hp.done) c.appendChild(el('div', 'muted okc', '✓ ఆ జరుపులు చేశాను. ఇంకా తప్పులు ఉంటే మళ్ళీ అడగొచ్చు.'));
+      c.appendChild(el('div', 'muted', '💰 ' + hp.cost));
+      h.appendChild(c);
+      if (!hp.done || !(check.errors || check.warns)) return;
+    }
+    if (!check.errors && !check.warns) return;
+    const c2 = hp ? el('div', 'card idea') : c;
+    c2.appendChild(el('div', 't', '🤖 AI సహాయం: ఈ తప్పులు ఎందుకు, ఎలా సరిచేయాలి'));
+    c2.appendChild(el('div', 'muted', 'తప్పులు, భాగాల చోట్లు మీ AI కి వెళ్తాయి; తెలుగులో కారణం + భాగాల్ని ఎక్కడికి జరపాలో చెబుతుంది. మీరు ✅ నొక్కితేనే జరుపుతాను.'));
+    const q = el('div');
+    c2.appendChild(q);
+    const r = el('div', 'row');
+    const go = btn('🤖 అడుగు', 'main', () => {
+      if (ai.job || ai.wait) { toast('ఒక AI పని ఇంకా నడుస్తోంది'); return; }
+      ai.pending = { kind: 'help', id: D.id };
+      post({ t: 'aiask', kind: 'help', words: '', design: A.forHelp(D, check), voice: false });
+    });
+    r.appendChild(go);
+    c2.appendChild(r);
+    h.appendChild(c2);
+    const design = A.forHelp(D, check);
+    quote('help', '', design.length, (m) => {
+      quoteLine(q, m, () => post({ t: 'pickmodel', kind: 'help', words: '', chars: design.length }));
+      go.disabled = !m.ok || !!ai.job || !!ai.wait;
+      go.textContent = m.ok && m.money ? '🤖 అడుగు · ' + m.money : '🤖 అడుగు';
+    });
+  }
+  function helpDone(m, a, said) {
+    if (!D) return;
+    const mv = A.moves(D, a.moves);
+    ai.help = { id: D.id, say: String(a.say || '').slice(0, 800), moves: mv, cost: (m.model || 'AI') + ' · ఖర్చు ' + m.cost, done: false };
+    showTab('drc');
+    $('drc').scrollTop = 0;
+    said((ai.help.say || 'చూశాను Sir.') + (mv.length ? ' జరుపులు తెర మీద ఉన్నాయి; ✅ నొక్కితే చేస్తాను.' : ''));
+  }
+
   // ---------------------------------------------------------------- start
 
   state();
   showTab('home');
-  window.__pcb = { open, get D() { return D; }, get check() { return check; }, showTab, reroute, changed, onJarvis, texture, partSheet: (ref) => partSheet(D && D.parts.find((q) => q.ref === ref)), pv, sv };
+  window.__pcb = { open, get D() { return D; }, get check() { return check; }, showTab, reroute, changed, onJarvis, texture, partSheet: (ref) => partSheet(D && D.parts.find((q) => q.ref === ref)), pv, sv,
+    ai, idea, editSheet, heard };
 })();

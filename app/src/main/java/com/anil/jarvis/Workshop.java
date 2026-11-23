@@ -80,7 +80,7 @@ final class Workshop {
     }
 
     /** ⚙️ keys of each studio's own AI (his pick under that studio in ⚙️ → 🛠️; 📚 also inside the library). Empty = the workshop's AI, as before. */
-    static final String GAMES = "game_model", LAB = "circuit_model", APPS = "app_model", BOOKS = "library_model";
+    static final String GAMES = "game_model", LAB = "circuit_model", APPS = "app_model", BOOKS = "library_model", PCB = "pcb_model";
 
     /** The AI for that studio: its own pick, else the workshop's (both his choices); "" when neither is picked (Jarvis never picks). */
     static String modelFor(Prefs p, String which) {
@@ -89,7 +89,8 @@ final class Workshop {
     }
 
     static String studioName(String which) {
-        return GAMES.equals(which) ? "🎮 గేమ్ స్టూడియో" : LAB.equals(which) ? "⚡ సర్క్యూట్ ల్యాబ్" : APPS.equals(which) ? "📱 యాప్ స్టూడియో" : BOOKS.equals(which) ? "📚 లైబ్రరీ" : "🛠️ వర్క్‌షాప్";
+        return GAMES.equals(which) ? "🎮 గేమ్ స్టూడియో" : LAB.equals(which) ? "⚡ సర్క్యూట్ ల్యాబ్" : APPS.equals(which) ? "📱 యాప్ స్టూడియో" : BOOKS.equals(which) ? "📚 లైబ్రరీ"
+                : PCB.equals(which) ? "🔌 PCB స్టూడియో" : "🛠️ వర్క్‌షాప్";
     }
 
     /** That studio's AI with its key; an honest reason when it can't be used (never another model). */
@@ -143,6 +144,7 @@ final class Workshop {
         if (LAB.equals(which)) return m -> "కొత్త బోర్డ్ " + fine(CircuitLab.aboutRupees(m, CircuitLab.MODE_BOARD, 0, false));
         if (APPS.equals(which)) return m -> "ప్లాన్ " + fine(AppStudio.planRupees(m, false)) + " · యాప్ " + fine(AppStudio.buildRupees(m, ""));
         if (BOOKS.equals(which)) return m -> "ఒక అధ్యాయం " + money(Library.cost(m, 50000));
+        if (PCB.equals(which)) return m -> "కొత్త PCB " + fine(Pcb.rupees(m, "", 0, false));
         return m -> "ఒక బొమ్మ " + buildMoney(m);
     }
 
@@ -151,6 +153,7 @@ final class Workshop {
         if (LAB.equals(which)) return "ఒక కొత్త బోర్డ్ గీయడానికి ఖర్చు";
         if (APPS.equals(which)) return "ఒక యాప్ ప్లాన్‌కి, మామూలు సైజు యాప్ తయారీకి ఖర్చు";
         if (BOOKS.equals(which)) return "ఒక అధ్యాయం (సుమారు 50,000 అక్షరాలు) AI తెలుగుకి ఖర్చు";
+        if (PCB.equals(which)) return "ఐడియా నుంచి ఒక కొత్త PCB బోర్డ్ (భాగాలు, కనెక్షన్లు) కి ఖర్చు";
         return "ఒక 3D బొమ్మకి మామూలుగా అయ్యే ఖర్చు";
     }
 
@@ -188,7 +191,7 @@ final class Workshop {
         e.putString("month", m)
                 .putFloat("spent", (same ? s.getFloat("spent", 0) : 0) + (float) Math.max(0, rupees))
                 .putInt("builds", (same ? s.getInt("builds", 0) : 0) + (aBuild ? 1 : 0));
-        if (!same) e.putFloat("g_spent", 0).putInt("g_builds", 0).putFloat("c_spent", 0).putInt("c_builds", 0).putFloat("a_spent", 0).putInt("a_builds", 0).putFloat("b_spent", 0).putInt("b_builds", 0); // (🎮 / ⚡ / 📱 their shares start again too)
+        if (!same) e.putFloat("g_spent", 0).putInt("g_builds", 0).putFloat("c_spent", 0).putInt("c_builds", 0).putFloat("a_spent", 0).putInt("a_builds", 0).putFloat("b_spent", 0).putInt("b_builds", 0).putFloat("p_spent", 0).putInt("p_builds", 0); // (🎮 / ⚡ / 📱 / 📚 / 🔌 their shares start again too)
         e.apply();
     }
 
@@ -203,6 +206,19 @@ final class Workshop {
 
     /** 📚 The library's AI Telugu / Telugu page reading (same monthly spend and limit), kept apart for the split line. */
     static synchronized void spendBooks(Context c, double rupees, boolean aJob) { share(c, "b", rupees, aJob); }
+
+    /** 🔌 A PCB studio idea / change / check help (same monthly spend and limit), kept apart for the split line. */
+    static synchronized void spendPcb(Context c, double rupees, boolean aBoard) { share(c, "p", rupees, aBoard); }
+
+    static synchronized double pcbSpent(Context c) {
+        SharedPreferences s = sp(c);
+        return month().equals(s.getString("month", "")) ? s.getFloat("p_spent", 0) : 0;
+    }
+
+    static synchronized int pcbs(Context c) {
+        SharedPreferences s = sp(c);
+        return month().equals(s.getString("month", "")) ? s.getInt("p_builds", 0) : 0;
+    }
 
     static synchronized double booksSpent(Context c) {
         SharedPreferences s = sp(c);
@@ -222,7 +238,8 @@ final class Workshop {
         SharedPreferences.Editor e = s.edit().putString("month", m)
                 .putFloat("spent", (same ? s.getFloat("spent", 0) : 0) + r)
                 .putInt("builds", same ? s.getInt("builds", 0) : 0);
-        if (!same) e.putFloat("g_spent", 0).putInt("g_builds", 0).putFloat("c_spent", 0).putInt("c_builds", 0).putFloat("a_spent", 0).putInt("a_builds", 0).putFloat("b_spent", 0).putInt("b_builds", 0);
+        if (!same) e.putFloat("g_spent", 0).putInt("g_builds", 0).putFloat("c_spent", 0).putInt("c_builds", 0).putFloat("a_spent", 0).putInt("a_builds", 0).putFloat("b_spent", 0).putInt("b_builds", 0)
+                .putFloat("p_spent", 0).putInt("p_builds", 0);
         e.putFloat(k + "_spent", (same ? s.getFloat(k + "_spent", 0) : 0) + r)
                 .putInt(k + "_builds", (same ? s.getInt(k + "_builds", 0) : 0) + (one ? 1 : 0))
                 .apply();
@@ -275,17 +292,18 @@ final class Workshop {
 
     /** "ఈ నెల ₹156 వాడింది / హద్దు ₹300 · 2 బొమ్మలు" */
     static String spendLine(Context c, Prefs p) {
-        int n = builds(c), g = games(c), b = labs(c), a = apps(c), k = bookJobs(c);
-        double all = spent(c), gs = gamesSpent(c), cs = labSpent(c), as = appsSpent(c), bs = booksSpent(c);
+        int n = builds(c), g = games(c), b = labs(c), a = apps(c), k = bookJobs(c), q = pcbs(c);
+        double all = spent(c), gs = gamesSpent(c), cs = labSpent(c), as = appsSpent(c), bs = booksSpent(c), ps = pcbSpent(c);
         String head = "ఈ నెల " + money(all) + " వాడింది / హద్దు ₹" + p.workshopLimit() + " · ";
-        boolean games = g > 0 || gs > 0, lab = b > 0 || cs > 0, apps = a > 0 || as > 0, books = k > 0 || bs > 0;
-        if (!games && !lab && !apps && !books) return head + n + (n == 1 ? " బొమ్మ" : " బొమ్మలు");
+        boolean games = g > 0 || gs > 0, lab = b > 0 || cs > 0, apps = a > 0 || as > 0, books = k > 0 || bs > 0, pcb = q > 0 || ps > 0;
+        if (!games && !lab && !apps && !books && !pcb) return head + n + (n == 1 ? " బొమ్మ" : " బొమ్మలు");
         // (🎮 games, ⚡ the circuit lab, 📱 the app studio and 📚 the library share the same limit: each one's part shown)
-        return head + "🛠️ " + money(Math.max(0, all - gs - cs - as - bs)) + " · " + n + (n == 1 ? " బొమ్మ" : " బొమ్మలు")
+        return head + "🛠️ " + money(Math.max(0, all - gs - cs - as - bs - ps)) + " · " + n + (n == 1 ? " బొమ్మ" : " బొమ్మలు")
                 + (games ? " · 🎮 " + money(gs) + " · " + g + (g == 1 ? " గేమ్" : " గేమ్స్") : "")
                 + (lab ? " · ⚡ " + money(cs) + " · " + b + (b == 1 ? " బోర్డ్" : " బోర్డులు") : "")
                 + (apps ? " · 📱 " + money(as) + " · " + a + (a == 1 ? " యాప్" : " యాప్‌లు") : "")
-                + (books ? " · 📚 " + money(bs) : "");
+                + (books ? " · 📚 " + money(bs) : "")
+                + (pcb ? " · 🔌 " + money(ps) + " · " + q + " PCB" : "");
     }
 
     // ================================================================ the part stream

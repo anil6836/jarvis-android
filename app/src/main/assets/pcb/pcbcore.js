@@ -583,19 +583,30 @@
 
   // ------------------------------------------------------------------ placing the parts
 
-  /** Places every part (edge parts on the board's sides first, then the most-connected); null when the board is too small. */
+  /**
+   * Places every part (edge parts on the board's sides first, then the most-connected); null when the board is too small.
+   * opt.fixed: refs that stay where they are (an AI change keeps his layout); opt.gap: mm kept free between parts (0.6).
+   */
   function autoplace(D, opt) {
     opt = opt || {};
-    const B = D.board, step = opt.step || 1.27, gapMm = 0.6, hs = holes(D);
+    const B = D.board, step = opt.step || 1.27, gapMm = opt.gap != null ? opt.gap : 0.6, hs = holes(D);
+    const fixed = opt.fixed instanceof Set ? opt.fixed : new Set(opt.fixed || []);
     const M = model(D), byRef = new Map();
     M.pads.forEach((p) => { if (!byRef.has(p.ref)) byRef.set(p.ref, []); byRef.get(p.ref).push(p); });
     const netsOf = (ref) => new Set((byRef.get(ref) || []).filter((p) => p.net >= 0 && !isGnd(M.nets[p.net].n)).map((p) => p.net));
     const deg = new Map(D.parts.map((pt) => [pt.ref, netsOf(pt.ref).size]));
-    const edgeParts = D.parts.filter((pt) => { const f = P.fpOf(pt); return f && f.edge; });
-    const others = D.parts.filter((pt) => edgeParts.indexOf(pt) < 0).sort((a, b) => deg.get(b.ref) - deg.get(a.ref) || (area(b) - area(a)));
+    const kept = D.parts.filter((pt) => fixed.has(pt.ref));
+    const edgeParts = D.parts.filter((pt) => { const f = P.fpOf(pt); return !fixed.has(pt.ref) && f && f.edge; });
+    const others = D.parts.filter((pt) => !fixed.has(pt.ref) && edgeParts.indexOf(pt) < 0).sort((a, b) => deg.get(b.ref) - deg.get(a.ref) || (area(b) - area(a)));
     const placed = [];
+    // (opt.labels: a connector's pin names on the board get room of their own, so no part sits on them)
+    const court = (pt, x, y, r) => {
+      const c = courtOf(pt, x, y, r);
+      const lb = opt.labels ? labelBox(pt, x, y, r, B) : null;
+      return lb ? [Math.min(c[0], lb.b[0] - 0.3), Math.min(c[1], lb.b[1] - 0.3), Math.max(c[2], lb.b[2] + 0.3), Math.max(c[3], lb.b[3] + 0.3)] : c;
+    };
     const fits = (pt, x, y, r) => {
-      const f = P.fpOf(pt), c = courtOf(pt, x, y, r), oh = (f && f.overhang) || 0, face = f && f.edge ? sideAfter(f.edge, r) : null;
+      const f = P.fpOf(pt), c = court(pt, x, y, r), oh = (f && f.overhang) || 0, face = f && f.edge ? sideAfter(f.edge, r) : null;
       const m = 0.4;
       if (c[0] < m - (face === 'W' ? oh + m : 0) || c[1] < m - (face === 'N' ? oh + m : 0) || c[2] > B.w - m + (face === 'E' ? oh + m : 0) || c[3] > B.h - m + (face === 'S' ? oh + m : 0)) return false;
       for (const q of placed) { const d = q.c; if (c[0] < d[2] + gapMm && d[0] < c[2] + gapMm && c[1] < d[3] + gapMm && d[1] < c[3] + gapMm) return false; }
@@ -618,10 +629,14 @@
     const put = (pt, x, y, r) => {
       pt.x = Math.round(x * 1000) / 1000; pt.y = Math.round(y * 1000) / 1000; pt.rot = r;
       const pads = partPads(pt, pt.x, pt.y, r).map((p) => Object.assign(p, { net: M.pinNet.has(pt.ref + '.' + p.n) ? M.pinNet.get(pt.ref + '.' + p.n) : -1 }));
-      placed.push({ pt, c: courtOf(pt, pt.x, pt.y, r), pads });
+      const lb = opt.labels && !fixed.has(pt.ref) ? labelBox(pt, pt.x, pt.y, r, B) : null;
+      if (lb) { pt.pl = lb.side; pt.plo = lb.off; }
+      placed.push({ pt, c: fixed.has(pt.ref) ? courtOf(pt, pt.x, pt.y, r) : court(pt, pt.x, pt.y, r), pads });
     };
-    // edge parts: the first on the left, the next on the right, then top, bottom (a USB socket goes right)
-    const sides = ['W', 'E', 'N', 'S'];
+    kept.forEach((pt) => put(pt, pt.x, pt.y, pt.rot || 0));
+    // edge parts: the first on the left, the next on the right, then top, bottom (a USB socket goes right); sides a kept part uses come last
+    const taken = new Set(kept.map((pt) => { const f = P.fpOf(pt); return f && f.edge ? sideAfter(f.edge, pt.rot || 0) : null; }).filter(Boolean));
+    const sides = ['W', 'E', 'N', 'S'].filter((q) => !taken.has(q)).concat(['W', 'E', 'N', 'S'].filter((q) => taken.has(q)));
     edgeParts.sort((a, b) => (P.fpOf(a).id === 'USB_A_TH') - (P.fpOf(b).id === 'USB_A_TH'));
     let si = 0;
     for (const pt of edgeParts) {
@@ -663,6 +678,40 @@
     return true;
   }
   function area(pt) { const c = courtOf(pt, 0, 0, 0); return (c[2] - c[0]) * (c[3] - c[1]); }
+
+  /** Where a connector's pin names go: away from the board edge it sits on; a header's toward the board's middle. */
+  const LABELED = { term2: 5.0, hdr: 1.9, fhdr: 1.9, buck: 1.9 };
+  function labelSide(pt, x, y, r, B) {
+    const f = P.fpOf(pt), face = f && f.edge ? sideAfter(f.edge, r) : null;
+    if (face) return { W: 'E', E: 'W', N: 'S', S: 'N' }[face];
+    const pads = partPads(pt, x, y, r), xs = pads.map((p) => p.x), ys = pads.map((p) => p.y);
+    const tall = Math.max.apply(null, ys) - Math.min.apply(null, ys) >= Math.max.apply(null, xs) - Math.min.apply(null, xs);
+    return tall ? (x > B.w / 2 ? 'W' : 'E') : (y > B.h / 2 ? 'N' : 'S');
+  }
+  /** Names above / below a row of pins run downwards when they are too wide to sit side by side (SDA, SCL, VCC…). */
+  function upright(pt, side) {
+    if (side !== 'N' && side !== 'S') return false;
+    const names = P.pinsOf(pt);
+    return Object.keys(names).some((k) => names[k] !== k && textWidth(names[k], 1.0) > 2.0);
+  }
+  /** The pin names' box on the board ({side, off, b: [x0, y0, x1, y1]}), or null when the part has no names to print. */
+  function labelBox(pt, x, y, r, B) {
+    if (LABELED[pt.lib] == null) return null;
+    const names = P.pinsOf(pt);
+    if (!Object.keys(names).some((k) => names[k] !== k)) return null;
+    const side = labelSide(pt, x, y, r, B), off = LABELED[pt.lib], vert = upright(pt, side);
+    let b = null;
+    partPads(pt, x, y, r).forEach((p) => {
+      const nm = names[p.n];
+      if (!nm || nm === p.n) return;
+      const tw = textWidth(nm, 1.0);
+      const q = side === 'E' ? [p.x + off, p.y - 0.6, p.x + off + tw, p.y + 0.6] : side === 'W' ? [p.x - off - tw, p.y - 0.6, p.x - off, p.y + 0.6]
+        : vert ? (side === 'S' ? [p.x - 0.6, p.y + off - 0.4, p.x + 0.6, p.y + off - 0.4 + tw] : [p.x - 0.6, p.y - off + 0.4 - tw, p.x + 0.6, p.y - off + 0.4])
+        : side === 'N' ? [p.x - tw / 2, p.y - off - 0.6, p.x + tw / 2, p.y - off + 0.6] : [p.x - tw / 2, p.y + off - 0.6, p.x + tw / 2, p.y + off + 0.6];
+      b = b ? [Math.min(b[0], q[0]), Math.min(b[1], q[1]), Math.max(b[2], q[2]), Math.max(b[3], q[3])] : q;
+    });
+    return b ? { side, off, b } : null;
+  }
 
   /** The board made just big enough for the parts (margin mm around them; sockets meant for the edge sit on it); parts move with it. */
   function fitBoard(D, margin) {
@@ -843,7 +892,7 @@
   /** Everything white on the top: part outlines, names, his labels; cut back where it would sit on a pad. */
   function silk(D, M) {
     M = M || model(D);
-    const R = rules(D), lines = [];
+    const R = rules(D), lines = [], names = [];
     (D.parts || []).forEach((pt) => {
       const f = P.fpOf(pt);
       if (!f) return;
@@ -853,18 +902,20 @@
         lines.push(pts);
       });
       if (pt.noref) return;
-      const at = refAt(D, M, pt, R);
+      const at = refAt(D, M, pt, R, names);
       text(pt.ref, at[0], at[1], R.textH, 'c', at[2]).forEach((l) => lines.push(l));
     });
     (D.parts || []).forEach((pt) => {
       if (!pt.pl) return;
-      const names = P.pinsOf(pt), off = pt.plo || 1.9;
+      const names = P.pinsOf(pt), off = pt.plo || 1.9, vert = upright(pt, pt.pl);
       partPads(pt, pt.x, pt.y, pt.rot || 0).forEach((p) => {
         const nm = names[p.n];
         if (!nm || nm === p.n) return;
         let x = p.x, y = p.y, a = 'c';
-        if (pt.pl === 'E') { x += off; a = 'l'; } else if (pt.pl === 'W') { x -= off; a = 'r'; } else if (pt.pl === 'N') y -= off; else y += off;
-        text(nm, x, y, 1.0, a, 0).forEach((q) => lines.push(q));
+        if (pt.pl === 'E') { x += off; a = 'l'; } else if (pt.pl === 'W') { x -= off; a = 'r'; }
+        else if (vert) { if (pt.pl === 'S') { y += off - 0.4; a = 'l'; } else { y -= off - 0.4; a = 'r'; } }
+        else if (pt.pl === 'N') y -= off; else y += off;
+        text(nm, x, y, 1.0, a, vert ? 90 : 0).forEach((q) => lines.push(q));
       });
     });
     (D.labels || []).forEach((l) => {
@@ -883,9 +934,13 @@
     }
     return { segs, w: R.silkW };
   }
-  /** Where a part's name goes: above it, else below, right, left (never on a pad, never off the board); [x, y, rot]. */
-  function refAt(D, M, pt, R) {
-    if (pt.lx != null) return [pt.x + pt.lx, pt.y + pt.ly, pt.lr || 0];
+  /** Where a part's name goes: above it, else below, right, left (never on a pad or on a name already placed, never off the board); [x, y, rot]. */
+  function refAt(D, M, pt, R, taken) {
+    const keep = (q) => {
+      if (taken) { const tw0 = textWidth(pt.ref, R.textH), hx = (q[2] ? R.textH : tw0) / 2 + 0.15, hy = (q[2] ? tw0 : R.textH) / 2 + 0.15; taken.push([q[0] - hx, q[1] - hy, q[0] + hx, q[1] + hy]); }
+      return q;
+    };
+    if (pt.lx != null) return keep([pt.x + pt.lx, pt.y + pt.ly, pt.lr || 0]);
     const c = courtOf(pt, pt.x, pt.y, pt.rot || 0), h = R.textH, tw = textWidth(pt.ref, h), B = D.board;
     const cands = [[(c[0] + c[2]) / 2, c[1] - h * 0.75, 0], [(c[0] + c[2]) / 2, c[3] + h * 0.75, 0], [c[2] + h * 0.75, (c[1] + c[3]) / 2, 90], [c[0] - h * 0.75, (c[1] + c[3]) / 2, 270],
       [(c[0] + c[2]) / 2, (c[1] + c[3]) / 2, 0]];
@@ -898,9 +953,10 @@
         const dx = Math.max(Math.abs(p.x - q[0]) - hx, 0), dy = Math.max(Math.abs(p.y - q[1]) - hy, 0);
         if (dx * dx + dy * dy < r * r) { bad = true; break; }
       }
-      if (!bad) return q;
+      if (!bad && taken) for (const t of taken) if (q[0] - hx < t[2] && t[0] < q[0] + hx && q[1] - hy < t[3] && t[1] < q[1] + hy) { bad = true; break; }
+      if (!bad) return keep(q);
     }
-    return cands[0];
+    return keep(cands[0]);
   }
 
   /** Keeps only the part of a segment on the board (silk off the edge would be cut away anyway). */
@@ -950,7 +1006,7 @@
       parts: [], nets: [], tracks: [], vias: [], labels: [], notes: str(D.notes, 2000)
     };
     (Array.isArray(D.parts) ? D.parts : []).slice(0, 120).forEach((pt) => {
-      if (!pt || !P.LIB[pt.lib]) return;
+      if (!pt || typeof pt.lib !== 'string' || !Object.prototype.hasOwnProperty.call(P.LIB, pt.lib)) return;
       const o = { ref: str(pt.ref, 8).replace(/[^A-Za-z0-9]/g, '').toUpperCase(), lib: pt.lib, val: str(pt.val, 24), x: num(pt.x, -20, 220, 10), y: num(pt.y, -20, 220, 10),
         rot: [0, 90, 180, 270].indexOf(pt.rot) >= 0 ? pt.rot : 0, sx: num(pt.sx, -2000, 4000, 0), sy: num(pt.sy, -2000, 4000, 0), srot: [0, 90, 180, 270].indexOf(pt.srot) >= 0 ? pt.srot : 0 };
       if (pt.fp && P.fp(pt.fp)) o.fp = pt.fp;
@@ -984,7 +1040,7 @@
   }
 
   const api = { FABS, RULES, rules, widthFor, netWidth, isPower, isGnd, rot, partPads, courtOf, sideAfter, boardSdf, outline, holes, padObj, dist, gap, bbox,
-    model, copper, route, pour, rects, connectivity, autoplace, fitBoard, drc, text, textWidth, silk, refAt, clean, GLYPH };
+    model, copper, route, pour, rects, connectivity, autoplace, labelSide, labelBox, fitBoard, drc, text, textWidth, silk, refAt, clean, GLYPH };
   root.PcbCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : globalThis);
