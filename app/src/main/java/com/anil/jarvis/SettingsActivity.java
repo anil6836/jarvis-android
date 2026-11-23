@@ -617,6 +617,14 @@ public class SettingsActivity extends Activity {
         rmOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         rmOpen.setOnClickListener(v -> { autosave(); RoomMeasureActivity.open(this, null); });
         box.addView(rmOpen);
+        // 🔌 the PCB studio: real boards a factory can make; our own code, no AI in build 1 (23 Nov)
+        note("🔌 PCB స్టూడియో: నిజమైన PCB బోర్డ్‌లు. 5 రెడీ బోర్డ్‌లు (LED ఫ్లాషర్, 12V→5V USB ఛార్జర్, మట్టి అలారం, ESP32 సెన్సార్, Jarvis IR), "
+                + "స్కీమాటిక్ (ప్రతి భాగం తెలుగులో), PCB (ఆటో రూట్, GND నింపు), ఫ్యాక్టరీ చెక్, 🧊 3D, Gerber .zip (Downloads/Jarvis/pcb), లెక్కలు. ₹0, AI లేదు. "
+                + "ఫ్యాక్టరీ సైట్‌లో అప్‌లోడ్, పేమెంట్ మీరే; తక్కువ వోల్టేజ్ DC బోర్డ్‌లు మాత్రమే.");
+        TextView pcbOpen = Ui.text(this, "🔌 PCB స్టూడియో తెరువు →", 15, accent);
+        pcbOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        pcbOpen.setOnClickListener(v -> { autosave(); PcbActivity.open(this, null, null); });
+        box.addView(pcbOpen);
         // 📚 the book library: free books and his own, read aloud; Telugu by the phone (₹0) or this same AI in this same limit (20 Nov)
         note("📚 పుస్తకాల లైబ్రరీ: చెక్క రాక్‌లలో ఉచిత పుస్తకాలు (Project Gutenberg, తెలుగు వికీసోర్స్), మీ PDF / EPUB / TXT / పేజీల ఫోటోలు. "
                 + "చదివి వినిపించడం, ఫోన్ తెలుగు అనువాదం (ఒకసారి 30 MB ప్యాక్) ₹0. ✨ AI తెలుగు, తెలుగు పేజీల ఫోటోలు చదవడం: కింద ఎంచుకున్న AI (ఖాళీ అయితే పైన 🛠️ AI), ఇదే నెల హద్దు; "

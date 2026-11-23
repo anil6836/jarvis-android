@@ -427,6 +427,20 @@ final class Tools {
                         + "plan = the last room's plan, paint and tiles; saved = his kept rooms and lengths. Use for measuring with the camera, "
                         + "'will the bed fit', paint / tile estimates for a room.",
                 schema(new String[][]{{"action", "string", "open | room | fit | plan | saved"}}, "action")));
+        DEFS.add(new Def("pcb_studio",
+                "🔌 PCB స్టూడియో (phone only, free, no AI in this version): REAL printed circuit boards a factory can make. Ready boards: "
+                        + "flasher (two LEDs blinking with a 555 timer, 9 V), usb (a bike / car 12 V to 5 V USB phone charger with a buck module), soil "
+                        + "(an alarm when a plant's soil is dry), esp32 (an ESP32 sensor board: temperature / humidity, soil, I2C screen), irboard (the "
+                        + "Jarvis speaker's IR board for the TV / AC remote). Inside: the schematic (tap a part: what it is in Telugu), the PCB (move / "
+                        + "turn parts, auto-route, ground fill), the checks against a factory's rules (JLCPCB, PCBWay, Lion Circuits, PCB Power), the "
+                        + "board in 3D, the factory files (a Gerber .zip saved in Downloads/Jarvis/pcb) and calculators (LED resistor, track width "
+                        + "for a current, battery life, voltage divider, resistor colour bands, 555 speed). open = the studio; project = open a ready "
+                        + "board (what = flasher | usb | soil | esp32 | irboard); tab = what = home | sch | pcb | drc | d3 | fab | calc. He uploads the "
+                        + "zip and pays on the factory's site himself: Jarvis never orders or pays. Low-voltage DC boards only (battery / USB / adapter): "
+                        + "never a 230 V mains board. Making a NEW board from his own idea / voice / a photo of a sketch (AI) comes in the next build: "
+                        + "say so honestly if he asks for that now.",
+                schema(new String[][]{{"action", "string", "open | project | tab"}, {"what", "string", "project: flasher | usb | soil | esp32 | irboard. tab: home | sch | pcb | drc | d3 | fab | calc"}},
+                        "action")));
         DEFS.add(new Def("library",
                 "📚 Jarvis గ్రంథాలయం (phone only): his books on wooden racks — free classics (Project Gutenberg in English; Telugu Wikisource: "
                         + "శతకాలు, కన్యాశుల్కం, భాగవతం…), free books he finds, and his own PDF / EPUB / TXT / page photos. open = the racks (view sec = by "
@@ -1196,6 +1210,7 @@ final class Tools {
             case "game_studio": return "గేమ్ స్టూడియో తెరుస్తున్నాను…";
             case "circuit_lab": return "సర్క్యూట్ ల్యాబ్ తెరుస్తున్నాను…";
             case "room_measure": return "ఇంటి కొలతలు తెరుస్తున్నాను…";
+            case "pcb_studio": return "🔌 PCB స్టూడియో తెరుస్తున్నాను…";
             case "library": return "📚 లైబ్రరీ చూస్తున్నాను…";
             case "publish_website": return "ఆన్‌లైన్‌లో పెడుతున్నాను…";
             case "write_code": return "కోడ్ రాస్తున్నాను…";
@@ -1419,6 +1434,7 @@ final class Tools {
                 case "game_studio": return gameStudio(a.optString("action", "build"), a.optString("what", ""));
                 case "circuit_lab": return circuitLab(a.optString("action", "open"), a.optString("what", ""));
                 case "room_measure": return roomMeasure(a.optString("action", "open"));
+                case "pcb_studio": return pcbStudio(a.optString("action", "open"), a.optString("what", ""));
                 case "library": return library(a);
                 case "write_code": return writeCode(a.optString("filename", ""), a.optString("description", ""));
                 case "make_app":
@@ -1831,6 +1847,26 @@ final class Tools {
         startIn(new Intent(c, RoomMeasureActivity.class).putExtra(RoomMeasureActivity.EXTRA_TAB, tab)
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
         return ok().put("next", "Say in one short Telugu line what is on the screen now and what to do (free, nothing sent anywhere).").toString();
+    }
+
+    /** 🔌 The PCB studio (phone only; free, our own code): open it, a ready board, or one of its tabs. */
+    private String pcbStudio(String action, String what) throws Exception {
+        android.content.Context c = act();
+        if (!Workshop.here(c)) return err("phone_only", "The PCB studio is on his phone only (not the home tablet or the car box). Say so in one line.");
+        String a = action == null ? "open" : action.trim().toLowerCase(java.util.Locale.ROOT);
+        String w = what == null ? "" : what.trim().toLowerCase(java.util.Locale.ROOT);
+        Intent i = new Intent(c, PcbActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+        if ("project".equals(a)) {
+            if (!java.util.Arrays.asList("flasher", "usb", "soil", "esp32", "irboard").contains(w)) {
+                startIn(i.putExtra(PcbActivity.EXTRA_TAB, "home"));
+                return err("no_such_board", "That ready board is not in the studio; the list of ready boards is on the screen. Say so in one line.");
+            }
+            startIn(i.putExtra(PcbActivity.EXTRA_PROJECT, w));
+            return ok().put("next", "Say in one short Telugu line that his own copy of this ready board is open on the PCB tab (free).").toString();
+        }
+        if ("tab".equals(a) && java.util.Arrays.asList("home", "sch", "pcb", "drc", "d3", "fab", "calc").contains(w)) i.putExtra(PcbActivity.EXTRA_TAB, w);
+        startIn(i);
+        return ok().put("next", "Say in one short Telugu line what is on the screen now (free, nothing sent anywhere).").toString();
     }
 
     /** 📚 The library: open the racks, search any book, read one aloud (as written / Telugu), the sleep timer, his books. */

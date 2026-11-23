@@ -494,6 +494,17 @@
 
         <!-- ⚡ The circuit lab: the board page (our own simulator) in a sealed WebView; the workshop's AI only turns his words
              or a photo into board data. Kept across rotation (the board stays as it is). -->
+        <!-- 🔌 PCB studio: real boards (schematic, PCB, checks, 3D, Gerber zip) in a sealed WebView, our own code, no network inside;
+             the zip is shared / a factory's site opened only on his tap. -->
+        <activity
+            android:name=".PcbActivity"
+            android:exported="false"
+            android:label="Jarvis PCB స్టూడియో"
+            android:launchMode="singleTop"
+            android:hardwareAccelerated="true"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize|stateHidden"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode" />
         <activity
             android:name=".RoomMeasureActivity"
             android:exported="false"
