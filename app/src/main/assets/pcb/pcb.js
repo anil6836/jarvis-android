@@ -764,7 +764,7 @@
     });
     // a net's name beside its wire, never on it (none when there is no free spot next to its wires)
     const free = [];
-    labels.forEach((l) => { const b = nameSpot(l, taken); if (b) { free.push({ t: l.t, box: b }); taken.push(b); } });
+    labels.forEach((l) => { const b = nameSpot(l, taken); if (b) { free.push({ t: l.t, box: b.slice(0, 4), side: b[4] }); taken.push(b.slice(0, 4)); } });
     const lay = { P2, wires, flags, dots, labels: free, bounds, names: new Map() };
     // each part's name and value: beside it, off wires, flags, other symbols and the names already placed
     D.parts.forEach((pt) => { const at = nameAt(pt, P2.get(pt.ref), lay, taken); lay.names.set(pt.ref, at); taken.push(at.box); });
@@ -884,7 +884,7 @@
           for (const s of segAll) if (hit(b, s)) n += 100;
           P2.forEach((pl) => { if (over(pl.box, b, 3)) n += 1000; else if (over(pl.box, b, 12)) n += 40; }); // close to a symbol it reads as the symbol's
           for (const t of taken) if (over(t, b, 1)) n += 100;
-          if (!best || n < best.n) best = { n, b: b.slice(0, 4) };
+          if (!best || n < best.n) best = { n, b: b.slice(0, 5) };
         });
       });
       return best && best.n < 1000 ? best.b : null;
@@ -976,9 +976,13 @@
     ctx.fillStyle = 'rgba(107,227,164,.75)'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = Math.max(8, 9.5 * s) + 'px ' + FONT;
     lay.labels.forEach((l) => {
-      if (ov && typeof ov.v[l.t] === 'number') { ctx.fillStyle = voltColour(ov.v[l.t], ov.vmax); ctx.fillText(SIM.fmtV(ov.v[l.t]), X((l.box[0] + l.box[2]) / 2), Y((l.box[1] + l.box[3]) / 2)); ctx.fillStyle = 'rgba(107,227,164,.75)'; }
-      else ctx.fillText(l.t, X((l.box[0] + l.box[2]) / 2), Y((l.box[1] + l.box[3]) / 2));
+      // beside an upright wire the words start at the side away from it (a longer ⚡ volts text then never runs onto the wire)
+      const x = l.side === 2 ? l.box[0] : l.side === 3 ? l.box[2] : (l.box[0] + l.box[2]) / 2, y = (l.box[1] + l.box[3]) / 2;
+      ctx.textAlign = l.side === 2 ? 'left' : l.side === 3 ? 'right' : 'center';
+      if (ov && typeof ov.v[l.t] === 'number') { ctx.fillStyle = voltColour(ov.v[l.t], ov.vmax); ctx.fillText(SIM.fmtV(ov.v[l.t]), X(x), Y(y)); ctx.fillStyle = 'rgba(107,227,164,.75)'; }
+      else ctx.fillText(l.t, X(x), Y(y));
     });
+    ctx.textAlign = 'center';
     // ⚡ lit LEDs glow, a sounding buzzer shows 🔊, a part with a problem gets a ring
     if (ov) D.parts.forEach((pt) => {
       const pl = lay.P2.get(pt.ref), g = ov.glow[pt.ref], sev = ov.sev[pt.ref];
@@ -992,7 +996,9 @@
       if (ov.p[pt.ref] && ov.p[pt.ref].kind === 'buzzer' && ov.p[pt.ref].on) { ctx.font = Math.max(12, 16 * s) + 'px ' + FONT; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; ctx.fillText('🔊', X(pl.box[2]) + 2, Y(pl.box[1]) + 4); }
       if (sev === 'err' || sev === 'warn') {
         ctx.strokeStyle = sev === 'err' ? '#ff6b6b' : '#ffc861'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
-        const b = pl.box; ctx.strokeRect(X(b[0] - 6), Y(b[1] - 6), (b[2] - b[0] + 12) * s, (b[3] - b[1] + 12) * s); ctx.setLineDash([]);
+        // (around the symbol and its name, so the ring never runs through the name)
+        const nb = (lay.names.get(pt.ref) || {}).box, b = nb ? [Math.min(pl.box[0], nb[0]), Math.min(pl.box[1], nb[1]), Math.max(pl.box[2], nb[2]), Math.max(pl.box[3], nb[3])] : pl.box;
+        ctx.strokeRect(X(b[0] - 6), Y(b[1] - 6), (b[2] - b[0] + 12) * s, (b[3] - b[1] + 12) * s); ctx.setLineDash([]);
       }
     });
     // symbols
