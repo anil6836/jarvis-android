@@ -1080,12 +1080,17 @@
       if (l.ref) { o.ref = str(l.ref, 8).replace(/[^A-Za-z0-9]/g, '').toUpperCase(); o.dx = num(l.dx, -60, 60, 0); o.dy = num(l.dy, -60, 60, 0); }
       out.labels.push(o);
     });
+    // Build 3B: where he stopped in the 🔧 soldering guide, and his 📦 box choices (more height, air slots)
+    if (D.make && typeof D.make === 'object') {
+      out.make = { solder: Math.round(num(D.make.solder, 0, 200, 0)), extra: Math.round(num(D.make.extra, -8, 40, 0)) };
+      if (typeof D.make.vents === 'boolean') out.make.vents = D.make.vents;
+    }
     if (Array.isArray(D.sch)) out.sch = D.sch.slice(0, 200).filter((s) => s && typeof s === 'object').map((s) => ({ t: str(s.t, 30), x: num(s.x, -2000, 4000, 0), y: num(s.y, -2000, 4000, 0) }));
     // 🕑 versions (Build 3A): the board as it was, each cleaned the same way (no versions inside a version)
     if (Array.isArray(D.vers)) {
       out.vers = D.vers.slice(-20).filter((v) => v && v.d && typeof v.d === 'object').map((v) => {
         const d = clean(Object.assign({}, v.d, { id: out.id, vers: null }));
-        ['vers', 'id', 'v', 'at', 'proj', 'notes', 'sch'].forEach((k) => { delete d[k]; });
+        ['vers', 'id', 'v', 'at', 'proj', 'notes', 'sch', 'make'].forEach((k) => { delete d[k]; });
         return { id: str(v.id, 16).replace(/[^a-z0-9]/g, '') || 'v', at: num(v.at, 0, 4e12, 0), why: str(v.why, 60), named: !!v.named, d };
       });
     }

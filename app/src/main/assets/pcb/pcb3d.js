@@ -1,13 +1,18 @@
 // 🔌 Jarvis PCB studio — the board in 3D (our own code on the bundled three.js; no AI, no network): the real board picture
 // (mask colour, copper, silver pads, white printing) on both faces of a 1.6 mm board, and simple bodies for every part —
 // resistors with their colour bands, LEDs that glow, capacitors, chips, sockets — standing where they will be soldered.
+// Build 3B (24 Nov): 🔧 the soldering guide (only the parts soldered so far, the next one glowing, the camera goes to it),
+// 📦 the box around the board (open / closed / see-through; its 3D-print STL made from the same shapes) and 📏 the board at its
+// real size on his table through the phone's AR (the camera picture is drawn by Jarvis under this see-through page).
 import * as THREE from './three.module.min.js';
 import { OrbitControls } from './OrbitControls.js';
 
 const FONT = '"Noto Sans Telugu", system-ui, sans-serif';
 const LED = { red: 0xff3b30, green: 0x34e36a, blue: 0x3a7bff, yellow: 0xffd93b, white: 0xf4f8ff, ir: 0x6b4a8a };
 let api = null, renderer = null, scene = null, camera = null, controls = null, root = null, raf = 0, key = '', spinning = false, showLabels = false;
-const bodies = new Map();
+const bodies = new Map(), labelOf = new Map();
+let fill = null; // (the light from below: brighter while 🔧 shows the joints' side)
+const BG = 0x0b1016;
 let labels = [], picked = null, down = null, failed = false;
 
 export function open(a) {
@@ -19,14 +24,18 @@ export function open(a) {
   if (!raf) raf = requestAnimationFrame(frame);
 }
 export function close() { cancelAnimationFrame(raf); raf = 0; }
+/** The page made the 3D area smaller / bigger (a card under it): the picture fits it again. */
+export function resized() { resize(); }
 export function spin() { spinning = !spinning; if (controls) controls.autoRotate = spinning; return spinning; }
 export { labelsToggle as labels };
 function labelsToggle() { showLabels = !showLabels; labels.forEach((s) => { s.visible = showLabels; }); return showLabels; }
 
 export function view(which) {
-  const D = api.design(), r = Math.hypot(D.board.w, D.board.h) / 2 + 4;
-  // far enough that the whole board fits the narrow phone screen
-  const d = r / Math.tan((camera.fov / 2) * Math.PI / 180) / Math.min(1, camera.aspect) * 0.82;
+  const D = api.design();
+  const r = boxPlan ? Math.hypot(boxPlan.size.w, boxPlan.size.d, boxPlan.size.h + (boxOpen ? lidLift : 0)) / 2 + 4 : Math.hypot(D.board.w, D.board.h) / 2 + 4;
+  fly = null;
+  // far enough that the whole board (📦 the whole box) fits the narrow phone screen
+  const d = r / Math.tan((camera.fov / 2) * Math.PI / 180) / Math.min(1, camera.aspect) * (boxPlan ? 1.0 : 0.82);
   if (which === 'top') camera.position.set(0.001, d, 0.001);
   else if (which === 'bottom') camera.position.set(0.001, -d, 0.001);
   else camera.position.set(d * 0.42, d * 0.68, d * 0.6);
@@ -36,7 +45,7 @@ export function view(which) {
 
 function build() {
   try {
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); // (alpha: 📏 AR shows the camera under it)
   } catch (e) {
     failed = true;
     const m = document.createElement('div');
@@ -49,13 +58,13 @@ function build() {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   api.host.appendChild(renderer.domElement);
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0b1016);
+  scene.background = new THREE.Color(BG);
   camera = new THREE.PerspectiveCamera(38, 1, 0.5, 2000);
   scene.add(new THREE.HemisphereLight(0xdfefff, 0x203040, 1.6));
   const sun = new THREE.DirectionalLight(0xffffff, 2.2);
   sun.position.set(40, 90, 60);
   scene.add(sun);
-  const fill = new THREE.DirectionalLight(0x9fd8ff, 0.7);
+  fill = new THREE.DirectionalLight(0x9fd8ff, 0.7);
   fill.position.set(-60, -30, -40);
   scene.add(fill);
   controls = new OrbitControls(camera, renderer.domElement);
@@ -63,9 +72,16 @@ function build() {
   controls.dampingFactor = 0.12;
   controls.autoRotateSpeed = 1.6;
   renderer.domElement.style.touchAction = 'none';
-  renderer.domElement.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: Date.now() }; });
+  renderer.domElement.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: Date.now(), lx: e.clientX }; });
+  renderer.domElement.addEventListener('pointermove', (e) => { // (📏 in AR one finger turns the board)
+    if (!xr.on || !down) return;
+    xr.yaw += (e.clientX - down.lx) * 0.012;
+    down.lx = e.clientX;
+  });
   renderer.domElement.addEventListener('pointerup', (e) => {
-    if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8 || Date.now() - down.t > 500) return;
+    const d = down;
+    down = null;
+    if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 8 || Date.now() - d.t > 500) return;
     tap(e);
   });
   window.addEventListener('resize', resize);
@@ -84,6 +100,28 @@ function resize() {
 function frame() {
   raf = requestAnimationFrame(frame);
   if (!renderer) return;
+  const now = performance.now();
+  if (fly) { // (🔧 the camera glides to the next part)
+    const k = Math.min(1, (now - fly.t0) / fly.ms), e = k * k * (3 - 2 * k);
+    camera.position.lerpVectors(fly.p0, fly.p1, e);
+    controls.target.lerpVectors(fly.q0, fly.q1, e);
+    if (k >= 1) fly = null;
+  }
+  if (pulse.size) { // (🔧 the part to solder now breathes in blue)
+    const k = 0.5 + 0.5 * Math.sin(now / 240);
+    pulse.forEach((o, m) => { m.emissive.setHex(0x2bd4ff); m.emissiveIntensity = 0.2 + 0.8 * k; });
+  }
+  if (lidM) { // (📦 the lid lifts off / comes down)
+    const want = boxOpen ? 1 : 0;
+    lidT += (want - lidT) * 0.14;
+    if (Math.abs(want - lidT) < 0.002) lidT = want;
+    lidM.position.y = lidT * lidLift;
+  }
+  if (xr.on) {
+    placeXr();
+    renderer.render(scene, camera);
+    return;
+  }
   controls.update();
   renderer.render(scene, camera);
 }
@@ -100,8 +138,11 @@ export function update() {
   root = new THREE.Group();
   scene.add(root);
   bodies.clear();
+  labelOf.clear();
   labels = [];
   picked = null;
+  pulse.clear();
+  lidM = null;
   const B = D.board, T = B.thick || 1.6;
   // the board: its two real faces as pictures, FR-4 edges
   const top = new THREE.CanvasTexture(api.texture('top', 14)), bot = new THREE.CanvasTexture(api.texture('bottom', 10));
@@ -134,8 +175,12 @@ export function update() {
     s.visible = showLabels;
     root.add(s);
     labels.push(s);
+    labelOf.set(pt.ref, s);
   });
-  if (first) view('side');
+  if (boxPlan) buildBox();
+  if (guideSt) applyGuide(false);
+  if (xr.on) { root.matrixAutoUpdate = false; xrBase(); }
+  if (first && !xr.on) view('side');
 }
 
 function roundedRect(w, h, r) {
@@ -335,11 +380,13 @@ function label(text) {
 
 function tap(e) {
   const r = renderer.domElement.getBoundingClientRect();
+  if (xr.on && !xr.placed) { api.onXrTap && api.onXrTap((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height); return; }
   const m = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   const ray = new THREE.Raycaster();
   ray.setFromCamera(m, camera);
-  const hits = ray.intersectObjects(Array.from(bodies.values()), true);
+  const hits = ray.intersectObjects(Array.from(bodies.values()).filter((b) => b.visible), true);
   let ref = null;
+  if (xr.on && !hits.length) { api.onXrTap && api.onXrTap((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height); return; } // (📏 a tap on the table: the board goes there)
   if (hits.length) { let o = hits[0].object; while (o && !o.userData.ref) o = o.parent; ref = o ? o.userData.ref : null; }
   if (picked) bodies.get(picked) && glow(bodies.get(picked), false);
   picked = ref;
@@ -347,6 +394,7 @@ function tap(e) {
   api.onTap(ref);
 }
 function glow(g, on) {
+  if (pulse.size && guideSt) return; // (🔧 the guide's own glow is showing)
   g.traverse((o) => {
     if (!o.isMesh || !o.material || !o.material.emissive) return;
     if (on) { o.userData.e = [o.material.emissive.getHex(), o.material.emissiveIntensity]; o.material.emissive.setHex(0x1e6a80); o.material.emissiveIntensity = 0.9; }
@@ -360,3 +408,246 @@ function dispose(o) {
     ms.forEach((m) => { if (m.map) m.map.dispose(); m.dispose(); });
   });
 }
+
+// ================================================================ 🔧 the soldering guide: what is on the board so far, what goes on now
+
+let guideSt = null, fly = null;
+const pulse = new Map(); // material → its own glow (given back when the step changes)
+
+/** g: {done: [refs soldered], cur: [refs now], all: every part, none: the bare board} or null (the guide is off). */
+export function guide(g, move) {
+  guideSt = g ? { done: new Set(g.done || []), cur: (g.cur || []).slice(), all: !!g.all, none: !!g.none, bottom: !!g.bottom } : null;
+  if (renderer) applyGuide(move !== false);
+}
+function applyGuide(move) {
+  pulse.forEach((o, m) => { m.emissive.setHex(o[0]); m.emissiveIntensity = o[1]; });
+  pulse.clear();
+  if (!guideSt) {
+    if (fill) fill.intensity = 0.7;
+    bodies.forEach((b) => { b.visible = true; });
+    labelOf.forEach((s) => { s.visible = showLabels; });
+    return;
+  }
+  const g = guideSt;
+  if (fill) fill.intensity = g.bottom ? 1.9 : 0.7;
+  bodies.forEach((b, ref) => { b.visible = g.all || g.cur.indexOf(ref) >= 0 || (!g.none && g.done.has(ref)); });
+  labelOf.forEach((s, ref) => { s.visible = g.cur.indexOf(ref) >= 0; });
+  g.cur.forEach((ref) => {
+    const b = bodies.get(ref);
+    if (b) b.traverse((o) => { if (o.isMesh && o.material && o.material.emissive && !pulse.has(o.material)) pulse.set(o.material, [o.material.emissive.getHex(), o.material.emissiveIntensity]); });
+  });
+  if (move && !xr.on) focus(g.cur, g.bottom);
+}
+/** The camera to these parts (from above, or from below for the joints); the whole board when none. */
+function focus(refs, bottom) {
+  const D = api.design(), full = Math.hypot(D.board.w, D.board.h);
+  const bb = new THREE.Box3();
+  (refs || []).forEach((r) => { const b = bodies.get(r); if (b) bb.expandByObject(b); });
+  let q1, d;
+  if (bb.isEmpty()) { q1 = new THREE.Vector3(0, 0, 0); d = (full / 2 + 4) / Math.tan((camera.fov / 2) * Math.PI / 180) / Math.min(1, camera.aspect) * 0.82; }
+  else {
+    q1 = bb.getCenter(new THREE.Vector3());
+    if (bottom) q1.y = -(D.board.thick || 1.6);
+    d = Math.min(140, Math.max(55, bb.getSize(new THREE.Vector3()).length() * 2.4, full * 0.75));
+  }
+  const dir = bottom ? new THREE.Vector3(0.08, -1, 0.2) : new THREE.Vector3(0.3, 0.85, 0.55);
+  dir.normalize();
+  fly = { t0: performance.now(), ms: 650, p0: camera.position.clone(), q0: controls.target.clone(), q1, p1: q1.clone().addScaledVector(dir, d) };
+}
+
+// ================================================================ 📦 the box: the same shapes on the screen and in the STL files
+
+let boxPlan = null, boxG = null, lidM = null, lidT = 0, lidLift = 30, boxOpen = true, boxSee = false;
+const PLA = { base: 0xdfe3e8, lid: 0xc9d3dd };
+
+/** plan from PcbMake.boxPlan (null takes the box away); look: {open, see}. */
+export function boxShow(plan, look) {
+  boxPlan = plan || null;
+  if (look) { if ('open' in look) boxOpen = !!look.open; if ('see' in look) boxSee = !!look.see; }
+  if (renderer) buildBox();
+}
+export function boxLook(look) {
+  if ('open' in look) boxOpen = !!look.open;
+  if ('see' in look) { boxSee = !!look.see; if (boxG) boxG.traverse((o) => { if (o.isMesh) seeThrough(o.material); }); }
+}
+function seeThrough(m) { m.transparent = boxSee; m.opacity = boxSee ? 0.33 : 1; m.depthWrite = !boxSee; m.needsUpdate = true; }
+
+function buildBox() {
+  if (boxG) { boxG.parent && boxG.parent.remove(boxG); dispose(boxG); boxG = null; }
+  lidM = null;
+  if (!boxPlan || !root) return;
+  const D = api.design(), B = D.board, T = B.thick || 1.6, b = boxPlan.box;
+  const BT = new THREE.Matrix4().set(1, 0, 0, -B.w / 2, 0, 0, 1, -(b.zB + T / 2), 0, 1, 0, -B.h / 2, 0, 0, 0, 1);
+  boxG = new THREE.Group();
+  const parts = window.PcbMake.solids(boxPlan);
+  ['base', 'lid'].forEach((piece) => {
+    const geos = parts.filter((s) => s.piece === piece).map((s) => placed(s, BT));
+    const g = merge(geos);
+    g.computeVertexNormals();
+    const m = new THREE.MeshStandardMaterial({ color: PLA[piece], roughness: 0.72, metalness: 0.0, side: THREE.DoubleSide });
+    seeThrough(m);
+    const mesh = new THREE.Mesh(g, m);
+    mesh.userData.box = piece;
+    mesh.raycast = () => {}; // (taps go to the parts inside)
+    if (piece === 'lid') { lidM = mesh; lidLift = Math.max(20, boxPlan.size.h * 0.85); mesh.position.y = lidT * lidLift; }
+    boxG.add(mesh);
+  });
+  root.add(boxG);
+  if (xr.on) xrBase();
+}
+
+/** One solid as a shape pushed out (three's ExtrudeGeometry), then put where it belongs by the matrix (inside out fixed). */
+function placed(s, M) {
+  let shape, depth, local;
+  const Z = (z0) => new THREE.Matrix4().makeTranslation(0, 0, z0);
+  if (s.t === 'plate' || s.t === 'block') {
+    shape = rect(s.x0, s.y0, s.x1, s.y1);
+    (s.holes || []).forEach((h) => shape.holes.push(h.r ? circle(h.x, h.y, h.r) : rect(h.x0, h.y0, h.x1, h.y1)));
+    depth = s.z1 - s.z0; local = Z(s.z0);
+  } else if (s.t === 'tube') {
+    shape = circle(s.x, s.y, s.r);
+    shape.holes.push(circle(s.x, s.y, s.ri));
+    depth = s.z1 - s.z0; local = Z(s.z0);
+  } else if (s.t === 'wall') {
+    shape = rect(s.u0, s.z0, s.u1, s.z1);
+    (s.holes || []).forEach((h) => shape.holes.push(h.r ? circle(h.uc, h.zc, h.r) : rect(h.u0, h.z0, h.u1, h.z1)));
+    depth = s.w1 - s.w0;
+    // (u, v, w) → board (x, y, z): N / S walls run along x, E / W along y
+    local = s.side === 'N' || s.side === 'S'
+      ? new THREE.Matrix4().set(1, 0, 0, 0, 0, 0, 1, s.w0, 0, 1, 0, 0, 0, 0, 0, 1)
+      : new THREE.Matrix4().set(0, 0, 1, s.w0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1);
+  }
+  let g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 28 });
+  if (g.index) g = g.toNonIndexed();
+  const all = new THREE.Matrix4().multiplyMatrices(M, local);
+  g.applyMatrix4(all);
+  if (all.determinant() < 0) flip(g);
+  return g;
+}
+function rect(x0, y0, x1, y1) { const s = new THREE.Shape(); s.moveTo(x0, y0); s.lineTo(x1, y0); s.lineTo(x1, y1); s.lineTo(x0, y1); s.lineTo(x0, y0); return s; }
+function circle(x, y, r) { const s = new THREE.Shape(); s.absarc(x, y, r, 0, Math.PI * 2, false); return s; }
+function flip(g) {
+  ['position', 'normal', 'uv'].forEach((n) => {
+    const a = g.getAttribute(n);
+    if (!a) return;
+    const k = a.itemSize, arr = a.array;
+    for (let t = 0; t < a.count; t += 3) for (let j = 0; j < k; j++) { const i1 = (t + 1) * k + j, i2 = (t + 2) * k + j, v = arr[i1]; arr[i1] = arr[i2]; arr[i2] = v; }
+    a.needsUpdate = true;
+  });
+}
+function merge(geos) {
+  let n = 0;
+  geos.forEach((g) => { n += g.getAttribute('position').count; });
+  const pos = new Float32Array(n * 3);
+  let o = 0;
+  geos.forEach((g) => { const a = g.getAttribute('position').array; pos.set(a, o); o += a.length; g.dispose(); });
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  return out;
+}
+
+/** 📦 The two STL files: base as it stands, lid turned over (its top face on the printer's bed); millimetres, z up, from 0. */
+export function boxStl(plan) {
+  const parts = window.PcbMake.solids(plan), b = plan.box;
+  const BS = new THREE.Matrix4().set(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1); // board (y down) → printer (y up, z up)
+  const turn = new THREE.Matrix4().makeRotationX(Math.PI).multiply(BS);             // the lid upside down
+  const out = {};
+  ['base', 'lid'].forEach((piece) => {
+    const g = merge(parts.filter((s) => s.piece === piece).map((s) => placed(s, piece === 'lid' ? turn : BS)));
+    const a = g.getAttribute('position').array, mn = [Infinity, Infinity, Infinity];
+    for (let i = 0; i < a.length; i += 3) for (let j = 0; j < 3; j++) if (a[i + j] < mn[j]) mn[j] = a[i + j];
+    for (let i = 0; i < a.length; i += 3) for (let j = 0; j < 3; j++) a[i + j] = Math.round((a[i + j] - mn[j]) * 1000) / 1000;
+    out[piece] = window.PcbMake.stl(a, piece);
+    out[piece + 'Tris'] = a.length / 9;
+    g.dispose();
+  });
+  void b;
+  return out;
+}
+
+// ================================================================ 📏 the board at its real size on his table (the phone's AR)
+
+const xr = { on: false, placed: false, yaw: 0, a: new THREE.Matrix4(), v: new THREE.Matrix4(), reticle: null, base: new THREE.Vector3(), size: null };
+
+export function xrOn(on) {
+  if (!renderer) return;
+  xr.on = !!on;
+  xr.placed = false;
+  fly = null;
+  if (xr.on) {
+    controls.enabled = false;
+    controls.autoRotate = false;
+    camera.matrixAutoUpdate = false;
+    scene.background = null;
+    renderer.setClearColor(0x000000, 0);
+    if (root) { root.matrixAutoUpdate = false; root.visible = false; }
+    if (!xr.reticle) {
+      xr.reticle = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 56).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x4fd2ff, transparent: true, opacity: 0.85, depthTest: false }));
+      xr.reticle.matrixAutoUpdate = false;
+      xr.reticle.renderOrder = 40;
+      xr.reticle.raycast = () => {};
+      scene.add(xr.reticle);
+    }
+    xr.reticle.visible = false;
+    xrBase();
+  } else {
+    controls.enabled = true;
+    camera.matrixAutoUpdate = true;
+    scene.background = new THREE.Color(BG);
+    if (root) { root.matrixAutoUpdate = true; root.position.set(0, 0, 0); root.rotation.set(0, 0, 0); root.scale.set(1, 1, 1); root.updateMatrix(); root.visible = true; }
+    if (xr.reticle) xr.reticle.visible = false;
+    resize();
+    view('side');
+  }
+}
+export function xrTurn(deg) { xr.yaw += (deg || 90) * Math.PI / 180; }
+/** Where the board's middle and lowest point are (so it stands on the table), and how big it is. */
+function xrBase() {
+  if (!root) return;
+  const m = root.matrix.clone();
+  root.matrix.identity();
+  root.updateMatrixWorld(true);
+  const bb = new THREE.Box3();
+  root.traverse((o) => { if (o.isMesh && o.visible !== false && o.geometry) { o.geometry.computeBoundingBox(); bb.union(o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld)); } });
+  root.matrix.copy(m);
+  if (bb.isEmpty()) return;
+  const c = bb.getCenter(new THREE.Vector3());
+  xr.base.set(c.x, bb.min.y, c.z);
+  xr.size = bb.getSize(new THREE.Vector3());
+}
+/** Each picture from Jarvis: the camera's view and lens, where the board stands (anchor) and the ring where it would go. */
+export function xrPose(m) {
+  if (!xr.on) return;
+  const ok16 = (a) => Array.isArray(a) && a.length === 16 && a.every((v) => typeof v === 'number' && isFinite(v));
+  if (ok16(m.v) && ok16(m.p)) {
+    xr.v.fromArray(m.v);
+    camera.matrix.copy(xr.v).invert();
+    camera.matrixWorldNeedsUpdate = true;
+    camera.projectionMatrix.fromArray(m.p);
+    camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+  }
+  if (ok16(m.a)) { xr.a.fromArray(m.a); xr.placed = true; } else if (m.a === null) xr.placed = false;
+  if (xr.placed && m.fresh === true) { // (just put down: it faces him)
+    const eye = new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().copy(xr.v).invert());
+    eye.applyMatrix4(new THREE.Matrix4().copy(xr.a).invert());
+    if (Math.hypot(eye.x, eye.z) > 1e-3) xr.yaw = Math.atan2(eye.x, eye.z);
+  }
+  if (root) root.visible = xr.placed;
+  if (xr.reticle) {
+    if (ok16(m.r) && !xr.placed) {
+      const D = api.design(), s = Math.max(D.board.w, D.board.h) / 2 * 0.001 * 1.1;
+      xr.reticle.matrix.fromArray(m.r).multiply(new THREE.Matrix4().makeScale(s, s, s));
+      xr.reticle.visible = true;
+    } else xr.reticle.visible = false;
+  }
+}
+function placeXr() {
+  if (!root || !xr.placed) return;
+  // anchor (metres) × his turn × millimetres → metres × the board's middle, lowest point at the anchor
+  const T = new THREE.Matrix4().makeTranslation(-xr.base.x, -xr.base.y, -xr.base.z);
+  const S = new THREE.Matrix4().makeScale(0.001, 0.001, 0.001);
+  const R = new THREE.Matrix4().makeRotationY(xr.yaw);
+  root.matrix.copy(xr.a).multiply(R).multiply(S).multiply(T);
+  root.matrixWorldNeedsUpdate = true;
+}
+export function xrSize() { return xr.size ? { w: Math.round(xr.size.x * 10) / 10, d: Math.round(xr.size.z * 10) / 10, h: Math.round(xr.size.y * 10) / 10 } : null; }

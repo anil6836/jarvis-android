@@ -52,16 +52,21 @@ import java.util.concurrent.CancellationException;
  * the page places, routes and checks it with its own code. 🗣️ his words change the open board (small changes on the page, ₹0;
  * the rest by the AI, cost first). ✅ the checks' problems explained by the AI with part moves he applies himself. The photo goes
  * only with that one request and is never kept; the page never sees a key and never talks to the network.
+ * <p>
+ * Build 3B (24 Nov, "Build 3B చేయి"): 🔧 the soldering guide (🔊 each step read in his chosen voice on his tap, or when he says
+ * "Jarvis తర్వాత"), 📦 a 3D-print box (STL .zip saved like the Gerber one, shared only on his tap), 📏 the board at its real size
+ * (1:1 on the screen from the screen's own dots per inch, his ruler check kept; on his table through Google's ARCore: the camera
+ * picture is drawn here and never kept or sent) and 🎓 the 5-day Telugu class (his progress kept on the phone). All ₹0, no AI.
  */
 public class PcbActivity extends Activity {
     static final String EXTRA_TAB = "pcb_tab", EXTRA_PROJECT = "pcb_project";
     /** (from Jarvis's brain) a new board of these words (waits ✋ 3 seconds here); his words about the open board. */
     static final String EXTRA_WHAT = "pcb_what", EXTRA_HEARD = "pcb_heard", EXTRA_CHANGE = "pcb_change";
-    private static final int REQ_CAM = 81, REQ_GAL = 82, REQ_CAM_PERM = 83;
+    private static final int REQ_CAM = 81, REQ_GAL = 82, REQ_CAM_PERM = 83, REQ_AR = 84;
     private static final String HOST = "appassets.androidplatform.net";
     private static final String PATH = "/assets/pcb/";
     private static final String PAGE = "https://" + HOST + PATH + "pcb.html";
-    private static final Set<String> FILES = new HashSet<>(Arrays.asList("pcb.html", "pcb.js", "pcbparts.js", "pcbcore.js", "pcbfab.js", "pcbprojects.js", "pcbbuy.js", "pcbai.js", "pcb3d.js", "pcbsim.js", "pcbkicad.js"));
+    private static final Set<String> FILES = new HashSet<>(Arrays.asList("pcb.html", "pcb.js", "pcbparts.js", "pcbcore.js", "pcbfab.js", "pcbprojects.js", "pcbbuy.js", "pcbai.js", "pcb3d.js", "pcbsim.js", "pcbkicad.js", "pcbmake.js", "pcbclass.js"));
     /** 🧊 The 3D view uses the workshop's bundled three.js (one copy in the app), served here under the studio's own path. */
     private static final Set<String> SHARED = new HashSet<>(Arrays.asList("three.module.min.js", "OrbitControls.js"));
     /** The factories' own sites (opened in his browser only when he taps 🌐; nothing is sent to them by Jarvis). */
@@ -82,7 +87,7 @@ public class PcbActivity extends Activity {
         SEARCH.put("probots", "https://probots.co.in/catalogsearch/result/?q=");
     }
     private static final Set<String> SHOP_HOSTS = new HashSet<>(Arrays.asList("robu.in", "robocraze.com"));
-    private static final Set<String> TABS = new HashSet<>(Arrays.asList("home", "idea", "sch", "pcb", "drc", "sim", "d3", "fab", "calc"));
+    private static final Set<String> TABS = new HashSet<>(Arrays.asList("home", "idea", "sch", "pcb", "drc", "sim", "d3", "fab", "calc", "learn"));
     private static final Set<String> KINDS = new HashSet<>(Arrays.asList(Pcb.NEW, Pcb.PHOTO, Pcb.EDIT, Pcb.HELP));
     private static final Set<String> PROJECTS = new HashSet<>(Arrays.asList("flasher", "usb", "soil", "esp32", "irboard"));
 
@@ -93,7 +98,7 @@ public class PcbActivity extends Activity {
     private final List<String> outbox = new ArrayList<>();
     private boolean destroyed;
     private Coder.Made lastZip;
-    private boolean lastKicad; // the last zip: KiCad files for the laptop (else the factory's Gerber files)
+    private String lastKind = "gerber"; // the last zip: "gerber" (the factory's files), "kicad" (for the laptop) or "box" (3D-print STL)
     private Runnable backTimeout;
     private Prefs p;
     private boolean front;
@@ -218,7 +223,7 @@ public class PcbActivity extends Activity {
         // its start: his boards, and the one he had open (read off the main thread; sent when the page is there)
         new Thread(() -> {
             try {
-                JSONObject init = json("init").put("list", Pcbs.listJson(this));
+                JSONObject init = json("init").put("list", Pcbs.listJson(this)).put("scr", screen()).put("learn", learnJson());
                 String last = Pcbs.last(this);
                 JSONObject cur = last == null ? null : Pcbs.load(this, last);
                 if (cur != null) init.put("cur", cur);
@@ -320,6 +325,17 @@ public class PcbActivity extends Activity {
             case "shop": shopPage(m.optString("url")); break;
             case "sharetext": shareText(m.optString("text")); break;
             case "close": finish(); break;
+            // ---- Build 3B: 🔊 read a step / lesson aloud (his tap), 🎓 class progress, 📏 his ruler check, 📷 AR on his table
+            case "read": if (ear != null && front) ear.readAloud(Workshop.cap(m.optString("s", ""), 4000)); break;
+            case "hush": if (ear != null) ear.hush(); break;
+            case "learn": saveLearn(m.optJSONObject("v")); break;
+            case "scale": {
+                double k = m.optDouble("k", 1);
+                if (k >= 0.8 && k <= 1.25) p.sp.edit().putFloat("pcb_scale", (float) k).apply();
+                break;
+            }
+            case "xr": if (m.optBoolean("on")) xrStart(); else xrStop(null); break;
+            case "xrtap": if (realF != null) realF.tap(m.optDouble("x", -1), m.optDouble("y", -1)); break;
             // ---- 🤖 the studio's AI: the cost first, then only on his tap (or ✋ 3 seconds when it was asked by voice)
             case "aiquote": quote(m.optString("kind"), m.optString("words"), m.optInt("chars")); break;
             case "aiask": ask(m.optString("kind"), m.optString("words"), m.optString("design", null), m.optBoolean("voice")); break;
@@ -371,7 +387,7 @@ public class PcbActivity extends Activity {
                 ui.post(() -> {
                     if (destroyed) return;
                     lastZip = made;
-                    lastKicad = fileName.contains("-kicad-");
+                    lastKind = fileName.contains("-kicad-") ? "kicad" : fileName.contains("-box-") ? "box" : "gerber";
                     try { send(json("saved").put("where", made.where)); } catch (Exception ignored) {}
                 });
             } catch (Exception e) {
@@ -386,7 +402,7 @@ public class PcbActivity extends Activity {
         if (m.uri == null) { say("ఫైల్ ఇక్కడ ఉంది: " + m.where); return; }
         try {
             Intent s = new Intent(Intent.ACTION_SEND).setType("application/zip").putExtra(Intent.EXTRA_STREAM, m.uri)
-                    .putExtra(Intent.EXTRA_TEXT, lastKicad ? "💻 KiCad ఫైల్స్ (PCB + స్కీమాటిక్)" : "🔌 PCB (Gerber) ఫైల్స్").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    .putExtra(Intent.EXTRA_TEXT, "kicad".equals(lastKind) ? "💻 KiCad ఫైల్స్ (PCB + స్కీమాటిక్)" : "box".equals(lastKind) ? "📦 3D ప్రింట్ డబ్బా (STL ఫైల్స్)" : "🔌 PCB (Gerber) ఫైల్స్").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             startActivity(Intent.createChooser(s, "ఎక్కడికి పంపాలి?"));
         } catch (Exception e) {
             say("పంపలేకపోయాను: " + e.getMessage());
@@ -628,6 +644,11 @@ public class PcbActivity extends Activity {
 
     @Override public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
         super.onRequestPermissionsResult(req, perms, res);
+        if (req == REQ_AR) {
+            if (res.length > 0 && res[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) { if (realWanted) xrStart(); }
+            else { realWanted = false; xrTell(false, "📷 కెమెరా అనుమతి లేకుండా AR చూపించలేను Sir. 📏 అసలు సైజు (స్క్రీన్ మీద 1:1) పనిచేస్తుంది."); }
+            return;
+        }
         if (req != REQ_CAM_PERM) return;
         if (res.length > 0 && res[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) openCam();
         else say("📷 కెమెరా అనుమతి లేకుండా ఫోటో తీయలేను Sir. 🖼️ గ్యాలరీ నుంచి ఎంచుకోవచ్చు.");
@@ -690,6 +711,10 @@ public class PcbActivity extends Activity {
         super.onResume();
         front = true;
         JarvisAccessibility.bubbleAside(true);
+        if (realF != null) { // (📷 back on the studio: the camera again)
+            String bad = checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED ? realF.resume() : "కెమెరా అనుమతి లేదు";
+            if (bad != null) xrStop("📷 " + bad + " Sir.");
+        } else if (realWanted) xrStart(); // (back from the permission / Google's AR page)
         WakeService.workshopWake = wakeR; // (🎙️ "Jarvis" here: the studio hears him, no panel over it)
     }
 
@@ -700,6 +725,7 @@ public class PcbActivity extends Activity {
         if (WakeService.workshopWake == wakeR) WakeService.workshopWake = null;
         if (ear != null) ear.away();
         if (waiting != null) cancelWait(false); // (he left: nothing is spent on what was heard)
+        if (realF != null) realF.pause(); // (📷 the camera is let go while the studio is behind)
     }
 
     @Override public void onBackPressed() {
@@ -713,6 +739,7 @@ public class PcbActivity extends Activity {
     @Override protected void onDestroy() {
         destroyed = true;
         photo = null;
+        if (realF != null) { RealFloor f = realF; realF = null; f.end(); }
         if (WakeService.workshopWake == wakeR) WakeService.workshopWake = null;
         if (ear != null) ear.shutdown();
         Job j = job;
@@ -722,6 +749,105 @@ public class PcbActivity extends Activity {
         if (port != null) { try { port.close(); } catch (Throwable ignored) {} }
         if (web != null) { try { web.destroy(); } catch (Throwable ignored) {} }
         super.onDestroy();
+    }
+
+    // ================================================================ Build 3B: 📏 the screen's real size, 🎓 the class, 📷 AR
+
+    /** The screen's own dots per inch (the page draws millimetres with it) and his ruler check (1 = as the phone says). */
+    private JSONObject screen() {
+        JSONObject o = new JSONObject();
+        try {
+            android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+            o.put("xdpi", (double) dm.xdpi).put("ydpi", (double) dm.ydpi).put("density", (double) dm.density).put("k", (double) p.sp.getFloat("pcb_scale", 1f));
+        } catch (Exception ignored) {}
+        return o;
+    }
+
+    /** 🎓 Which class days he finished (only numbers and times; kept on the phone). */
+    private JSONObject learnJson() {
+        try { return new JSONObject(p.sp.getString("pcb_learn", "{\"d\":{}}")); } catch (Exception e) { return new JSONObject(); }
+    }
+
+    private void saveLearn(JSONObject v) {
+        if (v == null) return;
+        JSONObject d = v.optJSONObject("d"), out = new JSONObject(), od = new JSONObject();
+        try {
+            for (int n = 1; d != null && n <= 5; n++) {
+                JSONObject x = d.optJSONObject(String.valueOf(n));
+                if (x == null) continue;
+                od.put(String.valueOf(n), new JSONObject().put("done", x.optBoolean("done")).put("score", Math.max(0, Math.min(10, x.optInt("score")))).put("at", x.optLong("at")));
+            }
+            out.put("d", od);
+            p.sp.edit().putString("pcb_learn", out.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    private RealFloor realF;
+    private boolean realWanted, realAsked;
+    private int realTries;
+
+    /** 📷 The board at its real size on his table: ARCore finds the table, the page draws the board where he taps. */
+    private void xrStart() {
+        realWanted = true;
+        if (realF != null || destroyed) return;
+        if (!front) return; // (started when he is back)
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.CAMERA}, REQ_AR);
+            return;
+        }
+        String r = RealFloor.ready(this, !realAsked);
+        if ("checking".equals(r)) {
+            if (realTries++ < 8) { ui.postDelayed(() -> { if (!destroyed && realWanted && realF == null) xrStart(); }, 600); return; }
+            realTries = 0;
+            realWanted = false;
+            xrTell(false, "📷 AR ఇంకా సిద్ధం కాలేదు Sir. కొంచెం సేపు ఆగి మళ్ళీ 📷 AR నొక్కండి.");
+            return;
+        }
+        realTries = 0;
+        if ("install".equals(r)) {
+            realAsked = true;
+            xrTell(false, "📷 దీనికి Google \"Play Services for AR\" కావాలి Sir. Play Store లో Install / Update మీరే నొక్కి, ఇక్కడికి తిరిగి రండి.");
+            return; // (realWanted stays: it starts when he is back)
+        }
+        if ("no".equals(r)) { realWanted = false; xrTell(false, "ఈ ఫోన్‌లో AR లేదు Sir. 📏 అసలు సైజు (స్క్రీన్ మీద 1:1) పనిచేస్తుంది."); return; }
+        if (!"ok".equals(r)) { realWanted = false; xrTell(false, "📷 " + r + " Sir."); return; }
+        RealFloor f = new RealFloor(this, new RealFloor.Listener() {
+            @Override public void onPose(float[] v, float[] pr, float[] a, float[] ring, boolean fresh) {
+                final String js = RealFloor.poseJson(v, pr, a, ring, fresh);
+                ui.post(() -> { if (realF != null && !destroyed && port != null) { try { port.postMessage(new WebMessage(js)); } catch (Throwable ignored) {} } });
+            }
+            @Override public void onState(String st) { ui.post(() -> { if (realF != null && !destroyed) { try { send(json("xrst").put("s", st)); } catch (Exception ignored) {} } }); }
+            @Override public void onProblem(String problem) { ui.post(() -> { if (realF != null && !destroyed) xrStop("📷 " + problem + " Sir. AR ఆపాను."); }); }
+        });
+        String bad = f.begin();
+        if (bad != null) { realWanted = false; xrTell(false, "📷 " + bad + " Sir."); return; }
+        realF = f;
+        root.addView(f.view, 0, new FrameLayout.LayoutParams(-1, -1));
+        f.view.onResume();
+        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        xrTell(true, null);
+    }
+
+    /** AR off (his ✕, leaving the 3D tab, or a problem: why is said). */
+    private void xrStop(String why) {
+        realWanted = false;
+        RealFloor f = realF;
+        realF = null;
+        if (f != null) {
+            f.end();
+            try { root.removeView(f.view); } catch (Throwable ignored) {}
+        }
+        getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        xrTell(false, why);
+    }
+
+    private void xrTell(boolean on, String why) {
+        try { JSONObject m = json("xr").put("on", on); if (why != null) m.put("why", why); send(m); } catch (Exception ignored) {}
+    }
+
+    @Override public void onConfigurationChanged(android.content.res.Configuration c) {
+        super.onConfigurationChanged(c);
+        if (realF != null) realF.turned();
     }
 
     static void open(Context c, String tab, String project) {

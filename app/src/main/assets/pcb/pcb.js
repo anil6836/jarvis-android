@@ -6,9 +6,12 @@
 // 🗣️ his words change the board (small ones here, ₹0), 🤖 help for the checks. The AI's answer is data only (pcbai.js).
 // Build 3A (24 Nov): ⚡ నడిపించు (the board running on the phone before ordering: pcbsim.js, ₹0), 🕑 versions kept inside the
 // design, 💻 KiCad files for the laptop (pcbkicad.js). All our own code, offline.
+// Build 3B (24 Nov): 🔧 the soldering guide (3D: the next part glows; 🔊 Telugu; "Jarvis తర్వాత"), 📦 a 3D-print box (STL), 📏 the
+// board at its real size (1:1 on the screen; on his table through the phone's AR) and 🎓 the 5-day Telugu class (pcbmake.js,
+// pcbclass.js). All ₹0 and offline; nothing calls the AI.
 'use strict';
 (function () {
-  const P = window.PcbParts, C = window.PcbCore, F = window.PcbFab, J = window.PcbProjects, A = window.PcbAI, SIM = window.PcbSim, KI = window.PcbKiCad;
+  const P = window.PcbParts, C = window.PcbCore, F = window.PcbFab, J = window.PcbProjects, A = window.PcbAI, SIM = window.PcbSim, KI = window.PcbKiCad, MK = window.PcbMake, CL = window.PcbClass;
   const $ = (id) => document.getElementById(id);
   const FONT = '"Noto Sans Telugu", system-ui, "Noto Color Emoji", sans-serif';
 
@@ -49,6 +52,13 @@
   let autoRoute = true;
   const pv = { s: 8, ox: 20, oy: 20, fit: true, layer: 'both', real: false, sel: null };
   const sv = { s: 1, ox: 20, oy: 20, fit: true, sel: null, vals: true };
+  // Build 3B
+  const sg = { on: false, i: 0, steps: null, auto: false, bottom: false };   // 🔧 the soldering guide
+  const bx = { on: false, plan: null, open: true, see: false };              // 📦 the box
+  const rs = { on: false, ox: 0, oy: 0, fit: true, cal: false, drag: null };  // 📏 1:1 on the screen
+  const xrS = { on: false, wait: false, st: '', box: false };                // 📷 AR on his table
+  let speaking = false, scr = { xdpi: 0, k: 1 }, learnSt = { d: {} }, afterOpen = null;
+  const lv = { day: 0, ans: {} };                                            // 🎓 the day open, his quiz answers
 
   function gndName() { const n = D && D.nets.find((q) => C.isGnd(q.n)); return n ? n.n : null; }
 
@@ -69,6 +79,7 @@
       saveT = setTimeout(() => post({ t: 'save', d: C.clean(D) }), 1200);
     }
     redraw();
+    makeFollow();
   }
   function state() {
     const s = $('state');
@@ -77,7 +88,7 @@
     if (!D || !check) { s.className = ''; s.textContent = '—'; }
     else if (check.errors) { s.className = 'bad'; s.textContent = '❌ ' + check.errors + ' తప్పులు'; }
     else { s.className = 'ok'; s.textContent = check.warns ? '✅ సిద్ధం · ⚠️ ' + check.warns : '✅ ఆర్డర్‌కి సిద్ధం'; }
-    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('off', !D && t.dataset.tab !== 'home' && t.dataset.tab !== 'calc'));
+    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('off', !D && t.dataset.tab !== 'home' && t.dataset.tab !== 'calc' && t.dataset.tab !== 'learn'));
   }
   function snap() { if (D) { undo.push(JSON.stringify({ board: D.board, parts: D.parts, tracks: D.tracks, vias: D.vias, labels: D.labels, pour: D.pour })); if (undo.length > 25) undo.shift(); } }
   function back1() {
@@ -88,6 +99,7 @@
     toast('↩️ ముందున్నట్టు చేశాను');
   }
   function open(d, how) {
+    makeReset();
     D = C.clean(d);
     undo = [];
     pv.fit = true; sv.fit = true; pv.sel = null; sv.sel = null;
@@ -109,13 +121,15 @@
     switch (m.t) {
       case 'init':
         designs = Array.isArray(m.list) ? m.list : [];
+        if (m.scr && typeof m.scr === 'object') scr = { xdpi: +m.scr.xdpi || 0, k: +m.scr.k > 0.5 && +m.scr.k < 1.5 ? +m.scr.k : 1 };
+        if (m.learn && typeof m.learn === 'object' && m.learn.d && typeof m.learn.d === 'object') learnSt = { d: m.learn.d };
         if (m.cur && m.cur.parts) open(m.cur, 'load');
         if (m.tab === 'idea') { showTab('home'); toIdea(); }
         else showTab(typeof m.tab === 'string' && TABS.indexOf(m.tab) >= 0 ? m.tab : 'home');
         break;
       case 'designs': designs = Array.isArray(m.list) ? m.list : []; if (tab === 'home') myDesigns(); break;
-      case 'design': if (m.d && m.d.parts) { open(m.d, 'load'); showTab('pcb'); } break;
-      case 'saved': saved = { where: String(m.where || ''), kind: zipKind }; if (tab === 'fab') fab(); toast('💾 సేవ్ అయింది: ' + saved.where, 4000); break;
+      case 'design': if (m.d && m.d.parts) { open(m.d, 'load'); const f = afterOpen; afterOpen = null; if (f) f(); else showTab('pcb'); } break;
+      case 'saved': saved = { where: String(m.where || ''), kind: zipKind }; if (tab === 'fab') fab(); if (bx.on && tab === 'd3') boxCard(); toast('💾 సేవ్ అయింది: ' + saved.where, 4000); break;
       case 'say': toast(String(m.s || ''), 4000); break;
       case 'tab': if (m.tab === 'idea') { showTab('home'); toIdea(); } else if (TABS.indexOf(m.tab) >= 0) showTab(m.tab); break;
       // ---- 🤖 the studio's AI (asked by Jarvis; this page never sees a key or the network)
@@ -130,7 +144,11 @@
       case 'dictated': dict.on = false; dictLook(); dictInto(String(m.s || '')); break;
       case 'vheard': heard(String(m.s || ''), false); break;
       case 'vline': if (m.s) toast(String(m.s), 2600); break;
-      case 'vmic': $('mic').classList.toggle('on', m.st === 1); break;
+      case 'vmic': $('mic').classList.toggle('on', m.st === 1); if (speaking !== (m.st === 3)) { speaking = m.st === 3; speakLook(); } break;
+      // ---- 📷 AR (Build 3B): the camera under this page, its picture drawn by Jarvis; the board placed by his tap
+      case 'xr': if (m.on) xrEnter(); else { if (m.why) toast(String(m.why), 6000); xrLeave(); if (tab === 'd3') tools3d(); } break;
+      case 'xrst': xrSaid(String(m.s || '')); break;
+      case 'xrpose': if (xrS.on && v3d) v3d.xrPose(m); break;
       case 'idea': idea.text = String(m.s || ''); showTab('home'); toIdea(); if (m.go) makeIdea(true); break;
       case 'change': heard(String(m.s || ''), true); break;
       case 'project': {
@@ -144,7 +162,10 @@
       case 'back': {
         let used = true;
         if (ai.wait) post({ t: 'aicancel' });
+        else if (xrS.on || xrS.wait) stopAr();
+        else if (rs.on) closeReal();
         else if ($('sheet').classList.contains('on')) closeSheet();
+        else if (tab === 'learn' && lv.day) { lv.day = 0; hush(); learnTab(); }
         else if (pv.sel) { pv.sel = null; selBar(); redraw(); }
         else if (tab !== 'home') showTab('home');
         else used = false;
@@ -157,17 +178,19 @@
 
   // ---------------------------------------------------------------- tabs
 
-  const TABS = ['home', 'sch', 'pcb', 'drc', 'sim', 'd3', 'fab', 'calc'];
+  const TABS = ['home', 'sch', 'pcb', 'drc', 'sim', 'd3', 'fab', 'calc', 'learn'];
   document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
   $('close').addEventListener('click', () => post({ t: 'close' }));
   $('name').addEventListener('click', () => { if (D) renameSheet(); });
   function showTab(name) {
-    if (!D && name !== 'home' && name !== 'calc') { toast('ముందు ఒక బోర్డ్ తెరవండి (📚 బోర్డ్‌లు)'); name = 'home'; }
+    if (!D && name !== 'home' && name !== 'calc' && name !== 'learn') { toast('ముందు ఒక బోర్డ్ తెరవండి (📚 బోర్డ్‌లు)'); name = 'home'; }
     tab = name;
+    if (name !== 'd3' && (xrS.on || xrS.wait)) stopAr();
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t.dataset.tab === name));
     TABS.forEach((n) => $(n).classList.toggle('on', n === name));
     closeSheet();
     if (name !== 'd3' && v3d) v3d.close();
+    if (name !== 'd3') { $('guide').classList.remove('on'); $('boxcard').classList.remove('on'); $('v3d').style.bottom = '0px'; }
     if (name === 'home') home();
     else if (name === 'sch') { sizeCv($('schcv')); schTools(); redraw(); }
     else if (name === 'pcb') { sizeCv($('pcbcv')); pcbTools(); selBar(); redraw(); }
@@ -176,6 +199,7 @@
     else if (name === 'd3') open3d();
     else if (name === 'fab') fab();
     else if (name === 'calc') calc();
+    else if (name === 'learn') learnTab();
     const on = document.querySelector('.tab.on');
     if (on && on.scrollIntoView) on.scrollIntoView({ inline: 'nearest', block: 'nearest' });
   }
@@ -218,9 +242,13 @@
       const cr = el('div', 'row');
       cr.appendChild(btn('⚡ నడిపించు', 'small', () => showTab('sim')));
       cr.appendChild(btn('🕑 వెర్షన్లు (' + ((D.vers || []).length) + ')', 'small', verSheet));
+      cr.appendChild(btn('🔧 టంకం', 'small', () => startGuide()));
+      cr.appendChild(btn('📦 డబ్బా', 'small', startBox));
+      cr.appendChild(btn('📏 అసలు సైజు', 'small', openReal));
       cur.appendChild(cr);
       h.appendChild(cur);
     }
+    learnCard(h);
     h.appendChild(el('h3', null, '📚 రెడీ బోర్డ్‌లు (₹0, మీ కాపీగా తెరుచుకుంటాయి)'));
     J.PROJECTS.forEach((pr) => {
       const c = el('div', 'card tap proj');
@@ -249,10 +277,6 @@
     mine.id = 'mine';
     h.appendChild(mine);
     myDesigns();
-    const soon = el('div', 'card soon');
-    soon.appendChild(el('div', null, '🔜 త్వరలో (తర్వాతి బిల్డ్‌లలో)'));
-    soon.appendChild(el('div', 'muted', '📏 AR లో అసలు సైజు · 🔧 టంకం గైడ్ · 🎓 5 రోజుల తెలుగు క్లాస్ · 📦 బోర్డ్ డబ్బా 3D'));
-    h.appendChild(soon);
   }
   /** His saved boards (only this part is drawn again when the list changes: what he is typing above stays). */
   function myDesigns() {
@@ -406,6 +430,7 @@
     t.appendChild(tool(pv.real ? '🎨 అసలు రంగు' : '🎨 పొరల రంగు', pv.real ? 'on' : '', () => { pv.real = !pv.real; pcbTools(); drawPcb(); }));
     t.appendChild(tool('⏚ GND నింపు' + (D && D.pour.B ? ' ✓' : ''), D && D.pour.B ? 'on' : '', () => { snap(); D.pour.B = !D.pour.B; changed(); pcbTools(); }));
     t.appendChild(tool('📏 బోర్డ్', '', boardSheet));
+    t.appendChild(tool('📏 అసలు సైజు', '', openReal));
     t.appendChild(tool('🔀 అమర్చు', '', () => {
       sheet((s) => {
         s.appendChild(el('h2', null, '🔀 భాగాలు మళ్ళీ అమర్చాలా?'));
@@ -1213,16 +1238,55 @@
   }
   function open3d() {
     const info = clear($('v3dinfo'));
-    info.appendChild(el('span', 'chip', '👆 ఒక వేలితో తిప్పండి, రెండు వేళ్ళతో దగ్గర/దూరం · భాగం మీద నొక్కితే పేరు'));
-    const t = clear($('d3tools'));
-    if (v3d) { v3d.open(api3d()); tools3d(); return; }
-    if (v3dLoading) return;
-    v3dLoading = true;
-    import('./pcb3d.js').then((m) => { v3d = m; v3dLoading = false; if (tab === 'd3') { v3d.open(api3d()); tools3d(); } })
-      .catch(() => { v3dLoading = false; t.appendChild(el('span', 'chip bad', '3D తెరవలేకపోయాను')); });
+    if (xrS.wait) info.appendChild(el('span', 'chip', '📷 AR మొదలవుతోంది…'));
+    else info.appendChild(el('span', 'chip', '👆 ఒక వేలితో తిప్పండి, రెండు వేళ్ళతో దగ్గర/దూరం · భాగం మీద నొక్కితే పేరు'));
+    clear($('d3tools'));
+    with3d(() => {
+      if (tab !== 'd3') return;
+      v3d.open(api3d());
+      if (xrS.on) return;
+      v3d.guide(null);
+      v3d.boxShow(bx.on ? bx.plan : null, bx.on ? { open: bx.open, see: bx.see } : null);
+      if (sg.on) guideShow(true);
+      if (bx.on) { boxCard(); v3d.view('side'); }
+      if (!sg.on && !bx.on) fit3d();
+      tools3d();
+    });
   }
   function tools3d() {
     const t = clear($('d3tools'));
+    if (!v3d) return;
+    if (xrS.on || xrS.wait) {
+      t.appendChild(tool('✕ AR ఆపు', 'main', stopAr));
+      if (xrS.on) {
+        t.appendChild(tool('🔄 90°', '', () => v3d.xrTurn(90)));
+        t.appendChild(tool(xrS.box ? '📦 డబ్బాతో ✓' : '📦 డబ్బాతో', xrS.box ? 'on' : '', () => {
+          xrS.box = !xrS.box;
+          if (xrS.box) { bx.plan = bx.plan || MK.boxPlan(D, { extra: makeOf().extra, vents: makeOf().vents }); v3d.boxShow(bx.plan, { open: false, see: false }); } else v3d.boxShow(null);
+          tools3d();
+        }));
+        t.appendChild(tool('🏷️ పేర్లు', '', (e) => { const on = v3d.labels(); e.target.classList.toggle('on', on); }));
+      }
+      return;
+    }
+    if (sg.on) {
+      t.appendChild(tool('✕ గైడ్ ఆపు', '', stopGuide));
+      t.appendChild(tool(sg.bottom ? '⬆️ పై వైపు' : '⬇️ టంకం వైపు', sg.bottom ? 'on' : '', () => { sg.bottom = !sg.bottom; guideShow(true); }));
+      t.appendChild(tool('🔍 మొత్తం', '', () => v3d.view('side')));
+      t.appendChild(tool('📋 అన్ని అడుగులు', '', guideList));
+      return;
+    }
+    if (bx.on) {
+      t.appendChild(tool('✕ డబ్బా', '', stopBox));
+      t.appendChild(tool('↗️ పక్కనుంచి', '', () => v3d.view('side')));
+      t.appendChild(tool('⬆️ పైనుంచి', '', () => v3d.view('top')));
+      t.appendChild(tool('🔄 తిరుగు', '', (e) => { const on = v3d.spin(); e.target.classList.toggle('on', on); }));
+      t.appendChild(tool('📷 AR', '', () => { xrS.box = true; startAr(); }));
+      return;
+    }
+    t.appendChild(tool('🔧 టంకం గైడ్', 'main', () => startGuide()));
+    t.appendChild(tool('📦 డబ్బా', '', startBox));
+    t.appendChild(tool('📷 AR', '', startAr));
     t.appendChild(tool('⬆️ పైనుంచి', '', () => v3d.view('top')));
     t.appendChild(tool('↗️ పక్కనుంచి', '', () => v3d.view('side')));
     t.appendChild(tool('⬇️ కిందనుంచి', '', () => v3d.view('bottom')));
@@ -1232,6 +1296,7 @@
   function api3d() {
     return {
       host: $('v3d'), design: () => D, model: () => M, texture, P, C,
+      onXrTap: (x, y) => { if (xrS.on) post({ t: 'xrtap', x, y }); },
       onTap: (ref) => {
         const info = clear($('v3dinfo'));
         if (!ref) { info.appendChild(el('span', 'chip', '👆 భాగం మీద నొక్కితే పేరు')); return; }
@@ -1308,7 +1373,7 @@
       });
     }));
     h.appendChild(r);
-    if (saved && saved.kind !== 'kicad') {
+    if (saved && saved.kind === 'gerber') {
       const c = el('div', 'card');
       c.appendChild(el('div', 'okc', '💾 సేవ్ అయింది: ' + saved.where));
       const r3 = el('div', 'row');
@@ -1319,6 +1384,15 @@
       h.appendChild(c);
     }
     kicadCard(h);
+    const mk = el('div', 'card');
+    mk.appendChild(el('div', null, '🛠️ బోర్డ్‌లు ఇంటికి వచ్చాక'));
+    mk.appendChild(el('div', 'muted', '🔧 టంకం గైడ్ (అడుగు అడుగుగా, 🔊 తెలుగులో) · 📦 3D ప్రింట్ డబ్బా (STL) · 📏 భాగాలు కొన్నాక అసలు సైజులో పోల్చి చూడండి.'));
+    const mr = el('div', 'row');
+    mr.appendChild(btn('🔧 టంకం గైడ్', 'small', () => startGuide()));
+    mr.appendChild(btn('📦 డబ్బా', 'small', startBox));
+    mr.appendChild(btn('📏 అసలు సైజు', 'small', openReal));
+    mk.appendChild(mr);
+    h.appendChild(mk);
     h.appendChild(el('h3', null, '4️⃣ ' + Fb.name + ' లో ఆర్డర్ (మీరే)'));
     const steps = [
       ['🌐 ' + Fb.name + ' సైట్ తెరువు నొక్కండి (పైన, సేవ్ అయ్యాక వస్తుంది).', 'ఫ్యాక్టరీ హోమ్ పేజీ; "Quote" / "Order" లాంటి బటన్.', 'సైట్ తెరవకపోతే బ్రౌజర్‌లో పేరు వెతకండి'],
@@ -1710,6 +1784,13 @@
     const MASK_TE = { green: 'ఆకుపచ్చ', blue: 'నీలం', black: 'నలుపు', white: 'తెలుపు', purple: 'ఊదా' };
     if (cmd.k === 'tab') { showTab(cmd.tab); return 'సరే Sir.'; }
     if (cmd.k === 'versions') { if (!D) return 'ముందు ఒక బోర్డ్ తెరవండి Sir.'; verSheet(); return '🕑 వెర్షన్లు చూపిస్తున్నాను.'; }
+    if (cmd.k === 'make') {
+      if (!D) return 'ముందు ఒక బోర్డ్ తెరవండి Sir (📚 బోర్డ్‌లు).';
+      if (cmd.what === 'guide') return startGuide() || 'సరే Sir.';
+      if (cmd.what === 'box') return startBox() || 'సరే Sir.';
+      if (cmd.what === 'ar') return startAr() || 'సరే Sir.';
+      return openReal() || 'సరే Sir.';
+    }
     if (!D) return 'ముందు ఒక బోర్డ్ తెరవండి Sir.';
     const pt = cmd.ref ? D.parts.find((p) => p.ref === cmd.ref) : null;
     switch (cmd.k) {
@@ -1755,6 +1836,7 @@
   function heard(words, fromBrain) {
     const w = String(words || '').trim();
     if (!w) return;
+    if (!fromBrain && guideWords(w)) return; // (🔧 "తర్వాత" / "వెనక్కి" / "మళ్ళీ" while soldering: the step is read out)
     const cmd = A.local(w, D);
     if (cmd) { const said = doLocal(cmd); toast(said, 3500); post({ t: 'vdone', say: said, voice: true }); return; }
     if (A.newBoardWords(w)) { idea.text = w; showTab('home'); toIdea(); makeIdea(true); return; }
@@ -2267,6 +2349,491 @@
     }
   }
 
+  // ================================================================ Build 3B: 🔧 soldering guide, 📦 box, 📏 real size / AR, 🎓 class
+
+
+  function makeOf() { return (D && D.make) || {}; }
+  function setMake(k, v) { if (!D) return; D.make = Object.assign({}, D.make || {}, { [k]: v }); saveSoon(); }
+  function saveSoon() { if (!D) return; D.at = Date.now(); clearTimeout(saveT); saveT = setTimeout(() => post({ t: 'save', d: C.clean(D) }), 1200); }
+  /** 🔊 Jarvis reads it in his chosen voice (his tap, or he asked by voice); ⏹ stops it. */
+  function readAloud(text) { const s = String(text || '').trim(); if (s) post({ t: 'read', s: s.slice(0, 4000) }); }
+  function hush() { post({ t: 'hush' }); }
+  function speakBtn(text, cls) { return btn(speaking ? '⏹ ఆపు' : '🔊 వినిపించు', (cls || 'small') + ' spk', () => { if (speaking) hush(); else readAloud(text); }); }
+  function speakLook() { document.querySelectorAll('.btn.spk').forEach((b) => { b.textContent = speaking ? '⏹ ఆపు' : '🔊 వినిపించు'; }); }
+  /** The 3D module, loaded once (then fn). */
+  const v3dWait = [];
+  function with3d(fn) {
+    if (v3d) { fn(); return; }
+    v3dWait.push(fn);
+    if (v3dLoading) return;
+    v3dLoading = true;
+    import('./pcb3d.js').then((m) => {
+      v3d = m; v3dLoading = false;
+      if (tab === 'd3') { v3d.open(api3d()); tools3d(); }
+      v3dWait.splice(0).forEach((f) => { try { f(); } catch (e) { toast('3D: ' + String((e && e.message) || e).slice(0, 80)); } });
+    }).catch(() => { v3dLoading = false; v3dWait.length = 0; toast('3D తెరవలేకపోయాను'); });
+  }
+  /** What the board should do on its first power-on (from ⚡). */
+  function simExpect() {
+    try { if (sim.key !== D.id || !sim.rep) simBuild(); } catch (e) { return ''; }
+    if (!sim.rep) return '';
+    const bits = [];
+    if (sim.cy && sim.cy.f && !sim.cy.stuck) bits.push('555 సెకనుకి సుమారు ' + (Math.round(sim.cy.f * 10) / 10) + ' సార్లు టిక్ టిక్ (LED లు అలా మెరుస్తాయి)');
+    if (sim.rep.total && sim.rep.total.i > 1e-4) bits.push('బోర్డ్ మొత్తం సుమారు ' + SIM.fmtA(sim.rep.total.i) + ' తీసుకుంటుంది');
+    return bits.join('; ');
+  }
+  /** Leaving a board / opening another: the guide and the box go (each board starts fresh; his step is kept in the board). */
+  function makeReset() {
+    sg.on = false; sg.steps = null; bx.on = false; bx.plan = null;
+    ['guide', 'boxcard'].forEach((id) => { const e = $(id); if (e) e.classList.remove('on'); });
+    if (v3d) { v3d.guide(null); v3d.boxShow(null); }
+    if (rs.on) closeReal();
+  }
+  /** (after any change) the guide's steps and the box follow the board. */
+  function makeFollow() {
+    if (!D) return;
+    if (sg.on) { sg.steps = MK.solderSteps(D, { simLine: '' }); sg.i = Math.min(sg.i, sg.steps.length - 1); if (tab === 'd3') guideShow(false); }
+    if (bx.on || (xrS.on && xrS.box)) { bx.plan = MK.boxPlan(D, { extra: makeOf().extra, vents: makeOf().vents }); if (v3d) v3d.boxShow(bx.plan); if (bx.on && tab === 'd3') boxCard(); }
+    if (rs.on) drawReal();
+  }
+
+  // ---------------------------------------------------------------- 🔧 the soldering guide (3D: the part to solder glows; 🔊 Telugu)
+
+  function startGuide(at) {
+    if (!D) return '';
+    if (xrS.on) stopAr();
+    bx.on = false; $('boxcard').classList.remove('on');
+    if (v3d) v3d.boxShow(null);
+    sg.steps = MK.solderSteps(D, { simLine: simExpect() });
+    const kept = makeOf().solder | 0;
+    sg.i = Math.max(0, Math.min(sg.steps.length - 1, at != null ? at : kept >= sg.steps.length - 1 ? 0 : kept));
+    sg.on = true;
+    if (tab !== 'd3') showTab('d3'); else open3d();
+    return '🔧 టంకం గైడ్: ' + sg.steps.length + ' అడుగులు. ' + (sg.i ? 'మీరు ఆగిన అడుగు ' + (sg.i + 1) + ' నుంచి.' : '');
+  }
+  function stopGuide() {
+    sg.on = false;
+    $('guide').classList.remove('on');
+    fit3d();
+    if (v3d) { v3d.guide(null); v3d.view('side'); }
+    hush();
+    tools3d();
+  }
+  function guideShow(move) {
+    if (!sg.on || !sg.steps) return;
+    const st = sg.steps[sg.i];
+    const done = [];
+    sg.steps.slice(0, sg.i).forEach((s) => { if (s.k === 'part') s.refs.forEach((r) => done.push(r)); });
+    const g = clear($('guide'));
+    g.classList.add('on');
+    const hd = el('div', 'gh');
+    hd.appendChild(el('span', 'gn', st.n + '/' + st.of));
+    hd.appendChild(el('span', 'gt', st.title));
+    g.appendChild(hd);
+    const bar = el('div', 'gbar'), fill = el('i');
+    fill.style.width = Math.round(st.n / st.of * 100) + '%';
+    bar.appendChild(fill);
+    g.appendChild(bar);
+    st.lines.forEach((l) => g.appendChild(el('div', 'gl', l)));
+    const r = el('div', 'row');
+    r.appendChild(btn('◀️', 'small', () => guideGo(-1)));
+    r.appendChild(speakBtn(st.say));
+    r.appendChild(btn(st.n === st.of ? '🎉 పూర్తి' : '▶️ తర్వాత', 'main', () => (st.n === st.of ? guideEnd() : guideGo(1))));
+    r.appendChild(btn(sg.auto ? '🔁 ✓' : '🔁', sg.auto ? 'small on' : 'small', () => {
+      sg.auto = !sg.auto;
+      toast(sg.auto ? '🔁 ఇక ప్రతి అడుగూ Jarvis చదువుతుంది' : '🔁 ఆపాను: 🔊 నొక్కితేనే చదువుతుంది', 2500);
+      guideShow(null);
+      if (sg.auto) readAloud(st.say);
+    }));
+    g.appendChild(r);
+    if (sg.i < 3) g.appendChild(el('div', 'muted', '🎙️ చేతులు ఖాళీ లేకపోతే: "Jarvis తర్వాత" / "Jarvis వెనక్కి" / "Jarvis మళ్ళీ చెప్పు". 🔁 = ప్రతి అడుగూ తానే చదువుతుంది.'));
+    g.scrollTop = 0;
+    tools3d();
+    fit3d();
+    if (v3d && move !== null) v3d.guide({ done, cur: st.k === 'part' || st.k === 'chips' ? st.refs : [], all: st.show === 'all', none: st.show === 'none', bottom: sg.bottom }, !!move);
+  }
+  /** The 3D picture uses the space above the card (so the part to solder is never under it). */
+  function fit3d() {
+    const host = $('v3d'), c = ['guide', 'boxcard'].map($).find((e) => e.classList.contains('on'));
+    const b = c && !xrS.on ? c.offsetHeight + 64 : 0;
+    if (host.style.bottom !== b + 'px') { host.style.bottom = b + 'px'; if (v3d) v3d.resized(); }
+  }
+  function guideGo(d, voice) {
+    if (!sg.on || !sg.steps) return;
+    const i = Math.max(0, Math.min(sg.steps.length - 1, sg.i + d));
+    if (i === sg.i && d) { if (voice) readAloud(d > 0 ? 'ఇదే చివరి అడుగు.' : 'ఇదే మొదటి అడుగు.'); return; }
+    sg.i = i;
+    setMake('solder', i);
+    guideShow(true);
+    if (voice || sg.auto) readAloud('అడుగు ' + sg.steps[i].n + '. ' + sg.steps[i].say);
+  }
+  function guideEnd() {
+    setMake('solder', 0);
+    resultSheet('🎉 టంకం అయిపోయింది!', ['బోర్డ్ పనిచేస్తే: 📦 డబ్బా తయారు చేసుకోవచ్చు (3D ప్రింట్).', 'పనిచేయకపోతే: 🔍 చెక్ 1, 📏 చెక్ 2 మళ్ళీ చూడండి; ⚡ నడిపించు లో చూపిన వోల్టేజ్‌లు మల్టీమీటర్‌తో పోల్చండి.'],
+      [btn('📦 డబ్బా', 'main', () => { closeSheet(); stopGuide(); startBox(); })]);
+    stopGuide();
+  }
+  function guideList() {
+    if (!sg.steps) return;
+    sheet((s) => {
+      s.appendChild(el('h2', null, '📋 టంకం అడుగులు (' + sg.steps.length + ')'));
+      s.appendChild(el('div', 'muted', 'ఏ అడుగు మీద నొక్కితే అక్కడికి వెళ్తుంది.'));
+      sg.steps.forEach((st, i) => {
+        const d = el('div', 'step' + (i === sg.i ? ' cy' : ''), (i < sg.i ? '✅ ' : i === sg.i ? '▶️ ' : '▫️ ') + st.n + '. ' + st.title);
+        d.addEventListener('click', () => { closeSheet(); sg.i = i; setMake('solder', i); guideShow(true); });
+        s.appendChild(d);
+      });
+      const r = el('div', 'row'); r.appendChild(btn('మూసేయి', '', closeSheet)); s.appendChild(r);
+    });
+  }
+  /** His words while the guide is on: next / back / again (₹0). */
+  function guideWords(w) {
+    if (!sg.on) return false;
+    const s = w.toLowerCase();
+    if (/(తర్వాత|తరువాత|next|ముందుకు|అయింది|అయిపోయింది|done)/.test(s)) { guideGo(1, true); return true; }
+    if (/(వెనక్కి|వెనుకకు|ముందుది|previous|back)/.test(s)) { guideGo(-1, true); return true; }
+    if (/(మళ్ళీ|మళ్లీ|repeat|again|ఏమిటి|ఏంటి)/.test(s)) { readAloud('అడుగు ' + sg.steps[sg.i].n + '. ' + sg.steps[sg.i].say); return true; }
+    if (/(గైడ్\s*ఆపు|stop\s*guide|టంకం\s*ఆపు)/.test(s)) { stopGuide(); return true; }
+    return false;
+  }
+
+  // ---------------------------------------------------------------- 📦 the box (3D; STL files for a 3D printer)
+
+  function startBox() {
+    if (!D) return '';
+    if (sg.on) { sg.on = false; $('guide').classList.remove('on'); if (v3d) v3d.guide(null); }
+    bx.on = true;
+    bx.plan = MK.boxPlan(D, { extra: makeOf().extra, vents: makeOf().vents });
+    if (tab !== 'd3') showTab('d3'); else open3d();
+    const s = bx.plan.size;
+    return '📦 డబ్బా: ' + s.w + ' × ' + s.d + ' × ' + s.h + ' mm.';
+  }
+  function stopBox() {
+    bx.on = false;
+    $('boxcard').classList.remove('on');
+    fit3d();
+    if (v3d) v3d.boxShow(null);
+    tools3d();
+  }
+  function boxCard() {
+    const c = clear($('boxcard')), p = bx.plan;
+    if (!p) return;
+    c.classList.add('on');
+    const s = p.size;
+    c.appendChild(el('div', 'gt', '📦 డబ్బా: ' + s.w + ' × ' + s.d + ' × ' + s.h + ' mm (బయట)'));
+    c.appendChild(el('div', 'muted', 'లోపల భాగాలకి ఎత్తు ' + p.box.room + ' mm (పొడవైనది ' + p.box.tref + ', ' + p.box.tallest + ' mm' + (p.box.extra ? '; మీరు ' + (p.box.extra > 0 ? '+' : '') + p.box.extra + ' mm' : '') + ')'));
+    p.warns.forEach((w) => c.appendChild(el('div', 'gl warnc', w)));
+    const r = el('div', 'row');
+    r.appendChild(btn(bx.open ? '🔽 మూత పెట్టు' : '🔼 మూత తీయి', 'small', () => { bx.open = !bx.open; v3d.boxLook({ open: bx.open }); boxCard(); v3d.view('side'); }));
+    r.appendChild(btn('👁️ లోపల', bx.see ? 'small on' : 'small', () => { bx.see = !bx.see; v3d.boxLook({ see: bx.see }); boxCard(); }));
+    r.appendChild(btn('ℹ️', 'small', boxSheet));
+    c.appendChild(r);
+    const r2 = el('div', 'row');
+    r2.appendChild(el('span', 'muted', 'ఎత్తు'));
+    r2.appendChild(btn('➖', 'small', () => boxTaller(-2)));
+    r2.appendChild(btn('➕', 'small', () => boxTaller(2)));
+    r2.appendChild(btn('💾 STL ఫైల్స్ సేవ్', 'main', boxZip));
+    c.appendChild(r2);
+    if (saved && saved.kind === 'box') {
+      const r3 = el('div', 'row');
+      r3.appendChild(el('span', 'okc', '💾 ' + saved.where));
+      r3.appendChild(btn('📤 పంపు / షేర్', 'small', () => post({ t: 'share' })));
+      c.appendChild(r3);
+    }
+    fit3d();
+  }
+  function boxTaller(d) {
+    const e = Math.max(-8, Math.min(40, (makeOf().extra | 0) + d));
+    setMake('extra', e);
+    bx.plan = MK.boxPlan(D, { extra: e, vents: makeOf().vents });
+    if (v3d) v3d.boxShow(bx.plan);
+    boxCard();
+  }
+  function boxSheet() {
+    const p = bx.plan;
+    if (!p) return;
+    sheet((s) => {
+      s.appendChild(el('h2', null, '📦 డబ్బా వివరాలు'));
+      ['బయట ' + p.size.w + ' × ' + p.size.d + ' × ' + p.size.h + ' mm · గోడలు ' + p.K.wall + ' mm · నేల ' + p.K.floor + ' mm · మూత ' + p.K.lid + ' mm.',
+        'బోర్డ్ నేల నుంచి ' + p.K.post + ' mm పైన (కింద కాళ్ళకి చోటు). మూత లోపలి 4 మూలల అంచులతో నొక్కితే పట్టుకుంటుంది.']
+        .concat(p.notes, p.warns).forEach((l) => s.appendChild(el('div', 'step', l)));
+      const r = el('div', 'row');
+      const v = p.box.ventsOn;
+      r.appendChild(btn(v ? '🌬️ గాలి సందులు ✓' : '🌬️ గాలి సందులు', v ? 'on' : '', () => { setMake('vents', !v); bx.plan = MK.boxPlan(D, { extra: makeOf().extra, vents: !v }); if (v3d) v3d.boxShow(bx.plan); boxCard(); boxSheet(); }));
+      s.appendChild(r);
+      s.appendChild(el('div', 'muted', '🖨️ ప్రింట్: PLA, 0.2 mm పొర, 3 గోడలు, 20% infill, సపోర్ట్ అక్కర్లేదు. base.stl ఉన్నట్టే; lid.stl ఇప్పటికే తిప్పి ఉంది (పై ముఖం బెడ్ మీద). ఇంట్లో ప్రింటర్ లేకపోతే 3D ప్రింటింగ్ సర్వీస్‌కి మీరే అప్‌లోడ్ చేసి మీరే ఆర్డర్ చేయండి.'));
+      s.appendChild(el('div', 'muted', '⚠️ భాగాలు కొన్నాక ఎత్తులు కొలిచి చూడండి (మాడ్యూల్స్ వేరే ఎత్తు ఉండొచ్చు): ➕ ➖ తో మార్చొచ్చు.'));
+      const r2 = el('div', 'row'); r2.appendChild(btn('మూసేయి', '', closeSheet)); s.appendChild(r2);
+    });
+  }
+  function boxZip() {
+    if (!D || !bx.plan) return;
+    with3d(() => {
+      try {
+        const out = v3d.boxStl(bx.plan), dir = F.slug(D) + '-box/';
+        const files = [{ name: dir + 'base.stl', bytes: out.base }, { name: dir + 'lid.stl', bytes: out.lid },
+          { name: dir + 'README.txt', text: MK.boxReadme(D, bx.plan, { base: out.baseTris, lid: out.lidTris }) }];
+        const z = F.zip(files), name = F.slug(D) + '-box-' + new Date().toISOString().slice(0, 10) + '.zip';
+        zipKind = 'box';
+        post({ t: 'zip', name, data: F.b64(z), title: D.name, kind: 'box' });
+        toast('📦 STL ఫైల్స్ తయారు చేశాను (' + Math.round(z.length / 1024) + ' KB); సేవ్ చేస్తున్నాను…');
+      } catch (e) { toast('STL తయారు కాలేదు: ' + String((e && e.message) || e).slice(0, 80), 4000); }
+    });
+  }
+
+  // ---------------------------------------------------------------- 📏 the board at its real size: on the screen (1:1) and on his table (AR)
+
+  function pxmm() { const dpr = window.devicePixelRatio || 1, x = scr.xdpi > 60 ? scr.xdpi : 160 * dpr; return x / 25.4 / dpr * (scr.k || 1); }
+  function openReal() {
+    if (!D) return '';
+    rs.on = true; rs.fit = true; rs.cal = false;
+    $('real').classList.add('on');
+    realBars();
+    requestAnimationFrame(drawReal);
+    return '📏 బోర్డ్ ఇప్పుడు స్క్రీన్ మీద అసలు సైజులో (' + D.board.w + ' × ' + D.board.h + ' mm).';
+  }
+  function closeReal() { rs.on = false; $('real').classList.remove('on'); }
+  function realBars() {
+    const t = clear($('rtop'));
+    t.appendChild(btn('✕', 'small', closeReal));
+    const n = el('div', 'rname');
+    n.appendChild(el('div', null, '📏 అసలు సైజు (1:1)'));
+    n.appendChild(el('small', null, D.board.w + ' × ' + D.board.h + ' mm · వేలితో జరపండి'));
+    t.appendChild(n);
+    const b = clear($('rbot'));
+    if (rs.cal) {
+      b.appendChild(el('div', 'muted', '🎯 స్క్రీన్ మీద ఒక స్కేల్ (రూలర్) పెట్టండి: పై గీతల్లో 0 నుంచి 5 వరకు సరిగ్గా 5 cm ఉండాలి. తేడా ఉంటే ➖ ➕ నొక్కండి.'));
+      const r = el('div', 'row');
+      r.appendChild(btn('➖', 'small', () => realK(-0.005)));
+      r.appendChild(el('span', 'val', (Math.round((scr.k || 1) * 1000) / 10) + '%'));
+      r.appendChild(btn('➕', 'small', () => realK(0.005)));
+      r.appendChild(btn('✓ సరిపోయింది', 'main small', () => { rs.cal = false; realBars(); }));
+      b.appendChild(r);
+    } else {
+      b.appendChild(el('div', 'muted', '👉 కొన్న భాగాన్ని (రెసిస్టర్, LED, మాడ్యూల్, USB సాకెట్) స్క్రీన్ మీద మెల్లగా పెట్టండి: దాని కాళ్ళు గుండ్రటి ప్యాడ్‌ల మీద పడాలి. పడకపోతే ఆర్డర్ ముందే చెప్పండి.'));
+      const r = el('div', 'row');
+      r.appendChild(btn('🎯 కొలత సరిచూడు', 'small', () => { rs.cal = true; realBars(); }));
+      r.appendChild(btn('📷 AR: టేబుల్ మీద', 'small', () => { closeReal(); startAr(); }));
+      b.appendChild(r);
+    }
+  }
+  function realK(d) { scr.k = Math.max(0.8, Math.min(1.25, Math.round(((scr.k || 1) + d) * 1000) / 1000)); post({ t: 'scale', k: scr.k }); realBars(); drawReal(); }
+  function drawReal() {
+    if (!rs.on || !D) return;
+    const cv = $('realcv'), { ctx, w, h } = sizeCv(cv), s = pxmm(), B = D.board;
+    const top = 46 + 26, bot = ($('rbot').offsetHeight || 90) + 16;
+    if (rs.fit) {
+      rs.ox = B.w * s <= w - 40 ? (w - B.w * s) / 2 : 30;
+      rs.oy = B.h * s <= h - top - bot - 20 ? top + (h - top - bot - B.h * s) / 2 : top + 16;
+      rs.fit = false;
+    }
+    ctx.fillStyle = '#05070a'; ctx.fillRect(0, 0, w, h);
+    drawBoard(ctx, D, M, fills, { s, ox: rs.ox, oy: rs.oy }, { real: true });
+    // the rulers: millimetres from the board's top-left corner, numbers every centimetre
+    ctx.fillStyle = 'rgba(14,20,28,.9)'; ctx.fillRect(0, 46, w, 24); ctx.fillRect(0, 70, 24, h - 70);
+    ctx.strokeStyle = '#dceef5'; ctx.fillStyle = '#dceef5'; ctx.lineWidth = 1; ctx.font = '10px ' + FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    const mm0x = Math.ceil(-rs.ox / s), mm1x = Math.floor((w - rs.ox) / s);
+    ctx.beginPath();
+    for (let k = mm0x; k <= mm1x; k++) { const x = rs.ox + k * s, L = k % 10 === 0 ? 10 : k % 5 === 0 ? 7 : 4; ctx.moveTo(x, 70); ctx.lineTo(x, 70 - L); }
+    ctx.stroke();
+    for (let k = Math.max(0, Math.ceil(mm0x / 10) * 10); k <= mm1x; k += 10) ctx.fillText(String(k / 10), rs.ox + k * s, 47);
+    const mm0y = Math.ceil((70 - rs.oy) / s), mm1y = Math.floor((h - rs.oy) / s);
+    ctx.beginPath();
+    for (let k = mm0y; k <= mm1y; k++) { const y = rs.oy + k * s, L = k % 10 === 0 ? 10 : k % 5 === 0 ? 7 : 4; ctx.moveTo(24, y); ctx.lineTo(24 - L, y); }
+    ctx.stroke();
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    for (let k = Math.max(10, Math.ceil(mm0y / 10) * 10); k <= mm1y; k += 10) ctx.fillText(String(k / 10), 2, rs.oy + k * s);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillStyle = '#88a5b3';
+    ctx.fillText('cm', w - 22, 58);
+  }
+  (function realTouch() {
+    const cv = $('realcv');
+    cv.addEventListener('pointerdown', (e) => { rs.drag = { x: e.clientX, y: e.clientY, ox: rs.ox, oy: rs.oy }; cv.setPointerCapture && cv.setPointerCapture(e.pointerId); });
+    cv.addEventListener('pointermove', (e) => { if (!rs.drag) return; rs.ox = rs.drag.ox + e.clientX - rs.drag.x; rs.oy = rs.drag.oy + e.clientY - rs.drag.y; drawReal(); });
+    const up = () => { rs.drag = null; };
+    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+    window.addEventListener('resize', () => { if (rs.on) { rs.fit = true; drawReal(); } });
+  })();
+
+  const XR_TE = {
+    look: '📷 ఫోన్‌ని టేబుల్ వైపు చూపి నెమ్మదిగా అటూ ఇటూ కదపండి…',
+    floor: '✅ టేబుల్ దొరికింది: నీలం రింగ్ ఉన్న చోట తాకండి, బోర్డ్ అక్కడ అసలు సైజులో కూర్చుంటుంది.',
+    dark: '💡 వెలుతురు తక్కువగా ఉంది: లైట్ వేయండి.', fast: '🐢 ఫోన్ ఇంకా నెమ్మదిగా కదపండి.',
+    plain: '🔲 టేబుల్ మీద గుర్తులు కనిపించడం లేదు: పుస్తకం / గుడ్డ ఉన్న చోటు చూపండి.', nofloor: '✋ అక్కడ టేబుల్ దొరకలేదు: నీలం రింగ్ కనిపించే చోట తాకండి.'
+  };
+  function startAr() {
+    if (!D) return '';
+    if (rs.on) closeReal();
+    if (tab !== 'd3') showTab('d3'); else open3d();
+    xrS.wait = true; xrS.st = '';
+    xrInfo('📷 AR మొదలవుతోంది…');
+    tools3d();
+    with3d(() => post({ t: 'xr', on: true }));
+    return '📷 కెమెరాతో టేబుల్ మీద చూపిస్తున్నాను.';
+  }
+  function stopAr() { post({ t: 'xr', on: false }); xrLeave(); }
+  function xrEnter() {
+    xrS.on = true; xrS.wait = false;
+    document.body.classList.add('xr'); document.documentElement.classList.add('xr');
+    if (tab !== 'd3') showTab('d3');
+    $('v3d').style.bottom = '0px';
+    with3d(() => {
+      v3d.open(api3d());
+      if (xrS.box) { bx.plan = bx.plan || MK.boxPlan(D, { extra: makeOf().extra, vents: makeOf().vents }); v3d.boxShow(bx.plan, { open: false, see: false }); } else if (!bx.on) v3d.boxShow(null);
+      v3d.xrOn(true);
+    });
+    xrInfo(XR_TE.look);
+    tools3d();
+  }
+  function xrLeave() {
+    const was = xrS.on || xrS.wait;
+    xrS.on = false; xrS.wait = false; xrS.st = '';
+    document.body.classList.remove('xr'); document.documentElement.classList.remove('xr');
+    if (!was) return;
+    if (v3d) { v3d.xrOn(false); v3d.boxShow(bx.on ? bx.plan : null, bx.on ? { open: bx.open, see: bx.see } : null); }
+    if (tab === 'd3') open3d();
+  }
+  function xrInfo(te) {
+    const i = clear($('v3dinfo'));
+    i.appendChild(el('span', 'chip', te));
+    if (xrS.st === 'placed') i.appendChild(el('span', 'chip ok', '📏 ' + D.board.w + ' × ' + D.board.h + ' mm · అసలు సైజు · ఒక వేలితో తిప్పండి'));
+  }
+  function xrSaid(s) {
+    if (!xrS.on) return;
+    if (s === 'nofloor') { xrInfo(XR_TE.nofloor); return; }
+    xrS.st = s;
+    xrInfo(s === 'placed' ? '✅ ఇదే మీ బోర్డ్ అసలు సైజు. ఇంకో చోట తాకితే అక్కడికి జరుగుతుంది.' : XR_TE[s] || XR_TE.look);
+  }
+
+  // ---------------------------------------------------------------- 🎓 the 5-day Telugu class
+
+  function learnDone() { return CL.DAYS.filter((d) => learnSt.d[d.n] && learnSt.d[d.n].done).length; }
+  function learnNext() { const d = CL.DAYS.find((x) => !(learnSt.d[x.n] && learnSt.d[x.n].done)); return d ? d.n : 0; }
+  function learnCard(h) {
+    const c = el('div', 'card tap idea');
+    const n = learnDone(), nx = learnNext();
+    c.appendChild(el('div', 't', '🎓 5 రోజుల తెలుగు PCB క్లాస్ (₹0)'));
+    c.appendChild(el('div', 'muted', n === 5 ? '🏆 5 రోజులూ పూర్తి! పాఠాలు మళ్ళీ చూడొచ్చు.' : n ? '✅ ' + n + '/5 రోజులు అయ్యాయి · తర్వాత: రోజు ' + nx + ' (' + CL.DAYS[nx - 1].title + ')'
+      : 'కరెంట్ నుంచి టంకం, డబ్బా వరకు: రోజుకి 20–30 నిమిషాలు, పాఠాలు 🔊 వినొచ్చు, స్టూడియోలో చేసి చూడటం, చిన్న క్విజ్.'));
+    c.addEventListener('click', () => { lv.day = 0; showTab('learn'); });
+    h.appendChild(c);
+  }
+  function learnTab() {
+    const h = clear($('learn'));
+    if (lv.day) { learnDay(h, CL.DAYS[lv.day - 1]); return; }
+    const top = el('div', 'card');
+    top.appendChild(el('div', 't', '🎓 5 రోజుల్లో PCB: ఐడియా నుంచి చేతిలో పనిచేసే బోర్డ్ వరకు'));
+    top.appendChild(el('div', 'muted', 'ప్రతి రోజు: చిన్న పాఠాలు (🔊 Jarvis చదువుతుంది), స్టూడియోలో చేసి చూడటం, 4 ప్రశ్నల క్విజ్. అంతా ఫోన్‌లోనే, ₹0. రోజుకి 20–30 నిమిషాలు.'));
+    const dots = el('div', 'dots');
+    CL.DAYS.forEach((d) => dots.appendChild(el('span', learnSt.d[d.n] && learnSt.d[d.n].done ? 'dot on' : 'dot', String(d.n))));
+    top.appendChild(dots);
+    h.appendChild(top);
+    const nx = learnNext();
+    CL.DAYS.forEach((d) => {
+      const st = learnSt.d[d.n] || {};
+      const c = el('div', 'card tap lday' + (st.done ? ' done' : d.n === nx ? ' next' : ''));
+      c.appendChild(el('div', 't', d.emoji + ' రోజు ' + d.n + ': ' + d.title));
+      c.appendChild(el('div', 'muted', d.goal));
+      c.appendChild(el('div', st.done ? 'okc' : 'cy', st.done ? '✅ పూర్తి · క్విజ్ ' + (st.score | 0) + '/' + d.quiz.length : d.n === nx ? '▶️ ఇప్పుడు ఇది' : ''));
+      c.addEventListener('click', () => { lv.day = d.n; learnTab(); $('learn').scrollTop = 0; });
+      h.appendChild(c);
+    });
+    if (learnDone() === 5) {
+      const c = el('div', 'card');
+      c.appendChild(el('div', 'okc', '🏆 5 రోజులూ పూర్తి!'));
+      c.appendChild(el('div', 'muted', 'ఇప్పుడు 📚 బోర్డ్‌లు లోని 💡 ఐడియా కార్డ్‌లో మీ సొంత బోర్డ్ చెప్పి చూడండి.'));
+      h.appendChild(c);
+    }
+  }
+  function learnDay(h, day) {
+    const r0 = el('div', 'row');
+    r0.appendChild(btn('◀️ రోజులు', 'small', () => { lv.day = 0; hush(); learnTab(); }));
+    h.appendChild(r0);
+    h.appendChild(el('h2', null, day.emoji + ' రోజు ' + day.n + ': ' + day.title));
+    h.appendChild(el('div', 'muted', day.goal));
+    day.parts.forEach((p) => {
+      const c = el('div', 'card lp');
+      const hr = el('div', 'row');
+      hr.appendChild(el('div', 'k t', p.h));
+      hr.appendChild(speakBtn(CL.said(p)));
+      c.appendChild(hr);
+      p.t.forEach((x) => c.appendChild(el('p', null, x)));
+      h.appendChild(c);
+    });
+    h.appendChild(el('h3', null, '🛠️ చేసి చూడండి'));
+    day.tasks.forEach((tk) => {
+      const c = el('div', 'card');
+      c.appendChild(el('div', null, tk.t));
+      const r = el('div', 'row');
+      r.appendChild(btn(tk.b, 'small', () => learnGo(tk.go)));
+      c.appendChild(r);
+      h.appendChild(c);
+    });
+    h.appendChild(el('h3', null, '❓ క్విజ్ (' + day.quiz.length + ' ప్రశ్నలు)'));
+    const ans = lv.ans[day.n] || (lv.ans[day.n] = {});
+    day.quiz.forEach((q, qi) => {
+      const c = el('div', 'card');
+      c.appendChild(el('div', 't', (qi + 1) + '. ' + q.q));
+      const rot = (day.n * 2 + qi) % q.a.length, order = q.a.map((_, i) => (i + rot) % q.a.length);
+      const picked = ans[qi];
+      order.forEach((oi) => {
+        const b = btn(q.a[oi], 'qopt' + (picked != null ? (oi === 0 ? ' ok' : oi === picked ? ' no' : '') : ''), () => {
+          if (ans[qi] != null) return;
+          ans[qi] = oi;
+          const y = $('learn').scrollTop;
+          learnTab();
+          $('learn').scrollTop = y;
+        });
+        c.appendChild(b);
+      });
+      if (picked != null) c.appendChild(el('div', picked === 0 ? 'okc gl' : 'err gl', (picked === 0 ? '✅ సరైనది. ' : '❌ సరైనది: ' + q.a[0] + '. ') + q.why));
+      h.appendChild(c);
+    });
+    const got = day.quiz.filter((q, qi) => ans[qi] === 0).length, all = day.quiz.every((q, qi) => ans[qi] != null);
+    const st = learnSt.d[day.n] || {};
+    const c = el('div', 'card');
+    const pass = Math.ceil(day.quiz.length * 0.75);
+    if (all && got < pass) {
+      c.appendChild(el('div', 'warnc', '📝 క్విజ్: ' + got + '/' + day.quiz.length + ' సరైనవి. ' + pass + ' సరైతే రోజు పూర్తి: పైన పాఠాలు ఇంకోసారి చదివి (🔊 వినొచ్చు) క్విజ్ మళ్ళీ చేయండి.'));
+      const r = el('div', 'row');
+      r.appendChild(btn('🔁 క్విజ్ మళ్ళీ', 'main', () => { lv.ans[day.n] = {}; learnTab(); }));
+      c.appendChild(r);
+    } else if (all) {
+      c.appendChild(el('div', got === day.quiz.length ? 'okc' : 'cy', '📝 క్విజ్: ' + got + '/' + day.quiz.length + ' సరైనవి.'));
+      const r = el('div', 'row');
+      r.appendChild(btn('✅ రోజు ' + day.n + ' పూర్తి', 'main', () => {
+        learnSt.d[day.n] = { done: true, score: Math.max(got, st.score | 0), at: Date.now() };
+        post({ t: 'learn', v: learnSt });
+        hush();
+        toast(day.n < 5 ? '✅ రోజు ' + day.n + ' పూర్తి! రేపు రోజు ' + (day.n + 1) + '.' : '🏆 5 రోజులూ పూర్తి!', 3500);
+        lv.day = 0; learnTab(); $('learn').scrollTop = 0;
+      }));
+      r.appendChild(btn('🔁 క్విజ్ మళ్ళీ', 'small', () => { lv.ans[day.n] = {}; learnTab(); }));
+      c.appendChild(r);
+    } else c.appendChild(el('div', 'muted', 'అన్ని ప్రశ్నలకీ జవాబు ఇచ్చాక "రోజు పూర్తి" బటన్ వస్తుంది.' + (st.done ? ' (ఈ రోజు ఇంతకు ముందే పూర్తి ✅)' : '')));
+    h.appendChild(c);
+  }
+  /** A task's button: the ready board (his open copy, his last copy, or a new copy), then the tab / guide / box / real size. */
+  function learnGo(go) {
+    hush();
+    if (go.k === 'tab') { showTab(go.tab); return; }
+    const then = () => {
+      if (go.k === 'proj') showTab(go.tab);
+      else if (go.k === 'guide') startGuide();
+      else if (go.k === 'box') startBox();
+      else if (go.k === 'real') openReal();
+    };
+    if (D && D.proj === go.id) { then(); return; }
+    const mine = designs.filter((q) => q.proj === go.id).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
+    if (mine) { afterOpen = then; post({ t: 'open', id: mine.id }); return; }
+    const pr = J.PROJECTS.find((q) => q.id === go.id);
+    open(J.make(go.id));
+    toast('✅ ' + (pr ? pr.te : '') + ': మీ కాపీ తెరిచాను (📂 నా బోర్డ్‌లు లో ఉంటుంది).', 3000);
+    then();
+  }
+
   window.__pcb = { open, get D() { return D; }, get check() { return check; }, showTab, reroute, changed, onJarvis, texture, partSheet: (ref) => partSheet(D && D.parts.find((q) => q.ref === ref)), pv, sv,
-    ai, idea, editSheet, heard, lay: () => schLayout(), sim, simv, simBuild, simReport, simControls, simSupply, simPart, verSheet, verSnap, verDiff, kicadFiles: () => KI.files(D, schLayout()) };
+    ai, idea, editSheet, heard, lay: () => schLayout(), sim, simv, simBuild, simReport, simControls, simSupply, simPart, verSheet, verSnap, verDiff, kicadFiles: () => KI.files(D, schLayout()),
+    sg, bx, rs, xrS, lv, startGuide, stopGuide, guideGo, guideWords, startBox, stopBox, boxTaller, boxZip, openReal, closeReal, drawReal, startAr, stopAr, xrEnter, xrLeave, xrSaid,
+    learnTab, learnGo, get learnSt() { return learnSt; }, set scr(v) { scr = v; }, get v3d() { return v3d; } };
 })();

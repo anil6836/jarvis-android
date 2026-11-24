@@ -112,6 +112,33 @@
   .ver.named { border-color: var(--cyan2); }
   .reading { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 14px; margin: 6px 0; }
   .reading .k { color: var(--muted); }
+  /* Build 3B: 🔧 guide card, 📦 box card, 📏 1:1, 📷 AR, 🎓 class */
+  #guide, #boxcard { position: absolute; left: 8px; right: 8px; bottom: 58px; max-height: 47%; overflow-y: auto; display: none; z-index: 3;
+                     background: rgba(14,20,28,.96); border: 1px solid var(--cyan2); border-radius: 14px; padding: 8px 10px; }
+  #guide.on, #boxcard.on { display: block; }
+  .gh { display: flex; gap: 8px; align-items: baseline; }
+  .gn { flex: none; color: var(--cyan); font-weight: 700; font-size: 14px; }
+  .gt { font-weight: 600; line-height: 1.45; }
+  .gbar { height: 4px; background: var(--line); border-radius: 2px; margin: 6px 0 4px; overflow: hidden; }
+  .gbar i { display: block; height: 100%; background: var(--cyan); }
+  .gl { font-size: 13.5px; line-height: 1.55; padding: 3px 0; }
+  #real { position: absolute; inset: 0; z-index: 8; background: #05070a; display: none; }
+  #real.on { display: block; }
+  #real canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+  #rtop { position: absolute; left: 0; right: 0; top: 0; height: 46px; display: flex; align-items: center; gap: 10px; padding: 0 8px; background: var(--panel); }
+  #rtop .rname { flex: 1; min-width: 0; font-weight: 600; } #rtop .rname small { display: block; font-weight: 400; font-size: 12px; color: var(--muted); }
+  #rbot { position: absolute; left: 8px; right: 8px; bottom: 8px; background: rgba(14,20,28,.95); border: 1px solid var(--line); border-radius: 14px; padding: 8px 10px; }
+  html.xr, html.xr body { background: transparent !important; }
+  html.xr #top, html.xr #tabs, html.xr #aibar, html.xr #guide, html.xr #boxcard, html.xr #toast:empty { display: none !important; }
+  html.xr main { top: 0; }
+  .lday .t, .lp .t, .card > .t { font-weight: 600; }
+  .lday.done { border-color: rgba(107,227,164,.55); } .lday.next { border-color: var(--cyan2); }
+  .lp p { margin: 6px 0; line-height: 1.65; font-size: 14.5px; }
+  .dots { display: flex; gap: 6px; margin-top: 8px; }
+  .dot { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; font-size: 12.5px; color: var(--muted); }
+  .dot.on { background: var(--green); border-color: var(--green); color: #04131a; font-weight: 700; }
+  .btn.qopt { display: block; width: 100%; text-align: left; margin: 6px 0 0; line-height: 1.45; }
+  .btn.qopt.ok { border-color: var(--green); color: var(--green); } .btn.qopt.no { border-color: var(--red); color: var(--red); }
 </style>
 </head>
 <body>
@@ -125,6 +152,7 @@
   <span class="tab" data-tab="d3">🧊 3D</span>
   <span class="tab" data-tab="fab">🏭 ఫ్యాక్టరీ</span>
   <span class="tab" data-tab="calc">🧮 లెక్కలు</span>
+  <span class="tab" data-tab="learn">🎓 క్లాస్</span>
 </div>
 <main>
   <section id="home" class="scroll on"></section>
@@ -132,12 +160,14 @@
   <section id="pcb"><canvas class="view" id="pcbcv"></canvas><div class="chips" id="pcbchips"></div><div id="sel"></div><div class="tools" id="pcbtools"></div></section>
   <section id="drc" class="scroll"></section>
   <section id="sim"><canvas class="view" id="simcv"></canvas><div class="chips" id="simchips"></div><div class="tools" id="simtools"></div></section>
-  <section id="d3"><div id="v3d"></div><div id="v3dinfo"></div><div class="tools" id="d3tools"></div></section>
+  <section id="d3"><div id="v3d"></div><div id="v3dinfo"></div><div id="guide"></div><div id="boxcard"></div><div class="tools" id="d3tools"></div></section>
   <section id="fab" class="scroll"></section>
   <section id="calc" class="scroll"></section>
+  <section id="learn" class="scroll"></section>
   <div id="sheet"></div>
   <div id="aibar"></div>
 </main>
+<div id="real"><canvas id="realcv"></canvas><div id="rtop"></div><div id="rbot"></div></div>
 <div id="toast"></div>
 <script src="pcbparts.js"></script>
 <script src="pcbcore.js"></script>
@@ -147,6 +177,8 @@
 <script src="pcbai.js"></script>
 <script src="pcbsim.js"></script>
 <script src="pcbkicad.js"></script>
+<script src="pcbmake.js"></script>
+<script src="pcbclass.js"></script>
 <script src="pcb.js"></script>
 </body>
 </html>

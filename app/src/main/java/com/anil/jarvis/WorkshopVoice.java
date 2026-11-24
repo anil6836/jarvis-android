@@ -224,6 +224,22 @@ final class WorkshopVoice implements VoiceIO.Listener, Tools.Host {
         else main.post(this::onSpeakDone);
     }
 
+    /**
+     * 🔊 (PCB studio, Build 3B) he tapped "read this" or asked for the next soldering step by voice: said in his chosen voice even
+     * when spoken replies are off (his own ask); nothing is heard after it.
+     */
+    void readAloud(String text) {
+        if (stopped || text == null || text.trim().isEmpty()) return;
+        if (CallControl.busyWithCall()) { idle(); return; }
+        ensure();
+        main.removeCallbacks(listenR);
+        if (voice.listening) voice.cancelListening();
+        hold();
+        followUp = false;
+        state(SPEAKING);
+        voice.speak(Otp.spoken(text), p.speechRate());
+    }
+
     @Override public void onSpeakStart() { hold(); state(SPEAKING); } // (the wake word must not hear Jarvis's own voice)
 
     @Override public void onSpeakDone() {

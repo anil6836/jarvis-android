@@ -367,6 +367,12 @@
     if (/^\s*(undo|వెనక్కి|ముందులా|ముందున్నట్టు|ముందు\s*ఉన్నట్టు)( చేయి| చెయ్)?\s*$/.test(s)) return { k: 'undo' };
     const tabs = [['sch', /(స్కీమాటిక్|schematic|సర్క్యూట్\s*బొమ్మ)/], ['d3', /(3d|త్రీడీ|త్రీ\s*డీ)/], ['drc', /(చెక్|\bdrc\b|తప్పులు)/], ['fab', /(ఫ్యాక్టరీ|gerber|జెర్బర్|factory|జిప్)/],
       ['calc', /(లెక్కలు|calculator|కాలిక్యులేటర్)/], ['pcb', /(\bpcb\b|పీసీబీ)/], ['home', /(రెడీ\s*బోర్డ్|బోర్డ్‌లు|బోర్డ్ లిస్ట్|my boards|నా బోర్డ్)/]];
+    // Build 3B: 🎓 the class, 🔧 the soldering guide, 📦 the 3D-print box, 📷 AR / 📏 real size (₹0)
+    if (/(క్లాస్|\bclass\b|పాఠం|పాఠాలు|lesson|నేర్చుకో)/.test(s)) return { k: 'tab', tab: 'learn' };
+    if (/(టంకం|సోల్డర్|సోల్డరింగ్|solder)/.test(s)) return { k: 'make', what: 'guide' };
+    if (/(డబ్బా|బాక్స్|enclosure|ఎన్‌క్లోజర్|ఎన్క్లోజర్|\bstl\b|3d\s*ప్రింట్|త్రీడీ\s*ప్రింట్|3d\s*print)/.test(s)) return { k: 'make', what: 'box' };
+    if (/(\bar\b|ఏఆర్|టేబుల్\s*మీద)/.test(s)) return { k: 'make', what: 'ar' };
+    if (/(అసలు\s*సైజు|నిజమైన\s*సైజు|real\s*size|ఒరిజినల్\s*సైజు|\b1\s*:\s*1\b)/.test(s)) return { k: 'make', what: 'real' };
     if (VERB_SHOW.test(s)) for (const t of tabs) if (t[1].test(s)) return { k: 'tab', tab: t[0] };
     // Build 3A: ⚡ the board running on the phone, 🕑 the kept versions (₹0)
     if (/(సిమ్యులేషన్|సిములేషన్|simulation|simulate|నడిపించు|నడిపించి\s*చూ|నడిపి\s*చూ)/.test(s)) return { k: 'tab', tab: 'sim' };
