@@ -61,7 +61,7 @@ public class PcbActivity extends Activity {
     private static final String HOST = "appassets.androidplatform.net";
     private static final String PATH = "/assets/pcb/";
     private static final String PAGE = "https://" + HOST + PATH + "pcb.html";
-    private static final Set<String> FILES = new HashSet<>(Arrays.asList("pcb.html", "pcb.js", "pcbparts.js", "pcbcore.js", "pcbfab.js", "pcbprojects.js", "pcbbuy.js", "pcbai.js", "pcb3d.js"));
+    private static final Set<String> FILES = new HashSet<>(Arrays.asList("pcb.html", "pcb.js", "pcbparts.js", "pcbcore.js", "pcbfab.js", "pcbprojects.js", "pcbbuy.js", "pcbai.js", "pcb3d.js", "pcbsim.js", "pcbkicad.js"));
     /** 🧊 The 3D view uses the workshop's bundled three.js (one copy in the app), served here under the studio's own path. */
     private static final Set<String> SHARED = new HashSet<>(Arrays.asList("three.module.min.js", "OrbitControls.js"));
     /** The factories' own sites (opened in his browser only when he taps 🌐; nothing is sent to them by Jarvis). */
@@ -82,7 +82,7 @@ public class PcbActivity extends Activity {
         SEARCH.put("probots", "https://probots.co.in/catalogsearch/result/?q=");
     }
     private static final Set<String> SHOP_HOSTS = new HashSet<>(Arrays.asList("robu.in", "robocraze.com"));
-    private static final Set<String> TABS = new HashSet<>(Arrays.asList("home", "idea", "sch", "pcb", "drc", "d3", "fab", "calc"));
+    private static final Set<String> TABS = new HashSet<>(Arrays.asList("home", "idea", "sch", "pcb", "drc", "sim", "d3", "fab", "calc"));
     private static final Set<String> KINDS = new HashSet<>(Arrays.asList(Pcb.NEW, Pcb.PHOTO, Pcb.EDIT, Pcb.HELP));
     private static final Set<String> PROJECTS = new HashSet<>(Arrays.asList("flasher", "usb", "soil", "esp32", "irboard"));
 
@@ -93,6 +93,7 @@ public class PcbActivity extends Activity {
     private final List<String> outbox = new ArrayList<>();
     private boolean destroyed;
     private Coder.Made lastZip;
+    private boolean lastKicad; // the last zip: KiCad files for the laptop (else the factory's Gerber files)
     private Runnable backTimeout;
     private Prefs p;
     private boolean front;
@@ -370,6 +371,7 @@ public class PcbActivity extends Activity {
                 ui.post(() -> {
                     if (destroyed) return;
                     lastZip = made;
+                    lastKicad = fileName.contains("-kicad-");
                     try { send(json("saved").put("where", made.where)); } catch (Exception ignored) {}
                 });
             } catch (Exception e) {
@@ -384,7 +386,7 @@ public class PcbActivity extends Activity {
         if (m.uri == null) { say("ఫైల్ ఇక్కడ ఉంది: " + m.where); return; }
         try {
             Intent s = new Intent(Intent.ACTION_SEND).setType("application/zip").putExtra(Intent.EXTRA_STREAM, m.uri)
-                    .putExtra(Intent.EXTRA_TEXT, "🔌 PCB (Gerber) ఫైల్స్").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    .putExtra(Intent.EXTRA_TEXT, lastKicad ? "💻 KiCad ఫైల్స్ (PCB + స్కీమాటిక్)" : "🔌 PCB (Gerber) ఫైల్స్").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             startActivity(Intent.createChooser(s, "ఎక్కడికి పంపాలి?"));
         } catch (Exception e) {
             say("పంపలేకపోయాను: " + e.getMessage());

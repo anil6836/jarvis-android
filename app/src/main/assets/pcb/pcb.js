@@ -4,9 +4,11 @@
 // no network: designs are data, every word goes in with textContent. Jarvis (the app) talks to this page through one port.
 // Build 2 (24 Nov): 💡 idea / voice / a sketch photo → a board by the studio's AI (Jarvis asks it; the cost first, his tap or ✋ 3 s),
 // 🗣️ his words change the board (small ones here, ₹0), 🤖 help for the checks. The AI's answer is data only (pcbai.js).
+// Build 3A (24 Nov): ⚡ నడిపించు (the board running on the phone before ordering: pcbsim.js, ₹0), 🕑 versions kept inside the
+// design, 💻 KiCad files for the laptop (pcbkicad.js). All our own code, offline.
 'use strict';
 (function () {
-  const P = window.PcbParts, C = window.PcbCore, F = window.PcbFab, J = window.PcbProjects, A = window.PcbAI;
+  const P = window.PcbParts, C = window.PcbCore, F = window.PcbFab, J = window.PcbProjects, A = window.PcbAI, SIM = window.PcbSim, KI = window.PcbKiCad;
   const $ = (id) => document.getElementById(id);
   const FONT = '"Noto Sans Telugu", system-ui, "Noto Color Emoji", sans-serif';
 
@@ -42,7 +44,8 @@
   let tab = 'home';
   let undo = [];
   let saveT = 0, calcT = 0;
-  let saved = null;             // the last .zip saved: {where}
+  let saved = null;             // the last .zip saved: {where, kind: 'gerber' | 'kicad'}
+  let zipKind = 'gerber';
   let autoRoute = true;
   const pv = { s: 8, ox: 20, oy: 20, fit: true, layer: 'both', real: false, sel: null };
   const sv = { s: 1, ox: 20, oy: 20, fit: true, sel: null, vals: true };
@@ -54,6 +57,7 @@
     if (!D) return;
     M = C.model(D);
     silkCache = null;
+    sim.rep = null; // (⚡ runs the changed board again when asked)
     const g = gndName();
     fills.B = g && D.pour.B ? C.pour(D, 1, g, M) : null;
     fills.F = g && D.pour.F ? C.pour(D, 0, g, M) : null;
@@ -89,6 +93,7 @@
     pv.fit = true; sv.fit = true; pv.sel = null; sv.sel = null;
     if (D.parts.some((p) => p.lib === 'esp32')) D.parts.forEach((p) => { if (p.lib === 'esp32') p.fp = 'ESP32_DEVKIT30_' + Math.round(D.board.rows * 100); });
     if (!D.tracks.length && how !== 'load') reroute(true);
+    if (!(D.vers && D.vers.length)) verSnap(how === 'load' ? '📂 తెరిచినప్పుడు ఉన్నది' : '📦 మొదటి రూపం');
     changed(how);
   }
   function reroute(quiet) {
@@ -110,7 +115,7 @@
         break;
       case 'designs': designs = Array.isArray(m.list) ? m.list : []; if (tab === 'home') myDesigns(); break;
       case 'design': if (m.d && m.d.parts) { open(m.d, 'load'); showTab('pcb'); } break;
-      case 'saved': saved = { where: String(m.where || '') }; if (tab === 'fab') fab(); toast('💾 సేవ్ అయింది: ' + saved.where, 4000); break;
+      case 'saved': saved = { where: String(m.where || ''), kind: zipKind }; if (tab === 'fab') fab(); toast('💾 సేవ్ అయింది: ' + saved.where, 4000); break;
       case 'say': toast(String(m.s || ''), 4000); break;
       case 'tab': if (m.tab === 'idea') { showTab('home'); toIdea(); } else if (TABS.indexOf(m.tab) >= 0) showTab(m.tab); break;
       // ---- 🤖 the studio's AI (asked by Jarvis; this page never sees a key or the network)
@@ -152,7 +157,7 @@
 
   // ---------------------------------------------------------------- tabs
 
-  const TABS = ['home', 'sch', 'pcb', 'drc', 'd3', 'fab', 'calc'];
+  const TABS = ['home', 'sch', 'pcb', 'drc', 'sim', 'd3', 'fab', 'calc'];
   document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
   $('close').addEventListener('click', () => post({ t: 'close' }));
   $('name').addEventListener('click', () => { if (D) renameSheet(); });
@@ -167,14 +172,15 @@
     else if (name === 'sch') { sizeCv($('schcv')); schTools(); redraw(); }
     else if (name === 'pcb') { sizeCv($('pcbcv')); pcbTools(); selBar(); redraw(); }
     else if (name === 'drc') drcList();
+    else if (name === 'sim') { sizeCv($('simcv')); simBuild(); simTools(); drawSim(); simGo(); }
     else if (name === 'd3') open3d();
     else if (name === 'fab') fab();
     else if (name === 'calc') calc();
     const on = document.querySelector('.tab.on');
     if (on && on.scrollIntoView) on.scrollIntoView({ inline: 'nearest', block: 'nearest' });
   }
-  function redraw() { if (tab === 'pcb') drawPcb(); else if (tab === 'sch') drawSch(); else if (tab === 'drc') drcList(); else if (tab === 'd3' && v3d) v3d.update(); }
-  window.addEventListener('resize', () => { if (tab === 'pcb') { sizeCv($('pcbcv')); pv.fit = true; drawPcb(); } else if (tab === 'sch') { sizeCv($('schcv')); sv.fit = true; drawSch(); } });
+  function redraw() { if (tab === 'pcb') drawPcb(); else if (tab === 'sch') drawSch(); else if (tab === 'drc') drcList(); else if (tab === 'sim') { simBuild(); simTools(); drawSim(); simGo(); } else if (tab === 'd3' && v3d) v3d.update(); }
+  window.addEventListener('resize', () => { if (tab === 'pcb') { sizeCv($('pcbcv')); pv.fit = true; drawPcb(); } else if (tab === 'sch') { sizeCv($('schcv')); sv.fit = true; drawSch(); } else if (tab === 'sim') { sizeCv($('simcv')); simv.fit = true; drawSim(); } });
 
   function sizeCv(cv) {
     const dpr = window.devicePixelRatio || 1, w = cv.clientWidth || 360, h = cv.clientHeight || 500;
@@ -209,6 +215,10 @@
       cur.appendChild(el('div', null, '▶️ ఇప్పుడు తెరిచి ఉంది: ' + D.name));
       cur.appendChild(el('div', 'muted', D.board.w + ' × ' + D.board.h + ' mm · ' + (check && check.errors ? '❌ ' + check.errors + ' తప్పులు' : '✅ ఆర్డర్‌కి సిద్ధం')));
       cur.addEventListener('click', () => showTab('pcb'));
+      const cr = el('div', 'row');
+      cr.appendChild(btn('⚡ నడిపించు', 'small', () => showTab('sim')));
+      cr.appendChild(btn('🕑 వెర్షన్లు (' + ((D.vers || []).length) + ')', 'small', verSheet));
+      cur.appendChild(cr);
       h.appendChild(cur);
     }
     h.appendChild(el('h3', null, '📚 రెడీ బోర్డ్‌లు (₹0, మీ కాపీగా తెరుచుకుంటాయి)'));
@@ -241,7 +251,7 @@
     myDesigns();
     const soon = el('div', 'card soon');
     soon.appendChild(el('div', null, '🔜 త్వరలో (తర్వాతి బిల్డ్‌లలో)'));
-    soon.appendChild(el('div', 'muted', '⚡ PCB కి ముందు సిమ్యులేషన్ · 📏 AR లో అసలు సైజు · 🔧 టంకం గైడ్ · 💻 KiCad ఫైల్ · 🎓 5 రోజుల తెలుగు క్లాస్ · 📦 బోర్డ్ డబ్బా 3D · 🕑 పాత వెర్షన్లు'));
+    soon.appendChild(el('div', 'muted', '📏 AR లో అసలు సైజు · 🔧 టంకం గైడ్ · 🎓 5 రోజుల తెలుగు క్లాస్ · 📦 బోర్డ్ డబ్బా 3D'));
     h.appendChild(soon);
   }
   /** His saved boards (only this part is drawn again when the list changes: what he is typing above stays). */
@@ -413,6 +423,7 @@
     }));
     t.appendChild(tool('✏️ మార్పు', '', () => editSheet('')));
     t.appendChild(tool('↩️', '', back1));
+    t.appendChild(tool('🕑', '', verSheet));
     t.appendChild(tool('🔍', '', () => { pv.fit = true; drawPcb(); }));
   }
   function drawPcb() {
@@ -846,6 +857,7 @@
         let best = null;
         inT.forEach((a) => left.forEach((b, bi) => { const d = Math.abs(ends[a][0] - ends[b][0]) + Math.abs(ends[a][1] - ends[b][1]); if (!best || d < best.d) best = { d, a, b, bi }; }));
         const pts = route(ends[best.a], ends[best.b], name);
+        pts.net = name;
         wires.push(pts);
         for (let i = 0; i + 3 < pts.length; i += 2) {
           segAll.push([pts[i], pts[i + 1], pts[i + 2], pts[i + 3], name]);
@@ -910,12 +922,20 @@
     const t = clear($('schtools'));
     t.appendChild(tool(sv.vals ? '🏷️ విలువలు ✓' : '🏷️ విలువలు', sv.vals ? 'on' : '', () => { sv.vals = !sv.vals; schTools(); drawSch(); }));
     t.appendChild(tool('✏️ మార్పు', '', () => editSheet('')));
+    t.appendChild(tool('⚡ నడిపించు', '', () => showTab('sim')));
     t.appendChild(tool('🔍', '', () => { sv.fit = true; drawSch(); }));
     t.appendChild(tool('🧩 PCB చూడు', '', () => showTab('pcb')));
+    t.appendChild(tool('🕑', '', verSheet));
   }
   function drawSch() {
+    drawSchOn($('schcv'), sv, null);
+    const c = clear($('schchips'));
+    c.appendChild(el('span', 'chip', '👆 భాగం మీద నొక్కితే అది ఏమిటో తెలుగులో'));
+  }
+  /** The drawing on a canvas. ov: a ⚡ run's readings ({v: net → volts, p: ref → reading, sev: ref → 'err' | 'warn', glow: ref → 0..1}) or null. */
+  function drawSchOn(cv, sv, ov) {
     if (!D) return;
-    const cv = $('schcv'), { ctx, w, h } = sizeCv(cv), lay = schLayout();
+    const { ctx, w, h } = sizeCv(cv), lay = schLayout();
     let bx = [1e9, 1e9, -1e9, -1e9];
     lay.P2.forEach((pl) => { bx = [Math.min(bx[0], pl.box[0] - 30), Math.min(bx[1], pl.box[1] - 40), Math.max(bx[2], pl.box[2] + 30), Math.max(bx[3], pl.box[3] + 40)]; });
     if (sv.fit) {
@@ -928,9 +948,15 @@
     const gs = 20 * s;
     if (gs > 6) for (let x = ((sv.ox % gs) + gs) % gs; x < w; x += gs) for (let y = ((sv.oy % gs) + gs) % gs; y < h; y += gs) ctx.fillRect(x - 0.5, y - 0.5, 1, 1);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    // wires
-    ctx.strokeStyle = '#6be3a4'; ctx.lineWidth = Math.max(1, 1.6 * s);
-    lay.wires.forEach((q) => { ctx.beginPath(); ctx.moveTo(X(q[0]), Y(q[1])); for (let i = 2; i + 1 < q.length; i += 2) ctx.lineTo(X(q[i]), Y(q[i + 1])); ctx.stroke(); });
+    // wires (⚡: coloured by their volts)
+    ctx.strokeStyle = '#6be3a4'; ctx.lineWidth = Math.max(1, (ov ? 2.2 : 1.6) * s);
+    lay.wires.forEach((q) => {
+      const unknown = ov && typeof ov.v[q.net] !== 'number'; // (⚡: a wire that only goes out to a module / cable)
+      if (ov) ctx.strokeStyle = unknown ? '#7d8f99' : voltColour(ov.v[q.net], ov.vmax);
+      if (unknown) ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(X(q[0]), Y(q[1])); for (let i = 2; i + 1 < q.length; i += 2) ctx.lineTo(X(q[i]), Y(q[i + 1])); ctx.stroke();
+      if (unknown) ctx.setLineDash([]);
+    });
     ctx.fillStyle = '#6be3a4';
     lay.dots.forEach((e) => { ctx.beginPath(); ctx.arc(X(e[0]), Y(e[1]), Math.max(2, 3.2 * s), 0, Math.PI * 2); ctx.fill(); });
     // power and ground flags
@@ -944,11 +970,31 @@
       else { ctx.moveTo(X(ex), Y(ey)); ctx.lineTo(X(ex), Y(ey - 6)); ctx.moveTo(X(ex - 8), Y(ey - 6)); ctx.lineTo(X(ex + 8), Y(ey - 6)); }
       ctx.stroke();
       if (!f.gnd) { ctx.fillStyle = '#ffc861'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText(f.n, X(ex), Y(ey - 8)); }
+      if (ov && !f.gnd && typeof ov.v[f.n] === 'number') { ctx.fillStyle = voltColour(ov.v[f.n], ov.vmax); ctx.font = '600 ' + Math.max(8, 9.5 * s) + 'px ' + FONT; ctx.fillText(SIM.fmtV(ov.v[f.n]), X(ex), Y(ey - 20)); ctx.font = Math.max(9, 11 * s) + 'px ' + FONT; }
     });
     // net names
     ctx.fillStyle = 'rgba(107,227,164,.75)'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = Math.max(8, 9.5 * s) + 'px ' + FONT;
-    lay.labels.forEach((l) => ctx.fillText(l.t, X((l.box[0] + l.box[2]) / 2), Y((l.box[1] + l.box[3]) / 2)));
+    lay.labels.forEach((l) => {
+      if (ov && typeof ov.v[l.t] === 'number') { ctx.fillStyle = voltColour(ov.v[l.t], ov.vmax); ctx.fillText(SIM.fmtV(ov.v[l.t]), X((l.box[0] + l.box[2]) / 2), Y((l.box[1] + l.box[3]) / 2)); ctx.fillStyle = 'rgba(107,227,164,.75)'; }
+      else ctx.fillText(l.t, X((l.box[0] + l.box[2]) / 2), Y((l.box[1] + l.box[3]) / 2));
+    });
+    // ⚡ lit LEDs glow, a sounding buzzer shows 🔊, a part with a problem gets a ring
+    if (ov) D.parts.forEach((pt) => {
+      const pl = lay.P2.get(pt.ref), g = ov.glow[pt.ref], sev = ov.sev[pt.ref];
+      if (!pl) return;
+      if (g > 0.01) {
+        const c = pl.tr(0, 0), rr = Math.max(10, 26 * s), col = GLOW[ov.col[pt.ref]] || GLOW.red;
+        const gr = ctx.createRadialGradient(X(c[0]), Y(c[1]), 0, X(c[0]), Y(c[1]), rr);
+        gr.addColorStop(0, 'rgba(' + col + ',' + (0.25 + 0.6 * g).toFixed(2) + ')'); gr.addColorStop(1, 'rgba(' + col + ',0)');
+        ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(X(c[0]), Y(c[1]), rr, 0, Math.PI * 2); ctx.fill();
+      }
+      if (ov.p[pt.ref] && ov.p[pt.ref].kind === 'buzzer' && ov.p[pt.ref].on) { ctx.font = Math.max(12, 16 * s) + 'px ' + FONT; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; ctx.fillText('🔊', X(pl.box[2]) + 2, Y(pl.box[1]) + 4); }
+      if (sev === 'err' || sev === 'warn') {
+        ctx.strokeStyle = sev === 'err' ? '#ff6b6b' : '#ffc861'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
+        const b = pl.box; ctx.strokeRect(X(b[0] - 6), Y(b[1] - 6), (b[2] - b[0] + 12) * s, (b[3] - b[1] + 12) * s); ctx.setLineDash([]);
+      }
+    });
     // symbols
     D.parts.forEach((pt) => {
       const pl = lay.P2.get(pt.ref), on = sv.sel === pt.ref;
@@ -978,8 +1024,16 @@
       ctx.fillText(pt.ref, X(at.x), Y(at.y - (sv.vals && pt.val ? 6 : 0)));
       if (sv.vals && pt.val) { ctx.font = Math.max(8, 9.5 * s) + 'px ' + FONT; ctx.fillStyle = on ? '#74e4ff' : '#88a5b3'; ctx.fillText(pt.val, X(at.x), Y(at.y + 6)); }
     });
-    const c = clear($('schchips'));
-    c.appendChild(el('span', 'chip', '👆 భాగం మీద నొక్కితే అది ఏమిటో తెలుగులో'));
+  }
+  const GLOW = { red: '255,70,70', green: '80,255,140', blue: '90,160,255', yellow: '255,225,70', orange: '255,160,60', white: '255,255,255', ir: '190,110,255' };
+  /** 0 V grey-blue, then green → amber → red as the volts go up (to the highest supply on the board). */
+  function voltColour(v, vmax) {
+    if (typeof v !== 'number' || !isFinite(v)) return '#6be3a4';
+    if (Math.abs(v) < 0.05) return '#58748a';
+    const f = Math.max(0, Math.min(1, v / (vmax || 12)));
+    const mix = (a, b, t) => a.map((x, i) => Math.round(x + (b[i] - x) * t));
+    const c = f < 0.5 ? mix([107, 227, 164], [255, 200, 97], f / 0.5) : mix([255, 200, 97], [255, 107, 107], (f - 0.5) / 0.5);
+    return 'rgb(' + c.join(',') + ')';
   }
   gestures($('schcv'), sv, {
     redraw: () => drawSch(),
@@ -1219,7 +1273,11 @@
     const ver = check.list.filter((f) => f.code === 'verify');
     const ck = [[!check.errors, '✅ చెక్ లో తప్పులు లేవు'], [true, '📄 భాగాల జాబితా (కింద) చూసి భాగాలు కొనండి'],
       [!ver.length, ver.length ? '📏 ఈ భాగాల కొలతలు మీరు కొనేదానితో స్కేల్‌తో సరిచూడండి:' : '📏 కొలిచి చూడాల్సిన భాగాలు లేవు']];
-    ck.forEach((c) => h.appendChild(el('div', 'step', (c[0] ? '' : '👉 ') + c[1])));
+    const sl = simLine();
+    ck.forEach((c, i) => {
+      h.appendChild(el('div', 'step', (c[0] ? '' : '👉 ') + c[1]));
+      if (i === 1 && sl) { const d = el('div', 'step' + (sl.ok ? '' : ' warnc'), (sl.ok ? '' : '👉 ') + sl.te); d.addEventListener('click', () => showTab('sim')); h.appendChild(d); }
+    });
     ver.forEach((f) => h.appendChild(el('div', 'step warnc', f.te)));
     moduleLines().forEach((t, i) => h.appendChild(el('div', i ? 'step warnc' : 'step', t)));
     h.appendChild(el('h3', null, '3️⃣ ఫ్యాక్టరీ ఫైల్స్ (.zip)'));
@@ -1228,7 +1286,8 @@
     const r = el('div', 'row');
     const make = () => {
       const files = F.files(D, fills), z = F.zip(files), name = F.slug(D) + '-gerber-' + new Date().toISOString().slice(0, 10) + '.zip';
-      post({ t: 'zip', name, data: F.b64(z), title: D.name });
+      zipKind = 'gerber';
+      post({ t: 'zip', name, data: F.b64(z), title: D.name, kind: 'gerber' });
       toast('📦 ఫైల్స్ తయారు చేశాను (' + Math.round(z.length / 1024) + ' KB); సేవ్ చేస్తున్నాను…');
     };
     r.appendChild(btn('📦 ఫైల్స్ తయారు చేసి సేవ్ చేయి', 'main', () => {
@@ -1243,7 +1302,7 @@
       });
     }));
     h.appendChild(r);
-    if (saved) {
+    if (saved && saved.kind !== 'kicad') {
       const c = el('div', 'card');
       c.appendChild(el('div', 'okc', '💾 సేవ్ అయింది: ' + saved.where));
       const r3 = el('div', 'row');
@@ -1253,6 +1312,7 @@
       c.appendChild(el('div', 'muted', 'రెండూ మీరు నొక్కితేనే. సైట్ మీ బ్రౌజర్‌లో తెరుచుకుంటుంది; లాగిన్, అప్‌లోడ్, పేమెంట్ మీరే.'));
       h.appendChild(c);
     }
+    kicadCard(h);
     h.appendChild(el('h3', null, '4️⃣ ' + Fb.name + ' లో ఆర్డర్ (మీరే)'));
     const steps = [
       ['🌐 ' + Fb.name + ' సైట్ తెరువు నొక్కండి (పైన, సేవ్ అయ్యాక వస్తుంది).', 'ఫ్యాక్టరీ హోమ్ పేజీ; "Quote" / "Order" లాంటి బటన్.', 'సైట్ తెరవకపోతే బ్రౌజర్‌లో పేరు వెతకండి'],
@@ -1643,6 +1703,7 @@
     const LED_TE = { red: 'ఎరుపు', green: 'ఆకుపచ్చ', blue: 'నీలం', yellow: 'పసుపు', white: 'తెలుపు', orange: 'నారింజ' };
     const MASK_TE = { green: 'ఆకుపచ్చ', blue: 'నీలం', black: 'నలుపు', white: 'తెలుపు', purple: 'ఊదా' };
     if (cmd.k === 'tab') { showTab(cmd.tab); return 'సరే Sir.'; }
+    if (cmd.k === 'versions') { if (!D) return 'ముందు ఒక బోర్డ్ తెరవండి Sir.'; verSheet(); return '🕑 వెర్షన్లు చూపిస్తున్నాను.'; }
     if (!D) return 'ముందు ఒక బోర్డ్ తెరవండి Sir.';
     const pt = cmd.ref ? D.parts.find((p) => p.ref === cmd.ref) : null;
     switch (cmd.k) {
@@ -1793,6 +1854,7 @@
     const r = A.merge(D, a);
     if (r.err) { resultSheet(r.refuse ? '🚫 మార్పు చేయలేదు' : '✗ మార్పు వేయలేదు', [r.err, cost]); said(r.err); return; }
     snap();
+    verSnap('🤖 AI మార్పు ముందు' + (pend.words ? ': "' + String(pend.words).slice(0, 40) + '"' : ''));
     const sizeWas = D.board.w + '×' + D.board.h;
     ['board', 'parts', 'nets', 'tracks', 'vias', 'labels'].forEach((k) => { D[k] = r.D[k]; });
     if (sizeWas !== D.board.w + '×' + D.board.h) pv.fit = true;
@@ -1832,6 +1894,7 @@
         r.appendChild(btn('✅ ఈ మార్పులు చేయి', 'main', () => {
           const before = check.errors;
           snap();
+          verSnap('🤖 చెక్ సలహా జరిపే ముందు');
           A.applyMoves(D, hp.moves);
           reroute(true);
           changed();
@@ -1881,6 +1944,323 @@
 
   state();
   showTab('home');
+  // ================================================================ ⚡ నడిపించు: the board running on the phone before ordering (pcbsim.js, ₹0, offline)
+
+  const sim = { key: '', src: {}, ctl: {}, S: null, R: null, cy: null, rep: null, live: false, run: true, raf: 0, last: 0, err: null };
+  const simv = { s: 1, ox: 20, oy: 20, fit: true, sel: null, vals: true };
+  /** Builds the circuit of the open board with what he chose (supply volts, switches, pins) and runs it. */
+  function simBuild() {
+    if (!D) return;
+    if (sim.key !== D.id) { sim.key = D.id; sim.src = {}; sim.ctl = {}; simv.fit = true; sim.run = true; }
+    const opts = { src: sim.src, ctl: sim.ctl };
+    sim.S = null; sim.rep = null; sim.cy = null; sim.live = false; sim.err = null;
+    try {
+      const S = SIM.setup(D, opts);
+      if (S.err) { sim.err = S.err; return; }
+      if (SIM.has555(S)) {
+        sim.cy = SIM.cycle(SIM.setup(D, opts));       // (a copy measures one cycle: how fast, the average and the most)
+        sim.R = SIM.start(S);
+        sim.live = !!(sim.cy && !sim.cy.stuck && sim.cy.f < 8);
+      } else sim.R = SIM.dc(S);
+      sim.S = S;
+      sim.rep = SIM.report(S, sim.R, sim.cy);
+    } catch (e) { sim.err = '⚡ ఈ బోర్డ్‌ని నడిపించలేకపోయాను (' + String((e && e.message) || e).slice(0, 80) + ')'; sim.S = null; }
+  }
+  function simLoop(t) {
+    sim.raf = 0;
+    if (tab !== 'sim' || !sim.S || !sim.live || !sim.run) return;
+    const dt = sim.last ? Math.min(0.05, Math.max(0.001, (t - sim.last) / 1000)) : 0.016;
+    sim.last = t;
+    try { sim.R = SIM.step(sim.S, dt); } catch (e) { sim.run = false; simTools(); return; }
+    drawSim();
+    sim.raf = requestAnimationFrame(simLoop);
+  }
+  function simGo() { if (!sim.raf && sim.live && sim.run && tab === 'sim') { sim.last = 0; sim.raf = requestAnimationFrame(simLoop); } }
+  /** What the drawing shows: volts on every wire, lit LEDs, problem rings. */
+  function simOverlay() {
+    const R = sim.R || { v: {}, p: {} }, ov = { v: R.v || {}, p: R.p || {}, sev: {}, glow: {}, col: {}, vmax: 1 };
+    sim.S.sources.forEach((s) => { ov.vmax = Math.max(ov.vmax, s.v); });
+    (sim.rep ? sim.rep.items : []).forEach((it) => { if (it.sev === 'err' || (it.sev === 'warn' && ov.sev[it.ref] !== 'err')) ov.sev[it.ref] = it.sev; });
+    Object.keys(sim.S.parts).forEach((ref) => {
+      const info = sim.S.parts[ref];
+      if (info.kind !== 'led') return;
+      ov.col[ref] = info.col;
+      const live = (R.p[ref] || {}).i || 0, avg = sim.cy && sim.cy.avg && sim.cy.avg.p[ref] ? sim.cy.avg.p[ref].i || 0 : live;
+      const i = sim.live || !sim.cy ? live : avg;
+      ov.glow[ref] = i > 2e-5 ? Math.min(1, 0.15 + i / info.good) : 0;
+    });
+    return ov;
+  }
+  function drawSim() {
+    const c = clear($('simchips'));
+    if (!D) return;
+    if (!sim.S) {
+      drawSchOn($('simcv'), simv, null);
+      c.appendChild(el('span', 'chip bad', sim.err || '⚡ ఇంకా నడిపించలేదు'));
+      return;
+    }
+    drawSchOn($('simcv'), simv, simOverlay());
+    const rep = sim.rep, errs = rep.items.filter((i) => i.sev === 'err').length, warns = rep.items.filter((i) => i.sev === 'warn').length;
+    const sum = el('span', 'chip tap ' + (errs ? 'bad' : warns ? 'warn' : 'ok'), errs ? '❌ ' + errs + (warns ? ' · ⚠️ ' + warns : '') + ' · 📋 చూడు' : warns ? '⚠️ ' + warns + ' గమనించండి · 📋' : '✅ బాగా నడుస్తోంది · 📋');
+    sum.addEventListener('click', simReport);
+    c.appendChild(sum);
+    sim.S.sources.forEach((s) => {
+      const r = sim.R.src.find((q) => q.key === s.key) || { i: 0 };
+      const i = sim.cy && sim.cy.avg && typeof sim.cy.avg.src[s.key] === 'number' ? sim.cy.avg.src[s.key] : r.i;
+      const ch = el('span', 'chip tap', (s.kind === 'esp' ? '🔌 ' + s.ref + ' USB' : '🔋 ' + s.ref + ' ' + SIM.fmtV(s.v)) + ' · ' + SIM.fmtA(i));
+      ch.addEventListener('click', simSupply);
+      c.appendChild(ch);
+    });
+    if (sim.cy && !sim.cy.stuck) c.appendChild(el('span', 'chip', '⏱️ సెకనుకి ' + (Math.round(sim.cy.f * 100) / 100) + ' సార్లు' + (sim.live ? '' : ' (కంటికి ఆగకుండా)')));
+    if (sim.live && sim.run) c.appendChild(el('span', 'chip', '▶️ ' + sim.R.t.toFixed(1) + ' s'));
+  }
+  function simTools() {
+    const t = clear($('simtools'));
+    if (sim.live) t.appendChild(tool(sim.run ? '⏸️ ఆపు' : '▶️ నడుపు', sim.run ? '' : 'main', () => { sim.run = !sim.run; simTools(); drawSim(); simGo(); }));
+    t.appendChild(tool('🔋 కరెంట్', '', simSupply));
+    if (sim.S && sim.S.controls.length) t.appendChild(tool('🎛️ స్విచ్‌లు (' + sim.S.controls.length + ')', 'main', simControls));
+    t.appendChild(tool('📋 ఫలితం', '', simReport));
+    t.appendChild(tool('🔄 మళ్ళీ', '', () => { sim.run = true; simBuild(); simTools(); drawSim(); simGo(); toast('⚡ మొదటి నుంచి (స్విచ్ ఆన్ చేసినట్టు)'); }));
+    t.appendChild(tool('🔍', '', () => { simv.fit = true; drawSim(); }));
+  }
+  function simAgain() { simBuild(); simTools(); drawSim(); simGo(); }
+  const SUPPLY = {
+    '9v': [[6.5, 'అయిపోతున్న 9V'], [9, 'కొత్త 9V బ్యాటరీ']],
+    bike: [[11.8, 'ఆగిన బండి'], [12.6, 'పూర్తి బ్యాటరీ'], [14.4, 'నడుస్తున్న బండి']],
+    usb: [[4.75, 'బలహీన USB'], [5, 'USB / అడాప్టర్ 5V'], [5.25, 'కొంచెం ఎక్కువ']],
+    logic: [[3.0, 'తక్కువ'], [3.3, '3.3V']]
+  };
+  function simSupply() {
+    if (!sim.S) { toast(sim.err || 'ముందు బోర్డ్ తెరవండి'); return; }
+    sheet((s) => {
+      s.appendChild(el('h2', null, '🔋 కరెంట్ ఎక్కడి నుంచి వస్తుంది'));
+      s.appendChild(el('div', 'muted', 'బోర్డ్‌కి వచ్చే వోల్టేజ్ మార్చి చూడండి: బ్యాటరీ అయిపోతుంటే, బండి నడుస్తుంటే ఏమవుతుందో వెంటనే కనిపిస్తుంది.'));
+      sim.S.sources.forEach((src) => {
+        const c = el('div', 'card');
+        c.appendChild(el('div', null, src.te));
+        if (src.fixed) { c.appendChild(el('div', 'muted', 'ESP32 బోర్డ్ తన USB నుంచి 5V, దాని లోపలి రెగ్యులేటర్ నుంచి 3.3V ఇస్తుంది.')); s.appendChild(c); return; }
+        const sg = el('div', 'seg');
+        const opts = (SUPPLY[src.kind] || [[r2(src.v0 * 0.85), 'తక్కువ'], [src.v0, 'మామూలు'], [r2(Math.min(24, src.v0 * 1.15)), 'ఎక్కువ']]);
+        opts.forEach((o) => sg.appendChild(btn(SIM.fmtV(o[0]) + ' · ' + o[1], Math.abs(src.v - o[0]) < 0.01 ? 'on small' : 'small', () => { sim.src[src.key] = o[0]; simAgain(); simSupply(); })));
+        c.appendChild(sg);
+        const row = el('div', 'row');
+        const inp = el('input'); inp.type = 'number'; inp.min = '0.5'; inp.max = '24'; inp.step = '0.1'; inp.value = String(src.v);
+        row.appendChild(inp);
+        row.appendChild(btn('V సెట్ చేయి', 'small', () => { const v = parseFloat(inp.value); if (!(v >= 0.5 && v <= 24)) { toast('0.5 నుంచి 24 V వరకే (ఇక్కడ తక్కువ వోల్టేజ్ బోర్డ్‌లు మాత్రమే)'); return; } sim.src[src.key] = v; simAgain(); simSupply(); }));
+        c.appendChild(row);
+        s.appendChild(c);
+      });
+      const r = el('div', 'row'); r.appendChild(btn('మూసేయి', '', closeSheet)); s.appendChild(r);
+    });
+  }
+  function simControls() {
+    if (!sim.S) return;
+    sheet((s) => {
+      s.appendChild(el('h2', null, '🎛️ స్విచ్‌లు, బయటి కనెక్షన్లు'));
+      s.appendChild(el('div', 'muted', 'బటన్ నొక్కినట్టు, స్విచ్ జరిపినట్టు, మాడ్యూల్ పిన్ ఆన్ చేసినట్టు: మార్చగానే బోర్డ్ ఏం చేస్తుందో డ్రాయింగ్‌లో కనిపిస్తుంది.'));
+      sim.S.controls.forEach((ct) => {
+        const c = el('div', 'card');
+        c.appendChild(el('div', null, ct.te));
+        const sg = el('div', 'seg');
+        ct.opts.forEach((o) => sg.appendChild(btn(o[1], ct.val === o[0] ? 'on small' : 'small', () => { sim.ctl[ct.key] = o[0]; simAgain(); simControls(); })));
+        c.appendChild(sg);
+        s.appendChild(c);
+      });
+      const r = el('div', 'row'); r.appendChild(btn('మూసేయి', '', closeSheet)); s.appendChild(r);
+    });
+  }
+  const SEV_ICON = { err: '❌', warn: '⚠️', ok: '✅', info: 'ℹ️' };
+  function simReport() {
+    if (!sim.S) { toast(sim.err || 'ముందు బోర్డ్ తెరవండి'); return; }
+    const rep = sim.rep;
+    sheet((s) => {
+      s.appendChild(el('h2', null, '⚡ నడిపిస్తే ఏమవుతుంది'));
+      const top = el('div', 'card');
+      rep.per.forEach((p) => top.appendChild(el('div', null, (p.s.kind === 'esp' ? '🔌 ' : '🔋 ') + p.s.te + ': ' + SIM.fmtV(p.v) + ', ' + SIM.fmtA(p.i) + (sim.cy && sim.cy.avg ? ' (సగటు)' : ''))));
+      if (rep.hours) top.appendChild(el('div', 'muted', '🔋 9V బ్యాటరీ (సుమారు ' + 500 + ' mAh) సుమారు ' + (rep.hours >= 48 ? Math.round(rep.hours / 24) + ' రోజులు' : Math.round(rep.hours) + ' గంటలు') + ' వస్తుంది.'));
+      if (sim.cy && !sim.cy.stuck) top.appendChild(el('div', 'muted', '⏱️ 555: సెకనుకి ' + (Math.round(sim.cy.f * 100) / 100) + ' సార్లు, ' + Math.round(sim.cy.duty * 100) + '% సమయం OUT ఆన్.'));
+      s.appendChild(top);
+      rep.items.forEach((it) => {
+        const d = el('div', 'item');
+        d.appendChild(el('div', 'i', SEV_ICON[it.sev] || '•'));
+        const x = el('div', 'x');
+        x.appendChild(el('div', it.sev === 'err' ? 'err' : it.sev === 'warn' ? 'warnc' : it.sev === 'ok' ? '' : 'muted', it.te));
+        if (it.fix) x.appendChild(el('div', 'f', '👉 ' + it.fix));
+        d.appendChild(x);
+        if (it.ref) d.addEventListener('click', () => { simv.sel = it.ref; closeSheet(); drawSim(); });
+        s.appendChild(d);
+      });
+      s.appendChild(el('div', 'muted', 'ఇది మన సొంత లెక్క (₹0, నెట్ లేకుండా, AI కాదు): LED, ట్రాన్సిస్టర్, రెగ్యులేటర్, మాడ్యూల్స్ సుమారు విలువలతో. అసలు బోర్డ్‌లో కొంచెం తేడా ఉంటుంది; మాడ్యూల్ కొన్నాక దాని మీది వోల్టేజ్ తప్పకుండా చూడండి.'));
+      const r = el('div', 'row');
+      if (sim.S.controls.length) r.appendChild(btn('🎛️ స్విచ్‌లు', '', simControls));
+      r.appendChild(btn('🔋 కరెంట్', '', simSupply));
+      r.appendChild(btn('మూసేయి', '', closeSheet));
+      s.appendChild(r);
+    });
+  }
+  /** A part tapped while running: its numbers, its pins' volts, what the run says about it. */
+  function simPart(ref) {
+    const pt = D.parts.find((p) => p.ref === ref), r = (sim.R.p || {})[ref] || {}, lib = P.LIB[pt.lib] || {};
+    sheet((s) => {
+      s.appendChild(el('h2', null, ref + ' · ' + (lib.te || pt.lib) + (pt.val ? ' · ' + pt.val : '')));
+      const g = el('div', 'reading'), row = (k, v) => { g.appendChild(el('div', 'k', k)); g.appendChild(el('div', null, v)); };
+      if (typeof r.i === 'number') row('కరెంట్', SIM.fmtA(r.i));
+      if (typeof r.v === 'number') row('దాని మీద వోల్టేజ్', SIM.fmtV(r.v));
+      if (typeof r.w === 'number' && r.w > 1e-4) row('వేడి', SIM.fmtW(r.w));
+      if (r.kind === 'npn') row('స్థితి', r.m === 'sat' ? 'పూర్తిగా ఆన్' : r.m === 'act' ? 'కొంచెం ఆన్' : 'ఆఫ్');
+      if (r.kind === '555') row('OUT', r.q ? 'ఆన్ (' + SIM.fmtV(r.out) + ')' : 'ఆఫ్');
+      if (typeof r.vin === 'number') { row('IN', SIM.fmtV(r.vin)); row('OUT', SIM.fmtV(r.vout) + ' · ' + SIM.fmtA(r.iout || 0)); }
+      if (r.kind === 'buzzer') row('శబ్దం', r.on ? '🔊 మోగుతోంది' : 'నిశ్శబ్దం');
+      s.appendChild(g);
+      const names = P.pinsOf(pt), tb = el('table'), hr = el('tr');
+      ['పిన్', 'పేరు', 'దారి', 'వోల్టేజ్'].forEach((t) => hr.appendChild(el('th', null, t))); tb.appendChild(hr);
+      Object.keys(names).forEach((k) => {
+        const net = D.nets.find((n) => n.p.indexOf(ref + '.' + k) >= 0), v = net ? sim.R.v[net.n] : undefined, tr = el('tr');
+        [k, names[k], net ? net.n : '—', typeof v === 'number' ? SIM.fmtV(v) : net ? '— (బయటికి)' : '—'].forEach((t) => tr.appendChild(el('td', null, t)));
+        tb.appendChild(tr);
+      });
+      s.appendChild(tb);
+      sim.rep.items.filter((it) => it.ref === ref).forEach((it) => {
+        const d = el('div', 'step ' + (it.sev === 'err' ? 'err' : it.sev === 'warn' ? 'warnc' : ''), (SEV_ICON[it.sev] || '') + ' ' + it.te);
+        s.appendChild(d);
+        if (it.fix) s.appendChild(el('div', 'muted', '👉 ' + it.fix));
+      });
+      const b = el('div', 'row');
+      b.appendChild(btn('📐 ఇది ఏమిటి?', '', () => partSheet(pt)));
+      b.appendChild(btn('మూసేయి', '', closeSheet));
+      s.appendChild(b);
+    });
+  }
+  gestures($('simcv'), simv, {
+    redraw: () => drawSim(),
+    tap(x, y) {
+      if (!D || !sim.S) return;
+      const lay = schLayout(), w = toWorld(simv, x, y);
+      let hit = null;
+      lay.P2.forEach((pl, ref) => { const b = pl.box; if (w[0] >= b[0] - 8 && w[0] <= b[2] + 8 && w[1] >= b[1] - 8 && w[1] <= b[3] + 8) { const a = (b[2] - b[0]) * (b[3] - b[1]); if (!hit || a < hit.a) hit = { ref, a }; } });
+      simv.sel = hit ? hit.ref : null;
+      drawSim();
+      if (hit) simPart(hit.ref);
+    }
+  });
+  /** One line for the factory checklist: what a run says (built here when the tab was not opened). */
+  function simLine() {
+    if (!D) return null;
+    if (sim.key !== D.id || !sim.rep) simBuild();
+    if (!sim.rep) return { ok: false, te: '⚡ ' + (sim.err || 'నడిపించలేకపోయాను') };
+    const e = sim.rep.items.filter((i) => i.sev === 'err').length, w = sim.rep.items.filter((i) => i.sev === 'warn').length;
+    return e ? { ok: false, te: '⚡ నడిపిస్తే ❌ ' + e + (w ? ' · ⚠️ ' + w : '') + ': ⚡ నడిపించు లో చూసి సరిచేయండి' }
+      : w ? { ok: false, te: '⚡ నడిపిస్తే ⚠️ ' + w + ' గమనించాల్సినవి (⚡ నడిపించు లో చూడండి)' } : { ok: true, te: '⚡ నడిపించి చూశాను: తప్పులు లేవు' };
+  }
+
+  // ================================================================ 🕑 versions: the board as it was, kept inside the design (₹0, on the phone)
+
+  const VMAX = 20, VBYTES = 900000;
+  /** Keeps how the board is now (why: what is about to happen; named: he asked, kept longest). */
+  function verSnap(why, named) {
+    if (!D) return null;
+    const d = JSON.parse(JSON.stringify({ name: D.name, title: D.title, board: D.board, parts: D.parts, nets: D.nets, tracks: D.tracks, vias: D.vias, labels: D.labels, pour: D.pour, fab: D.fab }));
+    const v = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: Date.now(), why: String(why || '').slice(0, 60), named: !!named, d };
+    D.vers = (Array.isArray(D.vers) ? D.vers : []).concat([v]);
+    while (D.vers.length > VMAX || (D.vers.length > 1 && JSON.stringify(D.vers).length > VBYTES)) {
+      const i = D.vers.findIndex((x) => !x.named);
+      D.vers.splice(i >= 0 ? i : 0, 1);
+    }
+    return v;
+  }
+  /** What changed from a to b, in short Telugu lines. */
+  function verDiff(a, b) {
+    const out = [], pa = new Map(a.parts.map((p) => [p.ref, p])), pb = new Map(b.parts.map((p) => [p.ref, p]));
+    const nm = (p) => p.ref + (p.val ? ' (' + p.val + ')' : '');
+    const added = b.parts.filter((p) => !pa.has(p.ref)), gone = a.parts.filter((p) => !pb.has(p.ref));
+    if (added.length) out.push('➕ కొత్తవి: ' + added.map(nm).join(', '));
+    if (gone.length) out.push('➖ తీసేసినవి: ' + gone.map(nm).join(', '));
+    const vals = [];
+    b.parts.forEach((p) => { const o = pa.get(p.ref); if (o && ((o.val || '') !== (p.val || '') || o.lib !== p.lib || (o.color || '') !== (p.color || ''))) vals.push(p.ref + ': ' + (o.val || o.lib) + ' → ' + (p.val || p.lib)); });
+    if (vals.length) out.push('✏️ ' + vals.join(' · '));
+    const moved = b.parts.filter((p) => { const o = pa.get(p.ref); return o && (Math.abs(o.x - p.x) > 0.05 || Math.abs(o.y - p.y) > 0.05 || (o.rot || 0) !== (p.rot || 0)); }).length;
+    if (moved) out.push('↔️ ' + moved + ' భాగాలు జరిగాయి / తిరిగాయి');
+    const pins = (d) => { const m = new Map(); d.nets.forEach((n) => n.p.forEach((q) => m.set(q, n.n))); return m; };
+    const ma = pins(a), mb = pins(b);
+    let nets = 0;
+    new Set(Array.from(ma.keys()).concat(Array.from(mb.keys()))).forEach((k) => { if (ma.get(k) !== mb.get(k)) nets++; });
+    if (nets) out.push('🔗 ' + nets + ' పిన్నుల కలుపులు మారాయి');
+    if (a.board.w !== b.board.w || a.board.h !== b.board.h) out.push('📏 బోర్డ్ ' + a.board.w + '×' + a.board.h + ' → ' + b.board.w + '×' + b.board.h + ' mm');
+    if ((a.tracks || []).length !== (b.tracks || []).length) out.push('⚡ దారులు ' + (a.tracks || []).length + ' → ' + (b.tracks || []).length);
+    return out.length ? out : ['తేడా ఏమీ లేదు (ఇప్పుడున్నట్టే)'];
+  }
+  function verSheet() {
+    if (!D) { toast('ముందు ఒక బోర్డ్ తెరవండి (📚 బోర్డ్‌లు)'); return; }
+    const vs = (D.vers || []).slice().reverse();
+    sheet((s) => {
+      s.appendChild(el('h2', null, '🕑 వెర్షన్లు (' + vs.length + ')'));
+      s.appendChild(el('div', 'muted', 'ప్రతి AI మార్పు ముందు, మీరు 📌 నొక్కినప్పుడు ఇప్పటి బోర్డ్ ఇక్కడ దాచుకుంటుంది (ఫోన్‌లోనే, ₹0). పాతది తెరిస్తే ఇప్పుడున్నది కూడా ముందే ఇక్కడ దాచుకుంటుంది: ఏదీ పోదు.'));
+      const add = el('div', 'row');
+      const inp = el('input'); inp.type = 'text'; inp.placeholder = 'పేరు (ఉదా: మొదటి ఆర్డర్ ముందు)'; inp.maxLength = 40; inp.style.flex = '1';
+      add.appendChild(inp);
+      add.appendChild(btn('📌 ఇప్పటిది దాచు', 'main', () => { verSnap('📌 ' + (inp.value.trim() || 'నా వెర్షన్ ' + ((D.vers || []).length + 1)), true); changed(); verSheet(); toast('📌 దాచాను'); }));
+      s.appendChild(add);
+      if (!vs.length) s.appendChild(el('div', 'muted', 'ఇంకా ఏమీ లేవు.'));
+      vs.forEach((v) => {
+        const c = el('div', 'card ver' + (v.named ? ' named' : ''));
+        c.appendChild(el('div', 't', v.why || 'వెర్షన్'));
+        c.appendChild(el('div', 'd', when(v.at) + ' · ' + v.d.parts.length + ' భాగాలు · ' + v.d.board.w + ' × ' + v.d.board.h + ' mm'));
+        c.appendChild(el('div', 'd', 'ఇప్పటికీ దీనికీ తేడా: ' + verDiff(v.d, D).slice(0, 3).join(' · ')));
+        const r = el('div', 'row');
+        r.appendChild(btn('↩️ ఇది తెరువు', 'small', () => {
+          verSnap('↩️ "' + (v.why || 'వెర్షన్') + '" తెరిచే ముందు ఉన్నది');
+          snap();
+          const d = JSON.parse(JSON.stringify(v.d));
+          ['board', 'parts', 'nets', 'tracks', 'vias', 'labels', 'pour', 'fab', 'name', 'title'].forEach((k) => { if (d[k] !== undefined) D[k] = d[k]; });
+          pv.fit = true; sv.fit = true; simv.fit = true; sim.key = '';
+          changed();
+          closeSheet();
+          toast('↩️ "' + (v.why || 'వెర్షన్') + '" తెరిచాను. ఇంతకు ముందున్నది కూడా 🕑 లో ఉంది.', 4000);
+        }));
+        r.appendChild(btn('🔍 తేడాలు', 'small', () => resultSheet('🔍 ఇప్పటి బోర్డ్‌కీ "' + (v.why || 'వెర్షన్') + '" కీ తేడా', ['(ఆ వెర్షన్ నుంచి ఇప్పటికి ఏం మారిందో)'].concat(verDiff(v.d, D)), [btn('🕑 వెనక్కి', '', verSheet)])));
+        r.appendChild(btn('🗑️', 'small', () => {
+          clear(c);
+          c.appendChild(el('div', null, '🗑️ "' + (v.why || 'వెర్షన్') + '" నిజంగా తీసేయాలా? (తిరిగి రాదు)'));
+          const r2b = el('div', 'row');
+          r2b.appendChild(btn('అవును, తీసేయి', 'bad', () => { D.vers = (D.vers || []).filter((x) => x.id !== v.id); changed(); verSheet(); }));
+          r2b.appendChild(btn('వద్దు', '', verSheet));
+          c.appendChild(r2b);
+        }));
+        c.appendChild(r);
+        s.appendChild(c);
+      });
+      const r = el('div', 'row'); r.appendChild(btn('మూసేయి', '', closeSheet)); s.appendChild(r);
+    });
+  }
+
+  // ================================================================ 💻 KiCad files for the laptop (pcbkicad.js, ₹0)
+
+  function kicadZip() {
+    if (!D) return;
+    try {
+      const files = KI.files(D, schLayout()), z = F.zip(files), name = F.slug(D) + '-kicad-' + new Date().toISOString().slice(0, 10) + '.zip';
+      zipKind = 'kicad';
+      post({ t: 'zip', name, data: F.b64(z), title: D.name, kind: 'kicad' });
+      toast('💻 KiCad ఫైల్స్ తయారు చేశాను (' + Math.round(z.length / 1024) + ' KB); సేవ్ చేస్తున్నాను…');
+    } catch (e) { toast('KiCad ఫైల్స్ తయారు కాలేదు: ' + String((e && e.message) || e).slice(0, 80), 4000); }
+  }
+  function kicadCard(h) {
+    h.appendChild(el('h3', null, '💻 KiCad ఫైల్స్ (ల్యాప్‌టాప్ కోసం)'));
+    h.appendChild(el('div', 'muted', 'ఇదే బోర్డ్ (PCB + స్కీమాటిక్) KiCad అనే ఉచిత ప్రోగ్రామ్‌లో (kicad.org, 8 లేదా కొత్తది) ల్యాప్‌టాప్‌లో తెరవడానికి. భాగాల ఆకారాలు (ఫుట్‌ప్రింట్‌లు) ఫైల్ లోపలే ఉంటాయి. ఫ్యాక్టరీకి పంపాల్సింది పైన 📦 Gerber zip మాత్రమే.'));
+    const r = el('div', 'row');
+    r.appendChild(btn('💻 KiCad ఫైల్స్ తయారు చేసి సేవ్ చేయి', '', kicadZip));
+    h.appendChild(r);
+    if (saved && saved.kind === 'kicad') {
+      const c = el('div', 'card');
+      c.appendChild(el('div', 'okc', '💾 సేవ్ అయింది: ' + saved.where));
+      const r3 = el('div', 'row');
+      r3.appendChild(btn('📤 పంపు / షేర్', '', () => post({ t: 'share' })));
+      c.appendChild(r3);
+      c.appendChild(el('div', 'muted', 'ల్యాప్‌టాప్‌లో: zip విప్పి .kicad_pro తెరవండి. GND రాగి నింపడానికి PCB Editor లో B నొక్కండి.'));
+      h.appendChild(c);
+    }
+  }
+
   window.__pcb = { open, get D() { return D; }, get check() { return check; }, showTab, reroute, changed, onJarvis, texture, partSheet: (ref) => partSheet(D && D.parts.find((q) => q.ref === ref)), pv, sv,
-    ai, idea, editSheet, heard, lay: () => schLayout() };
+    ai, idea, editSheet, heard, lay: () => schLayout(), sim, simv, simBuild, simReport, simControls, simSupply, simPart, verSheet, verSnap, verDiff, kicadFiles: () => KI.files(D, schLayout()) };
 })();

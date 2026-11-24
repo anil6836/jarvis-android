@@ -107,6 +107,11 @@
   .quote { margin-top: 8px; font-size: 13.5px; line-height: 1.5; }
   .quote .m { color: var(--gold); font-weight: 600; }
   .btn:disabled { opacity: .45; }
+  .chip.tap { cursor: pointer; }
+  .ver .t { font-weight: 600; } .ver .d { color: var(--muted); font-size: 13px; line-height: 1.5; margin-top: 2px; }
+  .ver.named { border-color: var(--cyan2); }
+  .reading { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 14px; margin: 6px 0; }
+  .reading .k { color: var(--muted); }
 </style>
 </head>
 <body>
@@ -116,6 +121,7 @@
   <span class="tab" data-tab="sch">📐 స్కీమాటిక్</span>
   <span class="tab" data-tab="pcb">🧩 PCB</span>
   <span class="tab" data-tab="drc">✅ చెక్</span>
+  <span class="tab" data-tab="sim">⚡ నడిపించు</span>
   <span class="tab" data-tab="d3">🧊 3D</span>
   <span class="tab" data-tab="fab">🏭 ఫ్యాక్టరీ</span>
   <span class="tab" data-tab="calc">🧮 లెక్కలు</span>
@@ -125,6 +131,7 @@
   <section id="sch"><canvas class="view" id="schcv"></canvas><div class="chips" id="schchips"></div><div class="tools" id="schtools"></div></section>
   <section id="pcb"><canvas class="view" id="pcbcv"></canvas><div class="chips" id="pcbchips"></div><div id="sel"></div><div class="tools" id="pcbtools"></div></section>
   <section id="drc" class="scroll"></section>
+  <section id="sim"><canvas class="view" id="simcv"></canvas><div class="chips" id="simchips"></div><div class="tools" id="simtools"></div></section>
   <section id="d3"><div id="v3d"></div><div id="v3dinfo"></div><div class="tools" id="d3tools"></div></section>
   <section id="fab" class="scroll"></section>
   <section id="calc" class="scroll"></section>
@@ -138,6 +145,8 @@
 <script src="pcbprojects.js"></script>
 <script src="pcbbuy.js"></script>
 <script src="pcbai.js"></script>
+<script src="pcbsim.js"></script>
+<script src="pcbkicad.js"></script>
 <script src="pcb.js"></script>
 </body>
 </html>

@@ -368,6 +368,9 @@
     const tabs = [['sch', /(స్కీమాటిక్|schematic|సర్క్యూట్\s*బొమ్మ)/], ['d3', /(3d|త్రీడీ|త్రీ\s*డీ)/], ['drc', /(చెక్|\bdrc\b|తప్పులు)/], ['fab', /(ఫ్యాక్టరీ|gerber|జెర్బర్|factory|జిప్)/],
       ['calc', /(లెక్కలు|calculator|కాలిక్యులేటర్)/], ['pcb', /(\bpcb\b|పీసీబీ)/], ['home', /(రెడీ\s*బోర్డ్|బోర్డ్‌లు|బోర్డ్ లిస్ట్|my boards|నా బోర్డ్)/]];
     if (VERB_SHOW.test(s)) for (const t of tabs) if (t[1].test(s)) return { k: 'tab', tab: t[0] };
+    // Build 3A: ⚡ the board running on the phone, 🕑 the kept versions (₹0)
+    if (/(సిమ్యులేషన్|సిములేషన్|simulation|simulate|నడిపించు|నడిపించి\s*చూ|నడిపి\s*చూ)/.test(s)) return { k: 'tab', tab: 'sim' };
+    if (/(వెర్షన్|version)/.test(s)) return { k: 'versions' };
     if (!D) return null;
     const refM = /\b(bz\d{1,2}|sw\d{1,2}|mk\d{1,2}|[rcdqujf]\d{1,2})\b/.exec(s);
     const pt = refM ? D.parts.find((p) => p.ref === refM[1].toUpperCase()) : null;

@@ -892,7 +892,7 @@
   /** Everything white on the top: part outlines, names, his labels; cut back where it would sit on a pad. */
   function silk(D, M) {
     M = M || model(D);
-    const R = rules(D), lines = [], names = [], outl = [];
+    const R = rules(D), lines = [];
     (D.parts || []).forEach((pt) => {
       const f = P.fpOf(pt);
       if (!f) return;
@@ -900,7 +900,34 @@
         const pts = [];
         for (let k = 0; k < s.p.length; k += 2) { const q = rot(s.p[k], s.p[k + 1], pt.rot || 0); pts.push(pt.x + q[0], pt.y + q[1]); }
         lines.push(pts);
-        for (let k = 2; k < pts.length; k += 2) outl.push([pts[k - 2], pts[k - 1], pts[k], pts[k + 1], pt.ref]);
+      });
+    });
+    texts(D, M).forEach((w) => text(w.t, w.x, w.y, w.h, w.a, w.r).forEach((l) => lines.push(l)));
+    // cut where a pad is (the factory would cut it anyway; this way it looks the same as the board will)
+    const cuts = M.pads.map((p) => ({ x: p.x, y: p.y, r: (p.s === 'r' ? Math.hypot(p.w / 2, p.h / 2) : Math.max(p.w, p.h) / 2) + 0.15 }));
+    holes(D).forEach((h) => cuts.push({ x: h.x, y: h.y, r: h.d / 2 + 0.3 }));
+    const segs = [];
+    const Bd = D.board;
+    for (const pl of lines) for (let k = 2; k < pl.length; k += 2) {
+      const q = inRect(pl[k - 2], pl[k - 1], pl[k], pl[k + 1], 0.25, 0.25, Bd.w - 0.25, Bd.h - 0.25);
+      if (q) clipSeg(q[0], q[1], q[2], q[3], cuts, segs);
+    }
+    return { segs, w: R.silkW };
+  }
+  /** Every word printed on the board: [{t, x, y, h, a ('l' | 'c' | 'r'), r (0 / 90 / 270, clockwise), kind ('ref' | 'pin' | 'label'), ref}]. */
+  function texts(D, M) {
+    M = M || model(D);
+    const R = rules(D), out = [], names = [], outl = [];
+    (D.parts || []).forEach((pt) => {
+      const f = P.fpOf(pt);
+      if (!f) return;
+      (f.silk || []).forEach((s) => {
+        let px = null, py = null;
+        for (let k = 0; k < s.p.length; k += 2) {
+          const q = rot(s.p[k], s.p[k + 1], pt.rot || 0), x = pt.x + q[0], y = pt.y + q[1];
+          if (px != null) outl.push([px, py, x, y, pt.ref]);
+          px = x; py = y;
+        }
       });
     });
     // a part's name stays off the other parts' outlines, the vias and the board's own words
@@ -913,36 +940,27 @@
     (D.parts || []).forEach((pt) => {
       if (pt.noref || !P.fpOf(pt)) return;
       const at = refAt(D, M, pt, R, names, avoid);
-      text(pt.ref, at[0], at[1], R.textH, 'c', at[2]).forEach((l) => lines.push(l));
+      out.push({ t: pt.ref, x: at[0], y: at[1], h: R.textH, a: 'c', r: at[2], kind: 'ref', ref: pt.ref });
     });
     (D.parts || []).forEach((pt) => {
       if (!pt.pl) return;
-      const names = P.pinsOf(pt), off = pt.plo || 1.9, vert = upright(pt, pt.pl);
+      const pn = P.pinsOf(pt), off = pt.plo || 1.9, vert = upright(pt, pt.pl);
       partPads(pt, pt.x, pt.y, pt.rot || 0).forEach((p) => {
-        const nm = names[p.n];
+        const nm = pn[p.n];
         if (!nm || nm === p.n) return;
         let x = p.x, y = p.y, a = 'c';
         if (pt.pl === 'E') { x += off; a = 'l'; } else if (pt.pl === 'W') { x -= off; a = 'r'; }
         else if (vert) { if (pt.pl === 'S') { y += off - 0.4; a = 'l'; } else { y -= off - 0.4; a = 'r'; } }
         else if (pt.pl === 'N') y -= off; else y += off;
-        text(nm, x, y, 1.0, a, vert ? 90 : 0).forEach((q) => lines.push(q));
+        out.push({ t: nm, x, y, h: 1.0, a, r: vert ? 90 : 0, kind: 'pin', ref: pt.ref });
       });
     });
     (D.labels || []).forEach((l) => {
       let x = l.x, y = l.y;
       if (l.ref) { const pt = (D.parts || []).find((q) => q.ref === l.ref); if (!pt) return; x = pt.x + (l.dx || 0); y = pt.y + (l.dy || 0); }
-      text(l.t, x, y, l.h || R.textH, l.a || 'c', l.r || 0).forEach((q) => lines.push(q));
+      out.push({ t: l.t, x, y, h: l.h || R.textH, a: l.a || 'c', r: l.r || 0, kind: 'label', ref: l.ref || null });
     });
-    // cut where a pad is (the factory would cut it anyway; this way it looks the same as the board will)
-    const cuts = M.pads.map((p) => ({ x: p.x, y: p.y, r: (p.s === 'r' ? Math.hypot(p.w / 2, p.h / 2) : Math.max(p.w, p.h) / 2) + 0.15 }));
-    holes(D).forEach((h) => cuts.push({ x: h.x, y: h.y, r: h.d / 2 + 0.3 }));
-    const segs = [];
-    const Bd = D.board;
-    for (const pl of lines) for (let k = 2; k < pl.length; k += 2) {
-      const q = inRect(pl[k - 2], pl[k - 1], pl[k], pl[k + 1], 0.25, 0.25, Bd.w - 0.25, Bd.h - 0.25);
-      if (q) clipSeg(q[0], q[1], q[2], q[3], cuts, segs);
-    }
-    return { segs, w: R.silkW };
+    return out;
   }
   /** Where a part's name goes: above it, else below, right, left, on it, then a little further out — never on a pad, a name already placed,
    *  another part's outline, a via or the board's words, never off the board; when every place has something, the one with the least. [x, y, rot]. */
@@ -1063,11 +1081,19 @@
       out.labels.push(o);
     });
     if (Array.isArray(D.sch)) out.sch = D.sch.slice(0, 200).filter((s) => s && typeof s === 'object').map((s) => ({ t: str(s.t, 30), x: num(s.x, -2000, 4000, 0), y: num(s.y, -2000, 4000, 0) }));
+    // 🕑 versions (Build 3A): the board as it was, each cleaned the same way (no versions inside a version)
+    if (Array.isArray(D.vers)) {
+      out.vers = D.vers.slice(-20).filter((v) => v && v.d && typeof v.d === 'object').map((v) => {
+        const d = clean(Object.assign({}, v.d, { id: out.id, vers: null }));
+        ['vers', 'id', 'v', 'at', 'proj', 'notes', 'sch'].forEach((k) => { delete d[k]; });
+        return { id: str(v.id, 16).replace(/[^a-z0-9]/g, '') || 'v', at: num(v.at, 0, 4e12, 0), why: str(v.why, 60), named: !!v.named, d };
+      });
+    }
     return out;
   }
 
   const api = { FABS, RULES, rules, widthFor, netWidth, isPower, isGnd, rot, partPads, courtOf, sideAfter, boardSdf, outline, holes, padObj, dist, gap, bbox,
-    model, copper, route, pour, rects, connectivity, autoplace, labelSide, labelBox, fitBoard, drc, text, textWidth, silk, refAt, clean, GLYPH };
+    model, copper, route, pour, rects, connectivity, autoplace, labelSide, labelBox, fitBoard, drc, text, textWidth, silk, texts, refAt, clean, GLYPH };
   root.PcbCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : globalThis);

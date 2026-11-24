@@ -435,8 +435,11 @@ final class Tools {
                         + "turn parts, auto-route, ground fill), the checks against a factory's rules (JLCPCB, PCBWay, Lion Circuits, PCB Power) with an "
                         + "🤖 AI help for the problems, the board in 3D, the factory files (a Gerber .zip saved in Downloads/Jarvis/pcb), the parts to buy with Indian shop search buttons "
                         + "and part pages (Robu, Robocraze, Amazon, Flipkart, Probots; opened in his browser only on his tap, he buys himself) and calculators (LED resistor, track width "
-                        + "for a current, battery life, voltage divider, resistor colour bands, 555 speed). open = the studio; project = open a ready "
-                        + "board (what = flasher | usb | soil | esp32 | irboard); tab = what = home | sch | pcb | drc | d3 | fab | calc; idea = the 💡 card "
+                        + "for a current, battery life, voltage divider, resistor colour bands, 555 speed), ⚡ నడిపించు (the board RUNNING on the phone before "
+                        + "ordering: volts on every wire, LEDs lighting / blinking, ✅ ⚠️ ❌ for parts getting too much current or the wrong volts, battery "
+                        + "hours; free, our own maths, not the AI), 🕑 versions (the board as it was before each AI change, or when he pins one) and 💻 "
+                        + "KiCad files for a laptop (saved like the Gerber zip). open = the studio; project = open a ready "
+                        + "board (what = flasher | usb | soil | esp32 | irboard); tab = what = home | sch | pcb | drc | sim | d3 | fab | calc (sim = ⚡ నడిపించు); idea = the 💡 card "
                         + "where he types / says his idea or adds a photo of a circuit drawn on paper (free until he taps make); build = the studio's AI "
                         + "makes a NEW board of his idea (paid: the studio shows the cost and waits 3 seconds with ✋ వద్దు); change = his words about "
                         + "the board that is open (a value, turn / move a part, the board size or colour, holes, route, add / remove parts...: small "
@@ -1889,7 +1892,7 @@ final class Tools {
             return ok().put("next", "Say only: 'PCB స్టూడియోలో చూపిస్తున్నాను Sir, ఖర్చు అక్కడ కనిపిస్తుంది; వద్దంటే ✋ వద్దు అనండి.' The studio waits 3 seconds, "
                     + "then the AI makes it and the studio says the cost when it is done.").toString();
         }
-        if ("tab".equals(a) && java.util.Arrays.asList("home", "sch", "pcb", "drc", "d3", "fab", "calc").contains(w)) i.putExtra(PcbActivity.EXTRA_TAB, w);
+        if ("tab".equals(a) && java.util.Arrays.asList("home", "sch", "pcb", "drc", "sim", "d3", "fab", "calc").contains(w)) i.putExtra(PcbActivity.EXTRA_TAB, w);
         startIn(i);
         return ok().put("next", "Say in one short Telugu line what is on the screen now (free, nothing sent anywhere).").toString();
     }
