@@ -963,9 +963,11 @@
     const { ctx, w, h } = sizeCv(cv), lay = schLayout();
     let bx = [1e9, 1e9, -1e9, -1e9];
     lay.P2.forEach((pl) => { bx = [Math.min(bx[0], pl.box[0] - 30), Math.min(bx[1], pl.box[1] - 40), Math.max(bx[2], pl.box[2] + 30), Math.max(bx[3], pl.box[3] + 40)]; });
-    if (sv.fit) {
-      const s = Math.min((w - 16) / (bx[2] - bx[0]), (h - 130) / (bx[3] - bx[1]), 2.2);
-      sv.s = s; sv.ox = (w - (bx[2] - bx[0]) * s) / 2 - bx[0] * s; sv.oy = 40 + (h - 130 - (bx[3] - bx[1]) * s) / 2 - bx[1] * s; sv.fit = false;
+    if (sv.fit) { // (sv.top: where the drawing may start, below the chips over it — ⚡ can have two rows of them)
+      const top = sv.top > 40 ? sv.top : 40, room = h - top - 90;
+      const s = Math.min((w - 16) / (bx[2] - bx[0]), room / (bx[3] - bx[1]), 2.2);
+      sv.s = s; sv.ox = (w - (bx[2] - bx[0]) * s) / 2 - bx[0] * s; sv.oy = top + (room - (bx[3] - bx[1]) * s) / 2 - bx[1] * s; sv.fit = false;
+      sv.fitted = [sv.s, sv.ox, sv.oy];
     }
     const s = sv.s, X = (x) => sv.ox + x * s, Y = (y) => sv.oy + y * s;
     ctx.fillStyle = '#0a1016'; ctx.fillRect(0, 0, w, h);
@@ -2083,11 +2085,26 @@
     const c = clear($('simchips'));
     if (!D) return;
     if (!sim.S) {
-      drawSchOn($('simcv'), simv, null);
       c.appendChild(el('span', 'chip bad', sim.err || '⚡ ఇంకా నడిపించలేదు'));
+      simTop();
+      drawSchOn($('simcv'), simv, null);
       return;
     }
+    simChips(c);
+    simTop();
     drawSchOn($('simcv'), simv, simOverlay());
+  }
+  /**
+   * The chips over the drawing can take one row or two (a second 🔋, the ⏱️ speed…): the drawing starts below them, so they never
+   * cover J1. Measured on every draw; when a row more comes later and he has not moved / zoomed the drawing, it is placed again.
+   */
+  function simTop() {
+    const cr = $('simchips').getBoundingClientRect(), vr = $('simcv').getBoundingClientRect();
+    const top = cr.height ? Math.round(cr.bottom - vr.top) + 10 : 40;
+    const untouched = simv.fitted && simv.fitted[0] === simv.s && simv.fitted[1] === simv.ox && simv.fitted[2] === simv.oy;
+    if (simv.fit || (untouched && top > (simv.top || 40))) { simv.top = top; simv.fit = true; }
+  }
+  function simChips(c) {
     const rep = sim.rep, errs = rep.items.filter((i) => i.sev === 'err').length, warns = rep.items.filter((i) => i.sev === 'warn').length;
     const sum = el('span', 'chip tap ' + (errs ? 'bad' : warns ? 'warn' : 'ok'), errs ? '❌ ' + errs + (warns ? ' · ⚠️ ' + warns : '') + ' · 📋 చూడు' : warns ? '⚠️ ' + warns + ' గమనించండి · 📋' : '✅ బాగా నడుస్తోంది · 📋');
     sum.addEventListener('click', simReport);

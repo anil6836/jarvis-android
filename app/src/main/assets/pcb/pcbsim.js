@@ -16,6 +16,8 @@
   const BAT9_MAH = 500;
   // modules that plug into a header: what volts they want and how much they take (from the words on the part / the AI's note)
   const MODS = [
+    // (KCX_BT003: 3.3–5.0 V, 35 mA, stereo line out — Robu's page and the module's manual, read 24 Nov 2026)
+    { re: /KCX[_ -]?BT[_ -]?0{0,2}3/i, te: 'KCX_BT003 బ్లూటూత్ రిసీవర్', v: [3.3, 5.0], ma: 35, why: 'KCX_BT003 కి 3.3–5.0 V' },
     { re: /BK8000L|BK3254|KCX[_ ]?BT|bluetooth\s*audio|BT\s*audio|బ్లూటూత్\s*ఆడియో/i, te: 'బ్లూటూత్ ఆడియో మాడ్యూల్', v: [3.3, 4.2], ma: 40,
       why: 'BK8000L లాంటి బ్లూటూత్ ఆడియో మాడ్యూల్స్‌కి 3.3–4.2 V మాత్రమే' },
     { re: /HC-?0[56]/i, te: 'HC-05 / HC-06 బ్లూటూత్', v: [3.6, 6], ma: 40 },
@@ -128,6 +130,9 @@
       cands.sort((a, b) => b.score - a.score);
       feeds.set(n.n, cands[0]);
     });
+    // a module's socket (Bluetooth, sensor, screen…) takes power, it does not bring it: when a real power connector feeds the
+    // board somewhere (his J1 → fuse → diode → switch → +5V → the module), the module's power net is not a 🔋 of its own
+    if ([...feeds.values()].some((f) => !moduleWords(f.pt))) [...feeds].forEach(([net, f]) => { if (moduleWords(f.pt)) feeds.delete(net); });
     const feedPins = new Set();
     feeds.forEach((f) => feedPins.add(f.pt.ref + '.' + f.k));
 
