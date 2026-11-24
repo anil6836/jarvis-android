@@ -892,7 +892,7 @@
   /** Everything white on the top: part outlines, names, his labels; cut back where it would sit on a pad. */
   function silk(D, M) {
     M = M || model(D);
-    const R = rules(D), lines = [], names = [];
+    const R = rules(D), lines = [], names = [], outl = [];
     (D.parts || []).forEach((pt) => {
       const f = P.fpOf(pt);
       if (!f) return;
@@ -900,9 +900,19 @@
         const pts = [];
         for (let k = 0; k < s.p.length; k += 2) { const q = rot(s.p[k], s.p[k + 1], pt.rot || 0); pts.push(pt.x + q[0], pt.y + q[1]); }
         lines.push(pts);
+        for (let k = 2; k < pts.length; k += 2) outl.push([pts[k - 2], pts[k - 1], pts[k], pts[k + 1], pt.ref]);
       });
-      if (pt.noref) return;
-      const at = refAt(D, M, pt, R, names);
+    });
+    // a part's name stays off the other parts' outlines, the vias and the board's own words
+    const avoid = { segs: outl, vias: (Array.isArray(D.vias) ? D.vias : []).map((v) => [v.x, v.y, (R.via || 0.8) / 2]), boxes: [] };
+    (D.labels || []).forEach((l) => {
+      if (l.ref || l.r) return;
+      const h = l.h || R.textH, w = textWidth(l.t, h), a = l.a || 'c', x0 = a === 'l' ? l.x : a === 'r' ? l.x - w : l.x - w / 2;
+      avoid.boxes.push([x0, l.y - h / 2, x0 + w, l.y + h / 2]);
+    });
+    (D.parts || []).forEach((pt) => {
+      if (pt.noref || !P.fpOf(pt)) return;
+      const at = refAt(D, M, pt, R, names, avoid);
       text(pt.ref, at[0], at[1], R.textH, 'c', at[2]).forEach((l) => lines.push(l));
     });
     (D.parts || []).forEach((pt) => {
@@ -934,29 +944,46 @@
     }
     return { segs, w: R.silkW };
   }
-  /** Where a part's name goes: above it, else below, right, left (never on a pad or on a name already placed, never off the board); [x, y, rot]. */
-  function refAt(D, M, pt, R, taken) {
+  /** Where a part's name goes: above it, else below, right, left, on it, then a little further out — never on a pad, a name already placed,
+   *  another part's outline, a via or the board's words, never off the board; when every place has something, the one with the least. [x, y, rot]. */
+  function refAt(D, M, pt, R, taken, avoid) {
     const keep = (q) => {
       if (taken) { const tw0 = textWidth(pt.ref, R.textH), hx = (q[2] ? R.textH : tw0) / 2 + 0.15, hy = (q[2] ? tw0 : R.textH) / 2 + 0.15; taken.push([q[0] - hx, q[1] - hy, q[0] + hx, q[1] + hy]); }
       return q;
     };
     if (pt.lx != null) return keep([pt.x + pt.lx, pt.y + pt.ly, pt.lr || 0]);
     const c = courtOf(pt, pt.x, pt.y, pt.rot || 0), h = R.textH, tw = textWidth(pt.ref, h), B = D.board;
-    const cands = [[(c[0] + c[2]) / 2, c[1] - h * 0.75, 0], [(c[0] + c[2]) / 2, c[3] + h * 0.75, 0], [c[2] + h * 0.75, (c[1] + c[3]) / 2, 90], [c[0] - h * 0.75, (c[1] + c[3]) / 2, 270],
-      [(c[0] + c[2]) / 2, (c[1] + c[3]) / 2, 0]];
+    const mx = (c[0] + c[2]) / 2, my = (c[1] + c[3]) / 2, o = h * 0.75, o2 = h * 1.9;
+    const cands = [[mx, c[1] - o, 0], [mx, c[3] + o, 0], [c[2] + o, my, 90], [c[0] - o, my, 270], [mx, my, 0],
+      [mx, c[1] - o2, 0], [mx, c[3] + o2, 0], [c[2] + o2, my, 90], [c[0] - o2, my, 270]];
+    let best = null;
     for (const q of cands) {
       const hx = (q[2] ? h : tw) / 2 + 0.1, hy = (q[2] ? tw : h) / 2 + 0.1;
       if (q[0] - hx < 0.3 || q[1] - hy < 0.3 || q[0] + hx > B.w - 0.3 || q[1] + hy > B.h - 0.3) continue;
-      let bad = false;
+      const x0 = q[0] - hx, y0 = q[1] - hy, x1 = q[0] + hx, y1 = q[1] + hy;
+      let n = 0;
       for (const p of M.pads) {
         const r = (p.s === 'r' ? Math.hypot(p.w / 2, p.h / 2) : Math.max(p.w, p.h) / 2) + 0.2;
         const dx = Math.max(Math.abs(p.x - q[0]) - hx, 0), dy = Math.max(Math.abs(p.y - q[1]) - hy, 0);
-        if (dx * dx + dy * dy < r * r) { bad = true; break; }
+        if (dx * dx + dy * dy < r * r) n += 100;
       }
-      if (!bad && taken) for (const t of taken) if (q[0] - hx < t[2] && t[0] < q[0] + hx && q[1] - hy < t[3] && t[1] < q[1] + hy) { bad = true; break; }
-      if (!bad) return keep(q);
+      if (taken) for (const t of taken) if (x0 < t[2] && t[0] < x1 && y0 < t[3] && t[1] < y1) n += 20;
+      if (avoid) {
+        const box = { cx: q[0], cy: q[1], hw: hx + 0.05, hh: hy + 0.05 };
+        for (const s of avoid.segs) {
+          if (s[4] === pt.ref || Math.max(s[0], s[2]) < x0 - 0.1 || Math.min(s[0], s[2]) > x1 + 0.1 || Math.max(s[1], s[3]) < y0 - 0.1 || Math.min(s[1], s[3]) > y1 + 0.1) continue;
+          if (rectSeg(box, [s[0], s[1]], [s[2], s[3]]) <= 0) n += 5;
+        }
+        for (const v of avoid.vias) {
+          const dx = Math.max(Math.abs(v[0] - q[0]) - hx, 0), dy = Math.max(Math.abs(v[1] - q[1]) - hy, 0);
+          if (dx * dx + dy * dy < (v[2] + 0.1) * (v[2] + 0.1)) n += 10;
+        }
+        for (const t of avoid.boxes) if (x0 < t[2] && t[0] < x1 && y0 < t[3] && t[1] < y1) n += 20;
+      }
+      if (!n) return keep(q);
+      if (!best || n < best.n) best = { n, q };
     }
-    return keep(cands[0]);
+    return keep(best ? best.q : cands[0]);
   }
 
   /** Keeps only the part of a segment on the board (silk off the edge would be cut away anyway). */

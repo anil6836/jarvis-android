@@ -672,7 +672,18 @@
       if (s.c) { const q = tr(s.c[0], s.c[1]); grow(q[0] - s.c[2], q[1] - s.c[2]); grow(q[0] + s.c[2], q[1] + s.c[2]); }
       if (s.a) { const q = tr(s.a[0], s.a[1]); grow(q[0] - s.a[2], q[1] - s.a[2]); grow(q[0] + s.a[2], q[1] + s.a[2]); }
     });
-    return { sy, tr, pins, box: bx, r };
+    // the drawn body alone (no pin leads, no names): wires keep a little room from it
+    const box = bx;
+    bx = [1e9, 1e9, -1e9, -1e9];
+    const pinAt = (x, y) => Object.keys(sy.pins).some((k) => Math.abs(sy.pins[k][0] - x) < 0.5 && Math.abs(sy.pins[k][1] - y) < 0.5);
+    sy.S.forEach((s) => {
+      if (s.l) for (let i = 0; i < s.l.length; i += 2) { if (pinAt(s.l[i], s.l[i + 1])) continue; const q = tr(s.l[i], s.l[i + 1]); grow(q[0], q[1]); }
+      if (s.poly) for (let i = 0; i < s.poly.length; i += 2) { const q = tr(s.poly[i], s.poly[i + 1]); grow(q[0], q[1]); }
+      if (s.r) { const a = tr(s.r[0], s.r[1]), b = tr(s.r[2], s.r[3]); grow(a[0], a[1]); grow(b[0], b[1]); }
+      if (s.c) { const q = tr(s.c[0], s.c[1]); grow(q[0] - s.c[2], q[1] - s.c[2]); grow(q[0] + s.c[2], q[1] + s.c[2]); }
+      if (s.a) { const q = tr(s.a[0], s.a[1]); grow(q[0] - s.a[2], q[1] - s.a[2]); grow(q[0] + s.a[2], q[1] + s.a[2]); }
+    });
+    return { sy, tr, pins, box, body: bx[0] < 1e9 ? bx : box, r };
   }
   function autoSch() {
     // parts without a place on the drawing get one (a grid in the order they join)
@@ -734,16 +745,17 @@
     });
     let bounds = [1e9, 1e9, -1e9, -1e9];
     P2.forEach((pl) => { bounds = [Math.min(bounds[0], pl.box[0]), Math.min(bounds[1], pl.box[1]), Math.max(bounds[2], pl.box[2]), Math.max(bounds[3], pl.box[3])]; });
-    // a net's name only where it does not sit on a symbol
-    const free = labels.filter((l) => { for (const pl of P2.values()) { const b = pl.box; if (l.x > b[0] - 12 && l.x < b[2] + 12 && l.y > b[1] - 6 && l.y < b[3] + 12) return false; } return true; });
-    const lay = { P2, wires, flags, dots, labels: free, bounds, names: new Map() };
-    // each part's name and value: beside it, off wires, flags, other symbols and the names already placed
-    const taken = free.map((l) => { const w = String(l.t).length * 6.2; return [l.x - w / 2, l.y - 12, l.x + w / 2, l.y]; });
+    const taken = [];
     flags.forEach((f) => {
       const e = f.e, ex = e[0] + e[2] * 14, ey = e[1] + e[3] * 14;
       if (f.gnd) taken.push([ex - 10, ey, ex + 10, ey + 14]);
       else { const w = String(f.n).length * 7; taken.push([ex - w / 2, ey - 21, ex + w / 2, ey - 5]); }
     });
+    // a net's name beside its wire, never on it (none when there is no free spot next to its wires)
+    const free = [];
+    labels.forEach((l) => { const b = nameSpot(l, taken); if (b) { free.push({ t: l.t, box: b }); taken.push(b); } });
+    const lay = { P2, wires, flags, dots, labels: free, bounds, names: new Map() };
+    // each part's name and value: beside it, off wires, flags, other symbols and the names already placed
     D.parts.forEach((pt) => { const at = nameAt(pt, P2.get(pt.ref), lay, taken); lay.names.set(pt.ref, at); taken.push(at.box); });
     layCache = { key, lay };
     return lay;
@@ -751,6 +763,9 @@
     function inside(x1, y1, x2, y2, b) { // does a straight wire run through a symbol (not just touch its pin end)?
       const bx0 = b[0] + 3, by0 = b[1] + 3, bx1 = b[2] - 3, by1 = b[3] - 3;
       return Math.max(x1, x2) > bx0 && Math.min(x1, x2) < bx1 && Math.max(y1, y2) > by0 && Math.min(y1, y2) < by1;
+    }
+    function near(x1, y1, x2, y2, b) { // does a straight wire touch a symbol's drawn body (with 4 of room around it)?
+      return Math.max(x1, x2) > b[0] - 4 && Math.min(x1, x2) < b[2] + 4 && Math.max(y1, y2) > b[1] - 4 && Math.min(y1, y2) < b[3] + 4;
     }
     function cost(pts, name, A, Bp) {
       let c = 0;
@@ -771,7 +786,7 @@
             if (v[0] > Math.min(h[0], h[2]) + 1 && v[0] < Math.max(h[0], h[2]) - 1 && h[1] > Math.min(v[1], v[2]) + 1 && h[1] < Math.max(v[1], v[2]) - 1) c += 30;
           }
         }
-        P2.forEach((pl) => { if (inside(x1, y1, x2, y2, pl.box)) c += 300; });
+        P2.forEach((pl) => { if (inside(x1, y1, x2, y2, pl.box) || near(x1, y1, x2, y2, pl.body)) c += 300; });
         for (const r of flagRoom) if (r[4] !== name && Math.max(x1, x2) > r[0] && Math.min(x1, x2) < r[2] && Math.max(y1, y2) > r[1] && Math.min(y1, y2) < r[3]) c += 200;
         for (const e of pinEnds) {
           if (e[2] === name) continue;
@@ -826,8 +841,7 @@
     }
     function join(ends, name, named) {
       // shortest joining (Prim), each link routed around the wires already drawn
-      const inT = [0], left = ends.map((_, i) => i).slice(1), deg = ends.map(() => 0);
-      let longest = null;
+      const inT = [0], left = ends.map((_, i) => i).slice(1), deg = ends.map(() => 0), mine = [];
       while (left.length) {
         let best = null;
         inT.forEach((a) => left.forEach((b, bi) => { const d = Math.abs(ends[a][0] - ends[b][0]) + Math.abs(ends[a][1] - ends[b][1]); if (!best || d < best.d) best = { d, a, b, bi }; }));
@@ -835,14 +849,33 @@
         wires.push(pts);
         for (let i = 0; i + 3 < pts.length; i += 2) {
           segAll.push([pts[i], pts[i + 1], pts[i + 2], pts[i + 3], name]);
-          const len = Math.abs(pts[i + 2] - pts[i]) + Math.abs(pts[i + 3] - pts[i + 1]);
-          if (!longest || len > longest.d) longest = { d: len, x: (pts[i] + pts[i + 2]) / 2, y: (pts[i + 1] + pts[i + 3]) / 2 };
+          mine.push([pts[i], pts[i + 1], pts[i + 2], pts[i + 3]]);
         }
         deg[best.a]++; deg[best.b]++;
         inT.push(best.b); left.splice(best.bi, 1);
       }
       ends.forEach((e, i) => { if (deg[i] > 1) dots.push(e); });
-      if (named && longest && longest.d > 30) labels.push({ t: name, x: longest.x, y: longest.y });
+      if (named) labels.push({ t: name, segs: mine });
+    }
+    function nameSpot(l, taken) { // a net's name beside one of its own wires: above a level one, right of an upright one; off wires, symbols, flags and names
+      const w = String(l.t).length * 6.2, hh = 12, hit = (b, q) => Math.max(q[0], q[2]) >= b[0] && Math.min(q[0], q[2]) <= b[2] && Math.max(q[1], q[3]) >= b[1] && Math.min(q[1], q[3]) <= b[3];
+      const over = (a, b, m) => a[0] - m < b[2] && b[0] < a[2] + m && a[1] - m < b[3] && b[1] < a[3] + m;
+      let best = null;
+      l.segs.forEach((q) => {
+        const hz = Math.abs(q[1] - q[3]) < 0.5, len = Math.abs(q[2] - q[0]) + Math.abs(q[3] - q[1]);
+        if (len <= 30) return;
+        const mx = (q[0] + q[2]) / 2, my = (q[1] + q[3]) / 2;
+        const cs = hz ? [[mx - w / 2, my - 3 - hh, mx + w / 2, my - 3, 0], [mx - w / 2, my + 3, mx + w / 2, my + 3 + hh, 1]]
+          : [[mx + 5, my - hh / 2, mx + 5 + w, my + hh / 2, 2], [mx - 5 - w, my - hh / 2, mx - 5, my + hh / 2, 3]];
+        cs.forEach((b) => {
+          let n = b[4] * 3 - Math.min(len, 150) / 30;
+          for (const s of segAll) if (hit(b, s)) n += 100;
+          P2.forEach((pl) => { if (over(pl.box, b, 3)) n += 1000; else if (over(pl.box, b, 12)) n += 40; }); // close to a symbol it reads as the symbol's
+          for (const t of taken) if (over(t, b, 1)) n += 100;
+          if (!best || n < best.n) best = { n, b: b.slice(0, 4) };
+        });
+      });
+      return best && best.n < 1000 ? best.b : null;
     }
   }
   /** Where a symbol's name goes: right / left of a tall one, above / below a wide one, the first side with nothing on it. */
@@ -913,9 +946,9 @@
       if (!f.gnd) { ctx.fillStyle = '#ffc861'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText(f.n, X(ex), Y(ey - 8)); }
     });
     // net names
-    ctx.fillStyle = 'rgba(107,227,164,.75)'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.fillStyle = 'rgba(107,227,164,.75)'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = Math.max(8, 9.5 * s) + 'px ' + FONT;
-    lay.labels.forEach((l) => ctx.fillText(l.t, X(l.x), Y(l.y) - 2));
+    lay.labels.forEach((l) => ctx.fillText(l.t, X((l.box[0] + l.box[2]) / 2), Y((l.box[1] + l.box[3]) / 2)));
     // symbols
     D.parts.forEach((pt) => {
       const pl = lay.P2.get(pt.ref), on = sv.sel === pt.ref;
@@ -1090,8 +1123,8 @@
     check.list.forEach((f) => {
       const it = el('div', 'item');
       it.appendChild(el('div', 'i', icon[f.sev]));
-      const x = el('div', 'x');
-      x.appendChild(el('div', f.sev === 'err' ? 'err' : f.sev === 'warn' ? 'warnc' : '', f.te));
+      const x = el('div', 'x'), te = String(f.te || '');
+      x.appendChild(el('div', f.sev === 'err' ? 'err' : f.sev === 'warn' ? 'warnc' : '', te.startsWith(icon[f.sev]) ? te.slice(icon[f.sev].length).trim() : te));
       if (f.fix) x.appendChild(el('div', 'f', '👉 ' + f.fix));
       it.appendChild(x);
       it.addEventListener('click', () => {
