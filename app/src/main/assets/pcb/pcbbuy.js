@@ -88,7 +88,11 @@
       case 'fhdr': return 'female berg strip 2.54mm';
       case 'buck': return 'LM2596 buck converter module';
       case 'buzzer': return '12V active buzzer 12mm';
-      case 'ptc': return 'PTC resettable fuse 1.85A';
+      case 'ptc': return 'PTC resettable fuse ' + (/\d/.test(v) ? v : '1.85A');
+      case 'r3v3': return 'LD1117V33 3.3V regulator TO-220';
+      case 'slide': return 'SS12D00 slide switch';
+      case 'jack35': return 'CUI SJ1-3533NG 3.5mm stereo jack';
+      case 'mic': return 'electret condenser microphone 9.7mm';
       case 'usba': return 'USB A female PCB 90 degree';
       case 'esp32': return 'ESP32 30 pin development board';
       case 'vs1838': return 'VS1838B IR receiver';

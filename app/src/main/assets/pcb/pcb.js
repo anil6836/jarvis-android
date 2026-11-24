@@ -627,6 +627,15 @@
         two('1', '2', 30);
         L(-30, 0, 30, 0); S.push({ r: [-14, -6, 14, 6] });
         break;
+      case 'spdt': // slide switch: the common (C) on the left, A up and B down on the right; the lever rests on A
+        pins[byRole('C') || '2'] = [-30, 0, -1, 0]; pins[byRole('A') || '1'] = [30, -10, 1, 0]; pins[byRole('B') || '3'] = [30, 10, 1, 0];
+        L(-30, 0, -11, 0); S.push({ c: [-9, 0, 2] }); L(-7, -1, 9, -9); S.push({ c: [11, -10, 2] }); S.push({ c: [11, 10, 2] }); L(13, -10, 30, -10); L(13, 10, 30, 10);
+        T.push({ t: 'A', x: 22, y: -16, a: 'center', small: true }); T.push({ t: 'B', x: 22, y: 16, a: 'center', small: true });
+        break;
+      case 'mic': // electret mic: a circle with a bar on its sound side
+        pins[byRole('+') || '1'] = [-25, 0, -1, 0]; pins[byRole('-') || '2'] = [25, 0, 1, 0];
+        S.push({ c: [0, 0, 10] }); L(-25, 0, -10, 0); L(10, 0, 25, 0); L(-10, -10, -10, 10); L(-20, -9, -14, -9); L(-17, -12, -17, -6);
+        break;
       default: {
         const bx = lib.box || { L: Object.keys(names) };
         const Ls = bx.L || [], Rs = bx.R || [], Ts = bx.T || [], Bs = bx.B || [];
@@ -679,12 +688,32 @@
       x += w + 95; rowH = Math.max(rowH, h);
     });
   }
+  let layCache = null;
+  /** The drawing's layout: symbols placed, wires (never on top of another net's wire, never through a symbol), flags, names. */
   function schLayout() {
     autoSch();
+    const key = D.id + '|' + (sv.vals ? 1 : 0) + '|' + D.parts.map((p) => [p.ref, p.lib, p.val, p.sx, p.sy, p.srot || 0, p.fp || '', p.pins ? JSON.stringify(p.pins) : ''].join(',')).join(';') + '|' + JSON.stringify(D.nets);
+    if (layCache && layCache.key === key) return layCache.lay;
     const P2 = new Map();
     D.parts.forEach((pt) => P2.set(pt.ref, placed(pt)));
-    const wires = [], flags = [], dots = [], labels = [];
-    D.nets.forEach((n) => {
+    const wires = [], flags = [], dots = [], labels = [], segAll = [];
+    // every pin end on the drawing with its net: a wire never runs over another net's pin (it would look joined)
+    const netOf = new Map();
+    D.nets.forEach((n) => n.p.forEach((q) => netOf.set(q, n.n)));
+    const pinEnds = [];
+    P2.forEach((pl, ref) => Object.keys(pl.pins).forEach((k) => { const e = pl.pins[k]; pinEnds.push([e[0], e[1], netOf.get(ref + '.' + k) || '']); }));
+    // room kept for the supply / ground symbols that may sit on supply pins (wires go around them)
+    const flagRoom = [];
+    P2.forEach((pl, ref) => Object.keys(pl.pins).forEach((k) => {
+      const nn = netOf.get(ref + '.' + k);
+      if (!nn || !C.isPower(nn)) return;
+      const e = pl.pins[k], ex = e[0] + e[2] * 14, ey = e[1] + e[3] * 14;
+      flagRoom.push([Math.min(e[0], ex) - 2, Math.min(e[1], ey) - 2, Math.max(e[0], ex) + 2, Math.max(e[1], ey) + 2, nn]);
+      flagRoom.push(C.isGnd(nn) ? [ex - 10, ey, ex + 10, ey + 14, nn] : [ex - 9, ey - 8, ex + 9, ey, nn]);
+    }));
+    // shorter nets first: their wires take the straight paths, longer ones go around them
+    const order = D.nets.slice().sort((x, y) => (C.isPower(x.n) ? 1 : 0) - (C.isPower(y.n) ? 1 : 0) || x.p.length - y.p.length);
+    order.forEach((n) => {
       const ends = n.p.map((p) => { const [ref, pad] = p.split('.'); const pl = P2.get(ref); return pl && pl.pins[pad] ? pl.pins[pad] : null; }).filter(Boolean);
       if (!ends.length) return;
       const power = C.isPower(n.n), gnd = C.isGnd(n.n);
@@ -707,47 +736,141 @@
     P2.forEach((pl) => { bounds = [Math.min(bounds[0], pl.box[0]), Math.min(bounds[1], pl.box[1]), Math.max(bounds[2], pl.box[2]), Math.max(bounds[3], pl.box[3])]; });
     // a net's name only where it does not sit on a symbol
     const free = labels.filter((l) => { for (const pl of P2.values()) { const b = pl.box; if (l.x > b[0] - 12 && l.x < b[2] + 12 && l.y > b[1] - 6 && l.y < b[3] + 12) return false; } return true; });
-    return { P2, wires, flags, dots, labels: free, bounds };
+    const lay = { P2, wires, flags, dots, labels: free, bounds, names: new Map() };
+    // each part's name and value: beside it, off wires, flags, other symbols and the names already placed
+    const taken = free.map((l) => { const w = String(l.t).length * 6.2; return [l.x - w / 2, l.y - 12, l.x + w / 2, l.y]; });
+    flags.forEach((f) => {
+      const e = f.e, ex = e[0] + e[2] * 14, ey = e[1] + e[3] * 14;
+      if (f.gnd) taken.push([ex - 10, ey, ex + 10, ey + 14]);
+      else { const w = String(f.n).length * 7; taken.push([ex - w / 2, ey - 21, ex + w / 2, ey - 5]); }
+    });
+    D.parts.forEach((pt) => { const at = nameAt(pt, P2.get(pt.ref), lay, taken); lay.names.set(pt.ref, at); taken.push(at.box); });
+    layCache = { key, lay };
+    return lay;
+
+    function inside(x1, y1, x2, y2, b) { // does a straight wire run through a symbol (not just touch its pin end)?
+      const bx0 = b[0] + 3, by0 = b[1] + 3, bx1 = b[2] - 3, by1 = b[3] - 3;
+      return Math.max(x1, x2) > bx0 && Math.min(x1, x2) < bx1 && Math.max(y1, y2) > by0 && Math.min(y1, y2) < by1;
+    }
+    function cost(pts, name, A, Bp) {
+      let c = 0;
+      for (let i = 0; i + 3 < pts.length; i += 2) {
+        const x1 = pts[i], y1 = pts[i + 1], x2 = pts[i + 2], y2 = pts[i + 3];
+        if (Math.abs(x1 - x2) < 0.01 && Math.abs(y1 - y2) < 0.01) continue;
+        const hz = Math.abs(y1 - y2) < 0.5;
+        c += Math.abs(x2 - x1) + Math.abs(y2 - y1);
+        for (const q of segAll) {
+          if (q[4] === name) continue;
+          const qh = Math.abs(q[1] - q[3]) < 0.5;
+          if (hz && qh) {
+            if (Math.abs(q[1] - y1) < 5 && Math.min(Math.max(x1, x2), Math.max(q[0], q[2])) - Math.max(Math.min(x1, x2), Math.min(q[0], q[2])) > 1) c += 500;
+          } else if (!hz && !qh) {
+            if (Math.abs(q[0] - x1) < 5 && Math.min(Math.max(y1, y2), Math.max(q[1], q[3])) - Math.max(Math.min(y1, y2), Math.min(q[1], q[3])) > 1) c += 500;
+          } else {
+            const h = hz ? [x1, y1, x2] : [q[0], q[1], q[2]], v = hz ? [q[0], q[1], q[3]] : [x1, y1, y2];
+            if (v[0] > Math.min(h[0], h[2]) + 1 && v[0] < Math.max(h[0], h[2]) - 1 && h[1] > Math.min(v[1], v[2]) + 1 && h[1] < Math.max(v[1], v[2]) - 1) c += 30;
+          }
+        }
+        P2.forEach((pl) => { if (inside(x1, y1, x2, y2, pl.box)) c += 300; });
+        for (const r of flagRoom) if (r[4] !== name && Math.max(x1, x2) > r[0] && Math.min(x1, x2) < r[2] && Math.max(y1, y2) > r[1] && Math.min(y1, y2) < r[3]) c += 200;
+        for (const e of pinEnds) {
+          if (e[2] === name) continue;
+          const on = hz ? Math.abs(e[1] - y1) < 1.5 && e[0] > Math.min(x1, x2) - 1.5 && e[0] < Math.max(x1, x2) + 1.5
+            : Math.abs(e[0] - x1) < 1.5 && e[1] > Math.min(y1, y2) - 1.5 && e[1] < Math.max(y1, y2) + 1.5;
+          if (on) c += 500;
+        }
+      }
+      // leave a pin the way it points, arrive the way the other pin points
+      if (pts.length >= 4 && ((pts[2] - A[0]) * A[2] + (pts[3] - A[1]) * A[3]) < -0.5) c += 60;
+      const n = pts.length;
+      if (n >= 4 && ((pts[n - 4] - Bp[0]) * Bp[2] + (pts[n - 3] - Bp[1]) * Bp[3]) < -0.5) c += 60;
+      return c + (n / 2 - 2) * 8;
+    }
+    function tidy(pts) { // drop repeated and in-line points
+      const o = [];
+      for (let i = 0; i < pts.length; i += 2) {
+        const x = pts[i], y = pts[i + 1], k = o.length;
+        if (k >= 2 && Math.abs(o[k - 2] - x) < 0.01 && Math.abs(o[k - 1] - y) < 0.01) continue;
+        if (k >= 4 && ((Math.abs(o[k - 4] - o[k - 2]) < 0.01 && Math.abs(o[k - 2] - x) < 0.01) || (Math.abs(o[k - 3] - o[k - 1]) < 0.01 && Math.abs(o[k - 1] - y) < 0.01))) { o[k - 2] = x; o[k - 1] = y; continue; }
+        o.push(x, y);
+      }
+      return o;
+    }
+    function route(A, Bp, name) {
+      const g = 10, xs = new Set(), ys = new Set(), ax = [], bx = [], ay = [], by = [];
+      for (let k = -5; k <= 5; k++) { xs.add(Math.round((A[0] + Bp[0]) / 2 / g) * g + k * g); ys.add(Math.round((A[1] + Bp[1]) / 2 / g) * g + k * g); }
+      [10, 20, 30].forEach((d) => { ax.push(A[0] + A[2] * d); bx.push(Bp[0] + Bp[2] * d); ay.push(A[1] + A[3] * d); by.push(Bp[1] + Bp[3] * d); });
+      ax.concat(bx).forEach((x) => xs.add(x)); ay.concat(by).forEach((y) => ys.add(y));
+      let best = null;
+      const len = (t) => { let d = 0; for (let i = 0; i + 3 < t.length; i += 2) d += Math.abs(t[i + 2] - t[i]) + Math.abs(t[i + 3] - t[i + 1]); return d; };
+      const tryAll = (cands, extra) => cands.forEach((c) => { const t = tidy(c), v = cost(t, name, A, Bp) + extra; if (!best || v < best.v) best = { v, t }; });
+      // an L, then a Z through a free column / row
+      tryAll([[A[0], A[1], Bp[0], A[1], Bp[0], Bp[1]], [A[0], A[1], A[0], Bp[1], Bp[0], Bp[1]]], 0);
+      const zs = [];
+      xs.forEach((xm) => zs.push([A[0], A[1], xm, A[1], xm, Bp[1], Bp[0], Bp[1]]));
+      ys.forEach((ym) => zs.push([A[0], A[1], A[0], ym, Bp[0], ym, Bp[0], Bp[1]]));
+      tryAll(zs, 3);
+      if (best.v - len(best.t) < 60) return best.t;
+      // still crossing something: step out of each pin first and go around (up to five straight pieces)
+      const more = [];
+      ys.forEach((ym) => {
+        ax.forEach((x1) => { more.push([A[0], A[1], x1, A[1], x1, ym, Bp[0], ym, Bp[0], Bp[1]]); bx.forEach((x2) => more.push([A[0], A[1], x1, A[1], x1, ym, x2, ym, x2, Bp[1], Bp[0], Bp[1]])); });
+        bx.forEach((x2) => more.push([A[0], A[1], A[0], ym, x2, ym, x2, Bp[1], Bp[0], Bp[1]]));
+      });
+      xs.forEach((xm) => {
+        ay.forEach((y1) => { more.push([A[0], A[1], A[0], y1, xm, y1, xm, Bp[1], Bp[0], Bp[1]]); by.forEach((y2) => more.push([A[0], A[1], A[0], y1, xm, y1, xm, y2, Bp[0], y2, Bp[0], Bp[1]])); });
+        by.forEach((y2) => more.push([A[0], A[1], xm, A[1], xm, y2, Bp[0], y2, Bp[0], Bp[1]]));
+      });
+      tryAll(more, 6);
+      return best.t;
+    }
     function join(ends, name, named) {
-      // shortest joining (Prim, by L-shaped length)
+      // shortest joining (Prim), each link routed around the wires already drawn
       const inT = [0], left = ends.map((_, i) => i).slice(1), deg = ends.map(() => 0);
       let longest = null;
       while (left.length) {
         let best = null;
         inT.forEach((a) => left.forEach((b, bi) => { const d = Math.abs(ends[a][0] - ends[b][0]) + Math.abs(ends[a][1] - ends[b][1]); if (!best || d < best.d) best = { d, a, b, bi }; }));
-        const A = ends[best.a], Bp = ends[best.b];
-        const hFirst = Math.abs(A[2]) > 0.5;
-        const mid = hFirst ? [Bp[0], A[1]] : [A[0], Bp[1]];
-        wires.push([A[0], A[1], mid[0], mid[1], Bp[0], Bp[1]]);
-        if (!longest || best.d > longest.d) longest = { d: best.d, x: (A[0] + mid[0]) / 2, y: (A[1] + mid[1]) / 2, x2: (mid[0] + Bp[0]) / 2, y2: (mid[1] + Bp[1]) / 2, h: Math.abs(A[0] - mid[0]) >= Math.abs(mid[1] - Bp[1]) };
+        const pts = route(ends[best.a], ends[best.b], name);
+        wires.push(pts);
+        for (let i = 0; i + 3 < pts.length; i += 2) {
+          segAll.push([pts[i], pts[i + 1], pts[i + 2], pts[i + 3], name]);
+          const len = Math.abs(pts[i + 2] - pts[i]) + Math.abs(pts[i + 3] - pts[i + 1]);
+          if (!longest || len > longest.d) longest = { d: len, x: (pts[i] + pts[i + 2]) / 2, y: (pts[i + 1] + pts[i + 3]) / 2 };
+        }
         deg[best.a]++; deg[best.b]++;
         inT.push(best.b); left.splice(best.bi, 1);
       }
       ends.forEach((e, i) => { if (deg[i] > 1) dots.push(e); });
-      if (named && longest && longest.d > 30) labels.push({ t: name, x: longest.h ? longest.x : longest.x2, y: longest.h ? longest.y : longest.y2 });
+      if (named && longest && longest.d > 30) labels.push({ t: name, x: longest.x, y: longest.y });
     }
   }
-  /** Where a symbol's name goes: right / left of a tall one, above / below a wide one, the first side no wire crosses. */
-  function nameAt(pt, pl, lay) {
+  /** Where a symbol's name goes: right / left of a tall one, above / below a wide one, the first side with nothing on it. */
+  function nameAt(pt, pl, lay, taken) {
     const b = pl.box, wide = b[2] - b[0] > (b[3] - b[1]) * 1.2, tw = Math.max(String(pt.ref).length * 7.5, sv.vals ? String(pt.val || '').length * 6 : 0), th = sv.vals && pt.val ? 24 : 13;
     const cy = (b[1] + b[3]) / 2, cx = (b[0] + b[2]) / 2;
     const cands = wide ? [{ x: cx, y: b[1] - th / 2 - 4, a: 'center' }, { x: cx, y: b[3] + th / 2 + 4, a: 'center' }, { x: b[2] + 6, y: cy, a: 'left' }, { x: b[0] - 6, y: cy, a: 'right' }]
       : [{ x: b[2] + 6, y: cy, a: 'left' }, { x: b[0] - 6, y: cy, a: 'right' }, { x: cx, y: b[1] - th / 2 - 4, a: 'center' }, { x: cx, y: b[3] + th / 2 + 4, a: 'center' }];
+    // a little further out when the first places are taken
+    cands.slice().forEach((c) => cands.push(c.a === 'center' ? { x: c.x, y: c.y + (c.y < cy ? -14 : 14), a: c.a } : { x: c.x + (c.a === 'left' ? 14 : -14), y: c.y, a: c.a }));
     const segs = [];
-    lay.wires.forEach((q) => { segs.push([q[0], q[1], q[2], q[3]], [q[2], q[3], q[4], q[5]]); });
-    lay.flags.forEach((f) => { const e = f.e, ex = e[0] + e[2] * 14, ey = e[1] + e[3] * 14; segs.push([e[0], e[1], ex, ey], f.gnd ? [ex - 9, ey + 6, ex + 9, ey + 13] : [ex - 8, ey - 20, ex + 8, ey - 6]); });
+    lay.wires.forEach((q) => { for (let i = 0; i + 3 < q.length; i += 2) segs.push([q[i], q[i + 1], q[i + 2], q[i + 3]]); });
+    lay.flags.forEach((f) => { const e = f.e; segs.push([e[0], e[1], e[0] + e[2] * 14, e[1] + e[3] * 14]); });
+    const boxOf = (c) => { const x0 = c.a === 'left' ? c.x : c.a === 'right' ? c.x - tw : c.x - tw / 2; return [x0, c.y - th / 2, x0 + tw, c.y + th / 2]; };
+    const over = (p, q) => p[0] <= q[2] && p[2] >= q[0] && p[1] <= q[3] && p[3] >= q[1];
     const hits = (c) => {
-      const x0 = c.a === 'left' ? c.x : c.a === 'right' ? c.x - tw : c.x - tw / 2, x1 = x0 + tw, y0 = c.y - th / 2, y1 = c.y + th / 2;
+      const B = boxOf(c);
       let n = 0;
-      segs.forEach((q) => { if (Math.max(q[0], q[2]) >= x0 && Math.min(q[0], q[2]) <= x1 && Math.max(q[1], q[3]) >= y0 && Math.min(q[1], q[3]) <= y1) n++; });
-      lay.P2.forEach((o, ref) => { if (ref === pt.ref) return; const B2 = o.box; if (B2[0] <= x1 && B2[2] >= x0 && B2[1] <= y1 && B2[3] >= y0) n += 2; });
+      segs.forEach((q) => { if (Math.max(q[0], q[2]) >= B[0] && Math.min(q[0], q[2]) <= B[2] && Math.max(q[1], q[3]) >= B[1] && Math.min(q[1], q[3]) <= B[3]) n++; });
+      lay.P2.forEach((o, ref) => { if (ref !== pt.ref && over(o.box, B)) n += 2; });
+      (taken || []).forEach((t) => { if (over(t, B)) n += 2; });
       return n;
     };
     const all = lay.bounds;
-    const out = (c) => { const x0 = c.a === 'left' ? c.x : c.a === 'right' ? c.x - tw : c.x - tw / 2; return all && (x0 < all[0] - 4 || x0 + tw > all[2] + 4) ? 5 : 0; };
+    const out = (c) => { const B = boxOf(c); return all && (B[0] < all[0] - 4 || B[2] > all[2] + 4) ? 1 : 0; };
     let best = null;
-    cands.forEach((c, i) => { const n = (hits(c) + out(c)) * 10 + i; if (!best || n < best.n) best = { n, c }; });
-    return best.c;
+    cands.forEach((c, i) => { const n = (hits(c) * 2 + out(c)) * 10 + i; if (!best || n < best.n) best = { n, c }; });
+    return Object.assign({ box: boxOf(best.c) }, best.c);
   }
 
   function schTools() {
@@ -774,7 +897,7 @@
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     // wires
     ctx.strokeStyle = '#6be3a4'; ctx.lineWidth = Math.max(1, 1.6 * s);
-    lay.wires.forEach((q) => { ctx.beginPath(); ctx.moveTo(X(q[0]), Y(q[1])); ctx.lineTo(X(q[2]), Y(q[3])); ctx.lineTo(X(q[4]), Y(q[5])); ctx.stroke(); });
+    lay.wires.forEach((q) => { ctx.beginPath(); ctx.moveTo(X(q[0]), Y(q[1])); for (let i = 2; i + 1 < q.length; i += 2) ctx.lineTo(X(q[i]), Y(q[i + 1])); ctx.stroke(); });
     ctx.fillStyle = '#6be3a4';
     lay.dots.forEach((e) => { ctx.beginPath(); ctx.arc(X(e[0]), Y(e[1]), Math.max(2, 3.2 * s), 0, Math.PI * 2); ctx.fill(); });
     // power and ground flags
@@ -816,7 +939,7 @@
         ctx.fillText(t.t, X(q[0]), Y(q[1]));
       });
       // name and value: beside the symbol where no wire runs
-      const at = nameAt(pt, pl, lay);
+      const at = lay.names.get(pt.ref);
       ctx.fillStyle = on ? '#74e4ff' : '#e6f3f8'; ctx.font = '600 ' + Math.max(9, 11 * s) + 'px ' + FONT;
       ctx.textAlign = at.a; ctx.textBaseline = 'middle';
       ctx.fillText(pt.ref, X(at.x), Y(at.y - (sv.vals && pt.val ? 6 : 0)));
@@ -838,6 +961,13 @@
     }
   });
 
+  /** Modules that plug into a header (what the AI named): buy them first and check their pins against the board. */
+  function moduleLines() {
+    const mods = D ? D.parts.filter((p) => (p.lib === 'fhdr' || p.lib === 'hdr') && p.note) : [];
+    if (!mods.length) return [];
+    return ['👉 🔌 మాడ్యూల్స్ ముందు కొని, వాటి మీది పిన్ పేర్లు, వాటి వరుస, అవి కోరే వోల్టేజ్ బోర్డ్ మీది పేర్లతో సరిచూడండి (తేడా ఉంటే PCB ఆర్డర్ ముందే ✏️ మార్పు):']
+      .concat(mods.map((p) => '🔌 ' + p.ref + ' (' + Object.keys(P.pinsOf(p)).map((k) => P.pinsOf(p)[k]).join(' · ') + '): ' + p.note));
+  }
   /** What a part is, in simple Telugu: what it does, what it does on this board, how to put it in, its pins. */
   function partSheet(pt) {
     if (!pt) return;
@@ -1058,6 +1188,7 @@
       [!ver.length, ver.length ? '📏 ఈ భాగాల కొలతలు మీరు కొనేదానితో స్కేల్‌తో సరిచూడండి:' : '📏 కొలిచి చూడాల్సిన భాగాలు లేవు']];
     ck.forEach((c) => h.appendChild(el('div', 'step', (c[0] ? '' : '👉 ') + c[1])));
     ver.forEach((f) => h.appendChild(el('div', 'step warnc', f.te)));
+    moduleLines().forEach((t, i) => h.appendChild(el('div', i ? 'step warnc' : 'step', t)));
     h.appendChild(el('h3', null, '3️⃣ ఫ్యాక్టరీ ఫైల్స్ (.zip)'));
     const opts = el('div', 'muted', '2 పొరలు · ' + D.board.w + ' × ' + D.board.h + ' mm · ' + D.board.thick + ' mm · ' + D.board.cu + ' oz రాగి · రంగు: ' + ({ green: 'ఆకుపచ్చ', blue: 'నీలం', black: 'నలుపు', white: 'తెలుపు', purple: 'ఊదా' }[D.board.color] || D.board.color) + '. లోపల: Gerber (' + (M.pads.some((q) => q.smd) ? 7 : 6) + '), డ్రిల్, BOM, భాగాల స్థానాలు (CPL), README.');
     h.appendChild(opts);
@@ -1617,7 +1748,7 @@
       const info = r.info, warn = info.dropped.map((d) => '⚠️ వదిలేశాను: ' + d).concat(info.fixes.slice(0, 6).map((f) => '⚠️ ' + f));
       if (m.cut) warn.unshift('⚠️ AI జవాబు హద్దు దగ్గర మధ్యలో ఆగిపోయింది: వచ్చినంత వరకు బోర్డ్ చేశాను, కొన్ని భాగాలు లేకపోవచ్చు.');
       const head = D.parts.length + ' భాగాలు · ' + D.board.w + ' × ' + D.board.h + ' mm · ' + (r.miss ? '⚡ ' + r.miss + ' పిన్నులు కలపలేకపోయాను' : '🔗 అన్నీ కలిశాయి') + ' · ' + (check.errors ? '❌ ' + check.errors + ' తప్పులు (✅ చెక్ → 🤖 AI సహాయం)' : '✅ చెక్ అయింది');
-      resultSheet('✅ బోర్డ్ రెడీ: ' + D.name, [head, info.say ? '🤖 ' + info.say : ''].concat(warn, [cost,
+      resultSheet('✅ బోర్డ్ రెడీ: ' + D.name, [head, info.say ? '🤖 ' + info.say : ''].concat(warn, moduleLines(), [cost,
         '👉 ఆర్డర్ ముందు: 📐 స్కీమాటిక్‌లో కలుపులు ఒకసారి చూడండి (AI కూడా తప్పు చేయొచ్చు), 🏭 ఫ్యాక్టరీ లో "కొలిచి చూడాల్సినవి" చూడండి.']),
       [btn('📐 స్కీమాటిక్', '', () => showTab('sch')), btn('🧊 3D', '', () => showTab('d3'))]);
       said('బోర్డ్ రెడీ Sir: ' + D.parts.length + ' భాగాలు, ' + (r.miss ? r.miss + ' పిన్నులు కలపలేకపోయాను' : 'అన్నీ కలిశాయి') + '. ఖర్చు ' + m.cost + '.');
@@ -1718,5 +1849,5 @@
   state();
   showTab('home');
   window.__pcb = { open, get D() { return D; }, get check() { return check; }, showTab, reroute, changed, onJarvis, texture, partSheet: (ref) => partSheet(D && D.parts.find((q) => q.ref === ref)), pv, sv,
-    ai, idea, editSheet, heard };
+    ai, idea, editSheet, heard, lay: () => schLayout() };
 })();

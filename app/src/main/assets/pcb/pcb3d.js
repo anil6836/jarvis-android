@@ -286,6 +286,24 @@ function makeBody(g, pt, f) {
       for (let i = 0; i < n; i++) [-hx, hx].forEach((x) => { const pn = box(0.64, 3.5, 0.64, pinsTop); pn.position.set(x, 8.5 + 1.5, y0 + i * 2.54); g.add(pn); });
       break;
     }
+    case 'slide': { // SS12D00: a small black box with a metal lever on top
+      const bd = box(8.6, 3.6, 3.6, METAL()); bd.position.set(0, 1.8 + 0.4, 0); g.add(bd);
+      const lever = box(2.0, 3.8, 1.6, BLACK()); lever.position.set(-0.6, 3.8 + 1.9, -0.2); g.add(lever);
+      pads.forEach((p) => lead(g, p.x, p.y, -1.2, p.x, 0, 0.5));
+      break;
+    }
+    case 'jack': { // 3.5 mm jack: a black block, its round mouth at the board edge (footprint y −)
+      const bd = box(8.2, 5.0, 14, BLACK()); bd.position.set(0.1, 2.5, 5.8); g.add(bd);
+      const barrel = cyl(3.0, 3.0, 4.0, BLACK()); barrel.rotation.x = Math.PI / 2; barrel.position.set(0.9, 3.0, -3.2); g.add(barrel);
+      const mouth = cyl(1.8, 1.8, 0.1, std(0x050505)); mouth.rotation.x = Math.PI / 2; mouth.position.set(0.9, 3.0, -5.25); g.add(mouth);
+      break;
+    }
+    case 'mic': { // electret capsule: a metal can with a black cloth face
+      const can = cyl(b.D / 2, b.D / 2, b.H, METAL()); can.position.y = b.H / 2 + 0.3; g.add(can);
+      const face = cyl(b.D / 2 - 0.6, b.D / 2 - 0.6, 0.1, std(0x111111, { roughness: 0.9 })); face.position.y = b.H + 0.36; g.add(face);
+      pads.forEach((p) => lead(g, p.x, p.y, -1.2, p.x, p.y, 0.4));
+      break;
+    }
     case 'irrx': {
       const bd = box(6, 7, 4.2, BLACK()); bd.position.set(0, 3 + 3.5, 0); g.add(bd);
       const dome = new THREE.Mesh(new THREE.SphereGeometry(1.6, 16, 10), BLACK()); dome.position.set(0, 3 + 4.4, 2.1); g.add(dome);

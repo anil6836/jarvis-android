@@ -31,8 +31,9 @@
   }
   function volts(s) {
     let mx = 0;
-    String(s || '').replace(/(\d+(?:\.\d+)?)\s*V(?![a-z])/gi, (_, n) => { mx = Math.max(mx, parseFloat(n)); return _; });
-    String(s || '').replace(/\b(\d+)V(\d+)\b/gi, (_, a) => { mx = Math.max(mx, parseFloat(a)); return _; });
+    // (a part number like LD1117V33 is not 1117 volts: the number must stand on its own)
+    String(s || '').replace(/(?<![A-Za-z0-9.])(\d+(?:\.\d+)?)\s*V(?![A-Za-z0-9])/gi, (_, n) => { mx = Math.max(mx, parseFloat(n)); return _; });
+    String(s || '').replace(/(?<![A-Za-z0-9.])(\d+)V(\d+)(?![A-Za-z0-9])/gi, (_, a) => { mx = Math.max(mx, parseFloat(a)); return _; });
     return mx;
   }
   /** The AI's answer: why it must not become a board (mains, more than 24 V on a rail, a part rated for mains) or null. */
@@ -346,7 +347,7 @@
     let s = ' ' + String(words || '').toLowerCase().replace(/[“”"'`]/g, ' ') + ' ';
     s = s.replace(/బి\s*జెడ్\s*(\d+)/g, ' bz$1 ').replace(/ఆర్\s*(\d+)/g, ' r$1 ').replace(/సి\s*(\d+)/g, ' c$1 ').replace(/డి\s*(\d+)/g, ' d$1 ')
       .replace(/యు\s*(\d+)/g, ' u$1 ').replace(/జె\s*(\d+)/g, ' j$1 ').replace(/క్యూ\s*(\d+)/g, ' q$1 ').replace(/ఎఫ్\s*(\d+)/g, ' f$1 ')
-      .replace(/\b(bz|[rcdqujf])\s+(\d{1,2})\b/g, ' $1$2 ');
+      .replace(/\b(bz|sw|mk|[rcdqujf])\s+(\d{1,2})\b/g, ' $1$2 ');
     s = s.replace(/(\d)\s*(కె|కే|కిలో)/g, '$1k').replace(/(\d)\s*(ఎం\b|మెగా)/g, '$1m').replace(/(\d)\s*(మైక్రో\s*ఫ(ా|ార)డ్|మైక్రో)/g, '$1uf')
       .replace(/(\d)\s*(నానో\s*ఫ(ా|ార)డ్|నానో)/g, '$1nf').replace(/(\d)\s*(వోల్ట్(స్|లు)?)/g, '$1v').replace(/(\d)\s*(ఎంఎం|మిల్లీమీటర్(లు)?|మి\.మీ)/g, '$1mm')
       .replace(/(\d)\s*(డిగ్రీ(లు|స్)?)/g, '$1deg').replace(/µf|μf/g, 'uf');
@@ -368,7 +369,7 @@
       ['calc', /(లెక్కలు|calculator|కాలిక్యులేటర్)/], ['pcb', /(\bpcb\b|పీసీబీ)/], ['home', /(రెడీ\s*బోర్డ్|బోర్డ్‌లు|బోర్డ్ లిస్ట్|my boards|నా బోర్డ్)/]];
     if (VERB_SHOW.test(s)) for (const t of tabs) if (t[1].test(s)) return { k: 'tab', tab: t[0] };
     if (!D) return null;
-    const refM = /\b(bz\d{1,2}|[rcdqujf]\d{1,2})\b/.exec(s);
+    const refM = /\b(bz\d{1,2}|sw\d{1,2}|mk\d{1,2}|[rcdqujf]\d{1,2})\b/.exec(s);
     const pt = refM ? D.parts.find((p) => p.ref === refM[1].toUpperCase()) : null;
     if (!refM) {
       if (/(రూట్|\broute\b|దారులు\s*(వేయి|వెయ్|గీయి|గియ్|మళ్ళీ))/.test(s)) return { k: 'route' };
@@ -423,7 +424,7 @@
   /** Words about changing the board (for the AI when they are not a small change). */
   function boardWords(words) {
     const s = norm(words);
-    const thing = /(బోర్డ్|బోర్డు|board|pcb|పీసీబీ|భాగం|భాగాలు|పార్ట్|\bpart|రెసిస్టర్|resistor|\bled|ఎల్ఈడీ|ఎల్ ఈ డి|కెపాసిటర్|capacitor|ట్రాన్సిస్టర్|transistor|బజర్|buzzer|డయోడ్|diode|సెన్సార్|sensor|హెడర్|header|టెర్మినల్|terminal|ఫ్యూజ్|fuse|esp32|555|7805|usb|రెగ్యులేటర్|regulator|మాడ్యూల్|module|\b(bz|[rcdqujf])\d{1,2}\b)/;
+    const thing = /(బోర్డ్|బోర్డు|board|pcb|పీసీబీ|భాగం|భాగాలు|పార్ట్|\bpart|రెసిస్టర్|resistor|\bled|ఎల్ఈడీ|ఎల్ ఈ డి|కెపాసిటర్|capacitor|ట్రాన్సిస్టర్|transistor|బజర్|buzzer|డయోడ్|diode|సెన్సార్|sensor|హెడర్|header|టెర్మినల్|terminal|ఫ్యూజ్|fuse|esp32|555|7805|usb|రెగ్యులేటర్|regulator|మాడ్యూల్|module|స్విచ్|switch|జాక్|jack|మైక్|\bmic|\b(bz|sw|mk|[rcdqujf])\d{1,2}\b)/;
     const verb = /(చేయి|చెయ్|పెట్టు|జోడించు|కలుపు|\badd|remove|తీసేయి|తీసెయ్|మార్చు|change|replace|పెంచు|తగ్గించు|increase|reduce|make|ఇంకో|ఇంకొక|మరో|another|బదులు|instead)/;
     return thing.test(s) && verb.test(s);
   }
