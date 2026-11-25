@@ -63,7 +63,8 @@
 
   // ---------------------------------------------------------------- the board → a circuit
 
-  const CONN = { term2: 1, hdr: 1, fhdr: 1 };
+  const CONN = { term2: 1, hdr: 1, fhdr: 1, dcjack: 1, usbc: 1 };
+  const LI_MAH = 2000; // (a usual 18650 cell, roughly; cheap ones less)
   /**
    * The circuit of a board. opts: { src: {key: volts}, ctl: {key: value} } (what he chose on the screen).
    * → { err } or { nodes, el, parts, sources, controls, notes, gnd }
@@ -94,6 +95,9 @@
       if (pt.lib === 'r7805' || pt.lib === 'r3v3') { const o = netAt(pt.ref, role(pt, 'OUT') || '3'); if (o) driven.add(o); }
       if (pt.lib === 'buck') { const o = netAt(pt.ref, role(pt, 'OUT+') || '4'); if (o) driven.add(o); }
       if (pt.lib === 'esp32') { const o = netAt(pt.ref, '30'); if (o) driven.add(o); }
+      // an 18650 holder brings its own volts; a TP4056 passes the cell's volts on to OUT+
+      if (pt.lib === 'bat18650') { const o = netAt(pt.ref, '1'); if (o) driven.add(o); }
+      if (pt.lib === 'tp4056') ['3', '5'].forEach((k) => { const o = netAt(pt.ref, k); if (o) driven.add(o); });
     });
     // an ESP32 board is powered by its own USB unless something on this board feeds its VIN (a regulator, a power connector)
     const usb = new Set();
@@ -122,6 +126,7 @@
         let score = 0;
         if (supplyWords.test(String(pt.val || '') + ' ' + String(pt.note || '')) || supplyWords.test(named)) score += 4;
         if (pt.lib === 'term2') score += 2;
+        if (pt.lib === 'dcjack' || pt.lib === 'usbc') score += 5;
         if (moduleWords(pt)) score -= 3;
         if (pt.lib === 'fhdr') score -= 1;
         cands.push({ pt, k, score });
@@ -151,6 +156,16 @@
       const gk = Object.keys(pinsOf(pt)).find((q) => netAt(pt.ref, q) === gnd);
       const e = add({ k: 'V', a: idx(net), b: pin(pt.ref, gk), v, r, ref: pt.ref, src: key });
       sources.push({ key, ref: pt.ref, pin: f.k, net, v, v0, kind, el: e, te: pt.ref + (pt.val ? ' (' + pt.val + ')' : '') + ' · ' + net });
+    });
+    // a lithium cell: in an 18650 holder on this board, or wired straight to a TP4056 (then its OUT+ / OUT− bring the cell's volts)
+    const liSource = (pt, kp, km, te) => {
+      const key = pt.ref + '.' + kp, v0 = 3.7, v = src[key] > 0 && src[key] <= 4.3 ? +src[key] : v0;
+      const e = add({ k: 'V', a: pin(pt.ref, kp), b: pin(pt.ref, km), v, r: 0.08, ref: pt.ref, src: key });
+      sources.push({ key, ref: pt.ref, pin: kp, net: netAt(pt.ref, kp), v, v0, kind: 'li', el: e, te });
+    };
+    D.parts.forEach((pt) => {
+      if (pt.lib === 'bat18650' && netAt(pt.ref, '1') && netAt(pt.ref, '2')) liSource(pt, '1', '2', pt.ref + ' 18650 బ్యాటరీ');
+      if (pt.lib === 'tp4056' && !(netAt(pt.ref, '3') && netAt(pt.ref, '4')) && netAt(pt.ref, '5') && netAt(pt.ref, '6')) liSource(pt, '5', '6', pt.ref + ' TP4056 (దాని బ్యాటరీ)');
     });
 
     // ---- every part
@@ -247,6 +262,52 @@
           two({ k: 'R', a: pin(ref, '1'), b: pin(ref, '2'), r: 6000 });
           info.kind = 'mic';
           break;
+        case 'btn': {
+          const key = 'btn:' + ref, down = ctl[key] === 'down';
+          two({ k: 'R', a: pin(ref, '1'), b: pin(ref, '2'), r: down ? 0.05 : 1e12 });
+          controls.push({ key, ref, te: ref + ' బటన్', opts: [['up', 'వదిలేశాను'], ['down', '👇 నొక్కి ఉంచాను']], val: down ? 'down' : 'up' });
+          info.kind = 'button'; info.down = down; info.max = 0.05;
+          break;
+        }
+        case 'pot': {
+          const key = 'pot:' + ref, pos = [0, 25, 50, 75, 100].indexOf(+ctl[key]) >= 0 ? +ctl[key] : 50;
+          let tot = P.ohms(String(pt.val || '').replace(/[^\d.kKmM]/g, ''));
+          if (!(tot > 0)) tot = 10000;
+          const w = pin(ref, role(pt, 'W') || '2');
+          two({ k: 'R', a: pin(ref, '1'), b: w, r: Math.max(0.5, tot * pos / 100) });
+          two({ k: 'R', a: w, b: pin(ref, '3'), r: Math.max(0.5, tot * (100 - pos) / 100) });
+          controls.push({ key, ref, te: ref + ' నాబ్ (1 నుంచి 3 వైపు)', opts: [['0', '0%'], ['25', '25%'], ['50', '50%'], ['75', '75%'], ['100', '100%']], val: String(pos) });
+          info.kind = 'pot'; info.pos = pos; info.tot = tot;
+          break;
+        }
+        case 'nmos':
+          two({ k: 'M', g: pin(ref, '1'), d: pin(ref, '2'), s: pin(ref, '3'), rds: 0 });
+          info.kind = 'nmos'; info.max = 10;
+          info.pull = (() => { // a resistor from the gate to the source / GND (keeps it off while nothing drives it)
+            const gn = netAt(ref, '1'), sn = netAt(ref, '3');
+            return !!gn && D.parts.some((q) => q.lib === 'res' && ((netAt(q.ref, '1') === gn && (netAt(q.ref, '2') === sn || netAt(q.ref, '2') === gnd)) || (netAt(q.ref, '2') === gn && (netAt(q.ref, '1') === sn || netAt(q.ref, '1') === gnd))));
+          })();
+          break;
+        case 'bat18650':
+          info.kind = 'cell';
+          break;
+        case 'pam8403': {
+          const vc = pin(ref, '1'), g = pin(ref, '2');
+          two({ k: 'R', a: vc, b: g, r: 5 / 0.08 });
+          Object.assign(info, { kind: 'module', te: 'PAM8403 ఆంప్', want: [2.5, 5.5], sure: true, vpin: vc, gpin: g, ma: 80, amp: true });
+          break;
+        }
+        case 'tp4056': {
+          // B+ and OUT+ are one wire in the module; B− reaches OUT− through its protection switch (cut below 2.4 V or on a short)
+          if (netAt(ref, '3') && netAt(ref, '5')) two({ k: 'R', a: pin(ref, '3'), b: pin(ref, '5'), r: 0.02 });
+          if (netAt(ref, '4') && netAt(ref, '6')) two({ k: 'Prot', a: pin(ref, '4'), b: pin(ref, '6'), bp: pin(ref, '3'), cut: false });
+          if (netAt(ref, '1') && netAt(ref, '2')) two({ k: 'R', a: pin(ref, '1'), b: pin(ref, '2'), r: 5 / 0.01 });
+          if (netAt(ref, '2') && netAt(ref, '4') && netAt(ref, '2') !== netAt(ref, '4')) two({ k: 'R', a: pin(ref, '2'), b: pin(ref, '4'), r: 0.01 }); // (IN− is B− inside)
+          info.kind = 'charger'; info.inp = !!(netAt(ref, '1') && netAt(ref, '2'));
+          // the board's GND on B− (or on IN−, which is B− inside the module) skips the protection
+          info.badGnd = (!!netAt(ref, '4') && netAt(ref, '4') === gnd && netAt(ref, '6') !== gnd) || (!!netAt(ref, '2') && (netAt(ref, '2') === netAt(ref, '6') || (netAt(ref, '2') === gnd && netAt(ref, '6') !== gnd)));
+          break;
+        }
         case 'jack35':
           info.kind = 'jack';
           break;
@@ -298,6 +359,16 @@
         const ma = mod ? mod.ma : 20;
         add({ k: 'R', a: pin(ref, vpin), b: pin(ref, gk[0]), r: vnom / (ma / 1000), ref });
         Object.assign(info, { kind: 'module', te: mod ? mod.te : 'మాడ్యూల్', want, sure: !!said, why: mod && !said ? mod.why : null, vpin: pin(ref, vpin), gpin: pin(ref, gk[0]), ma, named: !!mod });
+      }
+      // a pump / motor / fan / LED strip on a two-pin connector: a load he can join or take off
+      const loadWord = /PUMP|MOTOR|FAN|STRIP|పంప్|మోటార్|ఫ్యాన్/i.test(text + ' ' + ks.map((k) => names[k]).join(' '));
+      if (ks.length === 2 && !isFeed && loadWord) {
+        const key = 'load:' + ref, on = ctl[key] !== 'off', amps = ratedA(pt.val) > 0 ? ratedA(pt.val) : 0.4;
+        const vn = ks.map((k) => voltsOf(netAt(ref, k))).find((v) => v > 0) || 12;
+        if (on) info.els = [add({ k: 'R', a: pin(ref, ks[0]), b: pin(ref, ks[1]), r: vn / amps, ref })];
+        controls.push({ key, ref, te: ref + (pt.val ? ' (' + pt.val + ')' : '') + ': పంప్ / మోటార్', opts: [['on', '⚙️ కలిపాను'], ['off', 'తీసేశాను']], val: on ? 'on' : 'off' });
+        Object.assign(info, { kind: 'load', on, vn });
+        return;
       }
       // a two-pin connector that is not the power: whatever he joins between its pins (a button, two nails in soil…)
       const sig = ks.filter((k) => !feedPins.has(ref + '.' + k) && !gk.includes(k) && !pw.includes(k));
@@ -354,7 +425,7 @@
 
     // a capacitor side that nothing else holds (it only goes out to a module / a cable): its DC level is not known here
     const touch = new Map([[0, 1]]);
-    el.forEach((e) => { if (e.k === 'Cap' || (e.k === 'R' && e.r >= 1e8)) return; ['a', 'b', 'c', 'e', 'i', 'o', 'g', 'ig', 'og', 'from', 'vcc', 'out', 'dis', 'ctl'].forEach((k) => { if (typeof e[k] === 'number' && e[k] >= 0) touch.set(e[k], 1); }); });
+    el.forEach((e) => { if (e.k === 'Cap' || (e.k === 'R' && e.r >= 1e8)) return; ['a', 'b', 'c', 'e', 'i', 'o', 'g', 'ig', 'og', 'from', 'vcc', 'out', 'dis', 'ctl', 'd', 's', 'bp'].forEach((k) => { if (typeof e[k] === 'number' && e[k] >= 0) touch.set(e[k], 1); }); });
     el.forEach((e) => { if (e.k === 'Cap') e.flt = !touch.has(e.a) || !touch.has(e.b); });
     const flt = new Set();
     nodes.forEach((i) => { if (!touch.has(i)) flt.add(i); }); // (a wire that only goes out to a module / cable: its volts are not known here)
@@ -404,6 +475,8 @@
         case 'Cap': if (dt > 0) { const g = e.c / dt; G(e.a, e.b, g); I(e.a, e.b, -g * e.vp); } else G(e.a, e.b, GLEAK); break;
         case 'D': if (e.on) drop(e.a, e.b, e.vf, e.rs); else G(e.a, e.b, GLEAK); break;
         case 'Fuse': G(e.a, e.b, e.trip ? 1 / 200 : 1 / 0.1); break;
+        case 'M': G(e.d, e.s, e.rds > 0 ? 1 / e.rds : GLEAK); break;
+        case 'Prot': G(e.a, e.b, e.cut ? GLEAK : 1 / 0.06); break;
         case 'Q':
           if (e.m !== 'off') drop(e.b, e.e, VBE, RBE);
           if (e.m === 'act') { const gm = BETA / RBE; VCCS(e.c, e.e, e.b, e.e, gm); I(e.c, e.e, -gm * VBE); }
@@ -438,7 +511,8 @@
         switch (e.k) {
           case 'D': {
             const vd = V(e.a) - V(e.b);
-            if (!e.on && vd > e.vf + 1e-4) { e.on = true; changed = true; } else if (e.on && vd < e.vf - 1e-6) { e.on = false; changed = true; }
+            // (on: more than a nano-amp forward; a diode left on a wire nothing else feeds goes off again instead of floating it up)
+            if (!e.on && vd > e.vf + 1e-4) { e.on = true; changed = true; } else if (e.on && vd < e.vf + 1e-9 * e.rs) { e.on = false; changed = true; }
             break;
           }
           case 'Q': {
@@ -470,6 +544,17 @@
           case 'Fuse': {
             const i = Math.abs(V(e.a) - V(e.b)) / 0.1;
             if (!e.trip && i > e.hold * 2) { e.trip = true; changed = true; }
+            break;
+          }
+          case 'M': { // logic-level IRLZ44N: how far on it is goes with the gate volts
+            const vgs = V(e.g) - V(e.s);
+            const rds = vgs < 1.6 ? 0 : vgs < 2.2 ? 3 : vgs < 2.8 ? 0.4 : vgs < 3.6 ? 0.06 : 0.03;
+            if (rds !== e.rds) { e.rds = rds; changed = true; }
+            break;
+          }
+          case 'Prot': { // the DW01: off when the cell is below 2.4 V or more than 3 A flows
+            const vb = V(e.bp) - V(e.a), i = e.cut ? 0 : Math.abs(V(e.a) - V(e.b)) / 0.06;
+            if (!e.cut && (vb < 2.4 || i > 3)) { e.cut = true; changed = true; }
             break;
           }
           default:
@@ -537,6 +622,16 @@
         case 'esp32': break;
         case 'switch': r.pos = info.pos; r.i = Math.max(Math.abs(cur(info.els[0])), Math.abs(cur(info.els[1]))); break;
         case 'usb': r.v = e ? V(e.a) - V(e.b) : NaN; r.i = e ? cur(e) : 0; r.phone = info.phone; break;
+        case 'button': r.down = info.down; r.i = Math.abs(cur(e)); break;
+        case 'load': r.i = e ? Math.abs(cur(e)) : 0; r.v = e ? Math.abs(V(e.a) - V(e.b)) : 0; r.on = info.on; break;
+        case 'pot': r.pos = info.pos; r.vw = V(info.els[0].b); break;
+        case 'nmos': r.vgs = V(e.g) - V(e.s); r.on = e.rds > 0; r.i = e.rds > 0 ? (V(e.d) - V(e.s)) / e.rds : 0; r.w = r.i * r.i * (e.rds || 0); r.rds = e.rds; break;
+        case 'charger': {
+          const pr = info.els.find((q) => q.k === 'Prot');
+          r.cut = pr ? pr.cut : false; r.vbat = pr ? V(pr.bp) - V(pr.a) : NaN; r.iout = pr && !pr.cut ? Math.abs(V(pr.a) - V(pr.b)) / 0.06 : 0;
+          const ie = info.els.find((q) => q.k === 'R' && q.r > 100); r.vin = ie ? V(ie.a) - V(ie.b) : NaN;
+          break;
+        }
         default:
       }
       out.p[ref] = r;
@@ -701,6 +796,37 @@
           push('info', ref, ref + ' స్విచ్: C–' + r.pos + ' వైపు' + (r.i > 1e-4 ? ', ' + fmtA(r.i) : ''));
           if (r.i > info.max) push('err', ref, ref + ' స్విచ్: ' + fmtA(r.i) + ': చిన్న స్లైడ్ స్విచ్‌కి 0.3 A వరకే');
           break;
+        case 'button':
+          push('info', ref, ref + ' బటన్: ' + (r.down ? '👇 నొక్కి ఉంది' : 'వదిలేసి ఉంది') + (r.i > 1e-4 ? ', ' + fmtA(r.i) : ''), r.down ? '' : 'పై 🎛️ లో "నొక్కి ఉంచాను" పెట్టి చూడండి.');
+          if (r.i > info.max) push('err', ref, ref + ' బటన్: ' + fmtA(r.i) + ': చిన్న బటన్‌కి 50 mA వరకే', 'బటన్‌తో ట్రాన్సిస్టర్ / MOSFET ని ఆన్ చేయించండి.');
+          break;
+        case 'pot':
+          push('info', ref, ref + ' నాబ్: ' + r.pos + '% (W దగ్గర ' + fmtV(r.vw) + ')');
+          break;
+        case 'load':
+          if (!r.on) push('info', ref, ref + ' పంప్ / మోటార్: కలపలేదు');
+          else if (r.i < 0.01) push('info', ref, ref + ' పంప్ / మోటార్: ఆగి ఉంది', 'దాన్ని ఆన్ చేసే MOSFET / పిన్‌ని 🎛️ లో మార్చి చూడండి.');
+          else push('ok', ref, ref + ' పంప్ / మోటార్: నడుస్తోంది, ' + fmtV(r.v) + ', ' + fmtA(r.i) + ' (అనుకున్నది; కొన్నదాని మీద A చూడండి)');
+          break;
+        case 'nmos': {
+          const i = most(ref, 'i'), w = most(ref, 'w');
+          if (!info.pull) push('warn', ref, ref + ' MOSFET: G నుంచి GND కి రెసిస్టర్ లేదు', 'G – GND మధ్య 10k పెట్టండి: ESP32 మొదలయ్యేటప్పుడు / వైరు ఊడినప్పుడు దానంతట అదే ఆన్ అవ్వకుండా.');
+          if (!r.on) push('info', ref, ref + ' MOSFET: ఆఫ్ (G ' + fmtV(r.vgs) + ')', 'G కి 3.3 V / 5 V ఇస్తే ఆన్ అవుతుంది (🎛️ లో పిన్ మార్చి చూడండి).');
+          else if (r.rds > 0.1 && i > 0.3) push('warn', ref, ref + ' MOSFET: G కి ' + fmtV(r.vgs) + ' మాత్రమే: పూర్తిగా ఆన్ కాలేదు, ' + fmtA(i) + ' కి వేడెక్కుతుంది', 'G కి కనీసం 3.3 V రావాలి (IRLZ44N లాంటి లాజిక్ MOSFET వాడండి).');
+          else push('ok', ref, ref + ' MOSFET: ఆన్, ' + fmtA(i) + (w > 0.01 ? ', వేడి ' + fmtW(w) : ''));
+          if (i > info.max) push('err', ref, ref + ' MOSFET: ' + fmtA(i) + ': ఈ బోర్డ్ దారులు ఇంత కరెంట్‌కి కాదు');
+          else if (w > 1.2) push('warn', ref, ref + ' MOSFET: ' + fmtW(w) + ' వేడి', 'చిన్న హీట్‌సింక్ పెట్టండి.');
+          break;
+        }
+        case 'charger':
+          if (info.badGnd) push('err', ref, ref + ' TP4056: బోర్డ్ GND బ్యాటరీ B− (లేదా IN−) కి కలిసింది', 'బోర్డ్ GND OUT− కే కలపాలి; IN− మాడ్యూల్ లోపల B− కే కలిసి ఉంటుంది: లేకపోతే బ్యాటరీ ప్రొటెక్షన్ పనిచేయదు.');
+          if (r.cut) push('err', ref, ref + ' TP4056: OUT కట్ అయింది (బ్యాటరీ ' + fmtV(r.vbat) + ' / ఎక్కువ కరెంట్)', 'బ్యాటరీ 2.4 V కంటే తగ్గితే / 3 A కంటే ఎక్కువ తీసుకుంటే ప్రొటెక్షన్ కట్ చేస్తుంది: ఛార్జ్ చేయండి, షార్ట్ వెతకండి.');
+          else if (r.vbat > 0) push('ok', ref, ref + ' TP4056: బ్యాటరీ ' + fmtV(r.vbat) + ', OUT నుంచి ' + fmtA(r.iout));
+          if (info.inp) push('info', ref, ref + ' TP4056: IN కి ' + fmtV(r.vin) + ' — 4.5–5.5 V వస్తే బ్యాటరీ 1 A తో ఛార్జ్ అవుతుంది (2000 mAh కి సుమారు 2–3 గంటలు).');
+          else push('info', ref, ref + ' TP4056: దాని Type-C కి ఫోన్ ఛార్జర్ పెడితే బ్యాటరీ ఛార్జ్ అవుతుంది (ఎరుపు LED = ఛార్జ్ అవుతోంది, నీలం = నిండింది).');
+          break;
+        case 'cell':
+          break;
         case 'usb':
           if (r.phone) {
             if (r.v < 4.4) push('err', ref, ref + ' USB: ' + fmtV(r.v) + ' మాత్రమే: ఫోన్ ఛార్జ్ అవ్వదు');
@@ -715,6 +841,7 @@
           else if (v < w[0] * 0.95 || v > w[1] * 1.05) push(info.sure ? 'err' : 'warn', ref, ref + ' ' + info.te + ': ' + fmtV(v) + ' వస్తోంది; ' + (info.why || 'దానికి ' + w[0] + '–' + w[1] + ' V కావాలి'),
             v > w[1] ? (info.sure ? 'ఎక్కువ: కాలిపోవచ్చు. ' : 'కొనే మాడ్యూల్ మీద ' + fmtV(v).replace(' ', '') + ' అని ఉంటే సరే; లేకపోతే ') + (w[1] < 4.5 ? '3.3V రెగ్యులేటర్ (LD1117V33) నుంచి ఇవ్వండి.' : 'సరైన వోల్టేజ్ నుంచి ఇవ్వండి.') : 'తక్కువ: సరిగ్గా పనిచేయకపోవచ్చు.');
           else push('ok', ref, ref + ' ' + info.te + ': ' + fmtV(v) + ' (' + w[0] + '–' + w[1] + ' V కావాలి) ✓');
+          if (info.amp && v >= 0.2) push('info', ref, ref + ' ఆంప్: పాటలు గట్టిగా పెడితే 1 A వరకు తీసుకుంటుంది', 'సప్లై కనీసం 2 A ఉండాలి; స్పీకర్ వైర్లు GND కి కలపకండి.');
           break;
         }
         default:
@@ -728,12 +855,15 @@
       ti += i; tw += i * r.v;
       if (i > 3) push('err', s.ref, s.te + ': ' + fmtA(i) + ': షార్ట్ లాగా ఉంది', 'ఎక్కడో + నేరుగా GND కి కలిసిందేమో 📐 లో చూడండి.');
       else if (s.kind === '9v' && i > 0.1) push('warn', s.ref, s.te + ': ' + fmtA(i) + ': 9V బ్యాటరీ ఇంత కరెంట్ ఎక్కువ సేపు ఇవ్వలేదు', 'అడాప్టర్ / పెద్ద బ్యాటరీ మంచిది.');
+      else if (s.kind === 'li' && i > 2) push('warn', s.ref, s.te + ': ' + fmtA(i) + ': 18650 కి ఎక్కువ', 'ఎక్కువ కరెంట్ ఇవ్వగల సెల్ (10 A అని రాసి ఉన్నది) వాడండి.');
+      else if (s.kind === 'li' && r.v < 3.2) push('warn', s.ref, s.te + ': ' + fmtV(r.v) + ': బ్యాటరీ దాదాపు ఖాళీ', 'ఛార్జ్ చేయండి.');
       return { s, i, v: r.v };
     });
-    const hours = S.sources.length === 1 && S.sources[0].kind === '9v' && ti > 1e-4 ? BAT9_MAH / (ti * 1000) : null;
+    const one = S.sources.length === 1 ? S.sources[0].kind : '';
+    const hours = (one === '9v' || one === 'li') && ti > 1e-4 ? (one === 'li' ? LI_MAH : BAT9_MAH) / (ti * 1000) : null;
     const order = { err: 0, warn: 1, ok: 2, info: 3 };
     items.sort((a, b) => order[a.sev] - order[b.sev]);
-    return { items, total: { i: ti, w: tw }, per, hours };
+    return { items, total: { i: ti, w: tw }, per, hours, bat: hours ? one : null };
   }
 
   const api = { setup, dc, start, step, cycle, report, has555, farads, ratedV, ratedA, voltsOf, fmtV, fmtA, fmtW, MODS };

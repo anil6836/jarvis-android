@@ -343,6 +343,43 @@ function makeBody(g, pt, f) {
       const mouth = cyl(1.8, 1.8, 0.1, std(0x050505)); mouth.rotation.x = Math.PI / 2; mouth.position.set(0.9, 3.0, -5.25); g.add(mouth);
       break;
     }
+    case 'dcjack': { // DC-005: a black block, its round mouth at the board edge (footprint x −)
+      const bd = box(14.5, 10.8, 9, BLACK()); bd.position.set(0, 5.4, 0); g.add(bd);
+      const mouth = cyl(3.0, 3.0, 0.1, std(0x050505)); mouth.rotation.z = Math.PI / 2; mouth.position.set(-7.3, 6.4, 0); g.add(mouth);
+      const pin = cyl(1.0, 1.0, 0.12, METAL()); pin.rotation.z = Math.PI / 2; pin.position.set(-7.36, 6.4, 0); g.add(pin);
+      break;
+    }
+    case 'btn': { // 6 × 6 push button: a black base, a metal plate, the round button on top
+      const base = box(6, 3.4, 6, BLACK()); base.position.y = 1.7; g.add(base);
+      const plate = box(6.1, 0.3, 6.1, METAL()); plate.position.y = 3.5; g.add(plate);
+      const cap = cyl(1.75, 1.75, (b.H || 5) - 3.4, std(0x23252a)); cap.position.y = 3.4 + ((b.H || 5) - 3.4) / 2 + 0.15; g.add(cap);
+      pads.forEach((p) => lead(g, p.x, p.y, -1.2, p.x * 0.92, p.y, 1.2));
+      break;
+    }
+    case 'pot': { // RV09: a blue square body, the metal bracket, the shaft and a knob
+      const bd = box(12, 6.5, 9.8, std(0x2a5fb0, { roughness: 0.5 })); bd.position.set(0, 3.25 + 0.3, 0); g.add(bd);
+      const br = box(12.2, 0.4, 10, METAL()); br.position.set(0, 6.95, 0); g.add(br);
+      const sh = cyl(3, 3, 6, METAL()); sh.position.set(0.5, 7.1 + 3, 0); g.add(sh);
+      const knob = cyl(6.5, 6.8, 9, BLACK(), 32); knob.position.set(0.5, 13.1 + 4.5, 0); g.add(knob);
+      const dot = box(0.8, 0.1, 3, std(0xf2f2f2)); dot.position.set(0.5, 22.15, -3.8); g.add(dot);
+      pads.slice(0, 3).forEach((p) => lead(g, p.x, p.y, -1.2, p.x, p.y, 1.5));
+      break;
+    }
+    case 'usbc': { // a small Type-C power board on its two pins, its mouth at the board edge (footprint y −)
+      pads.forEach((p) => { const pin = box(0.64, 5, 0.64, std(0xe8c15a, { metalness: 0.9, roughness: 0.3 })); pin.position.set(p.x, 2.5, p.y); g.add(pin); });
+      const sp = box(5.08, 2.5, 2.5, BLACK()); sp.position.set(0, 1.25, 4.2); g.add(sp);
+      const pcb = box(9.2, 1.0, 12.4, std(0x1f2a44)); pcb.position.set(0, 3.0, 0); g.add(pcb);
+      const rec = box(8.9, 3.2, 7.4, METAL()); rec.position.set(0, 3.5 + 1.6, -2.5); g.add(rec);
+      const mouth = box(7.6, 2.0, 0.1, std(0x050505)); mouth.position.set(0, 5.1, -6.25); g.add(mouth);
+      break;
+    }
+    case 'bat': { // 18650 holder and its cell
+      const tray = box(78, 3, 20.5, BLACK()); tray.position.y = 1.5; g.add(tray);
+      [-38, 38].forEach((x) => { const end = box(2, 18, 20.5, BLACK()); end.position.set(x, 9, 0); g.add(end); });
+      const cell = cyl(9.2, 9.2, 65, std(0x2f6fd6, { roughness: 0.35 }), 32); cell.rotation.z = Math.PI / 2; cell.position.set(0, 3 + 9.2, 0); g.add(cell);
+      const cap = cyl(3.5, 3.5, 1.2, METAL()); cap.rotation.z = Math.PI / 2; cap.position.set(-33.1, 3 + 9.2, 0); g.add(cap);
+      break;
+    }
     case 'mic': { // electret capsule: a metal can with a black cloth face
       const can = cyl(b.D / 2, b.D / 2, b.H, METAL()); can.position.y = b.H / 2 + 0.3; g.add(can);
       const face = cyl(b.D / 2 - 0.6, b.D / 2 - 0.6, 0.1, std(0x111111, { roughness: 0.9 })); face.position.y = b.H + 0.36; g.add(face);

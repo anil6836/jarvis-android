@@ -19,6 +19,7 @@
     const f = P.fpOf(pt), b = (f && f.body) || {};
     if (pt.lib === 'buck') return 21;   // (the buck module on its pins)
     if (pt.lib === 'fhdr') return 20.5; // (a module plugged in: its own board and parts on the 8.5 mm socket)
+    if (pt.lib === 'pam8403' || pt.lib === 'tp4056') return 16; // (wires on male pins; the module sits beside)
     switch (b.t) {
       case 'axial': return b.D + 0.8;
       case 'disc': return b.D + 2;
@@ -36,6 +37,11 @@
       case 'jack': return 6;
       case 'mic': return b.H + 0.4;
       case 'irrx': return 10;
+      case 'dcjack': return 11;
+      case 'btn': return b.H || 5;
+      case 'pot': return 7.2;            // (the body; the shaft comes out through the lid)
+      case 'usbc': return 8.4;
+      case 'bat': return 21.5;
       default: return 3;
     }
   }
@@ -44,7 +50,8 @@
 
   /** Low parts first (they stay flat when the board is turned over), tall and strong ones last. */
   const ORDER = { res: 10, d4007: 12, d5822: 14, ne555: 20, cer: 22, ptc: 24, bc547: 30, vs1838: 32, led3: 34, led5: 36, irled: 36, mic: 38,
-    slide: 40, hdr: 50, buck: 51, fhdr: 52, esp32: 54, elec: 60, r7805: 64, r3v3: 64, buzzer: 70, jack35: 80, usba: 82, term2: 84 };
+    slide: 40, btn: 42, hdr: 50, buck: 51, pam8403: 51, tp4056: 51, fhdr: 52, esp32: 54, elec: 60, r7805: 64, r3v3: 64, nmos: 64, pot: 66, buzzer: 70,
+    jack35: 80, dcjack: 81, usba: 82, usbc: 83, term2: 84, bat18650: 90 };
   const MOUNT = {
     res: 'కాళ్ళని రెండు రంధ్రాల దూరానికి వంచి, బోర్డ్‌కి ఆనించి పెట్టండి. కింద కాళ్ళు కొంచెం బయటికి వంచితే పడిపోదు.',
     d4007: 'కాళ్ళని రంధ్రాల దూరానికి వంచి, బోర్డ్‌కి ఆనించి పెట్టండి. గీత బోర్డ్ మీది గీత వైపు.',
@@ -69,11 +76,20 @@
     buzzer: '+ గుర్తు బోర్డ్ మీది + వైపు. బజర్‌ని బోర్డ్‌కి ఆనించి పెట్టండి.',
     jack35: 'బోర్డ్ అంచుకి సరిగ్గా ఆనించి, నోరు బయటికి. లావు కాళ్ళకి ఎక్కువ సోల్డర్, 4–5 సెకన్ల వేడి (బలం కోసం).',
     usba: 'బోర్డ్ అంచుకి సరిగ్గా ఆనించి, నోరు బయటికి. పక్కన ఉన్న రెండు లావు కాళ్ళకి ఎక్కువ సోల్డర్, 4–5 సెకన్ల వేడి (బలం కోసం).',
-    term2: 'వైర్ రంధ్రాలు బోర్డ్ అంచు వైపు. లావు కాళ్ళు: 3–4 సెకన్ల వేడి, సోల్డర్ రంధ్రం నిండేలా.'
+    term2: 'వైర్ రంధ్రాలు బోర్డ్ అంచు వైపు. లావు కాళ్ళు: 3–4 సెకన్ల వేడి, సోల్డర్ రంధ్రం నిండేలా.',
+    btn: 'నాలుగు కాళ్ళూ రంధ్రాల్లో పడేలా నొక్కి, బోర్డ్‌కి ఆనించి పెట్టండి. ఒక్కో కాలుకి 2–3 సెకన్లు.',
+    pot: 'కాళ్ళు మూడూ రంధ్రాల్లో, నాబ్ పైకి. ముందు ఒక కాలు టంకం చేసి నిటారుగా ఉందో చూడండి; తర్వాత మిగతావి, చివర పక్క పట్టీలు (ఎక్కువ సోల్డర్, 4–5 సెకన్లు).',
+    nmos: 'అక్షరాలు మీ వైపు: G D S వరుస సరిచూడండి. బోర్డ్ నుంచి 2–3 mm పైన; లావు కాళ్ళకి 3–4 సెకన్లు. ఎక్కువ కరెంట్ అయితే హీట్‌సింక్ పెట్టే చోటు వదలండి.',
+    dcjack: 'బోర్డ్ అంచుకి సరిగ్గా ఆనించి, నోరు బయటికి. కాళ్ళు చదునుగా ఉంటాయి: రంధ్రం నిండేలా ఎక్కువ సోల్డర్, ఒక్కో కాలుకి 4–5 సెకన్లు (ప్లగ్ గుచ్చేటప్పుడు బలం కోసం).',
+    usbc: 'Type-C బోర్డ్ VBUS, GND పిన్నులు ఈ రెండు రంధ్రాల్లోకి; నోరు బోర్డ్ అంచు బయటికి. దాని కింద రెండు వైపులా హాట్ గ్లూ పెడితే కేబుల్ గుచ్చేటప్పుడు కదలదు.',
+    bat18650: 'హోల్డర్ + గుర్తు బోర్డ్ మీది + వైపు. పెగ్‌లు రంధ్రాల్లోకి, హోల్డర్ బోర్డ్‌కి ఆనాలి. లావు కాళ్ళకి 4–5 సెకన్లు. ⚠️ బ్యాటరీ ఇంకా పెట్టకండి (చివర్లో పెడతాం).',
+    pam8403: 'పిన్నుల పొట్టి వైపు బోర్డ్‌లోకి; ముందు ఒక పిన్, నిటారుగా చూసి మిగతావి. PAM8403 మాడ్యూల్‌ని చివర్లో వైర్లతో కలుపుతాం.',
+    tp4056: 'పిన్నుల పొట్టి వైపు బోర్డ్‌లోకి; ముందు ఒక పిన్, నిటారుగా చూసి మిగతావి. TP4056 మాడ్యూల్‌ని చివర్లో వైర్లతో కలుపుతాం.'
   };
   /** One short "which way round" each, for the last look. */
   const POL = { led5: 'పొడవు కాలు +', led3: 'పొడవు కాలు +', irled: 'పొడవు కాలు +', elec: 'తెల్ల గీత −', d4007: 'గీత = K', d5822: 'గీత = K', ne555: 'గుంత = పిన్ 1',
-    bc547: 'చదునైన ముఖం: C B E', r7805: 'IN GND OUT', r3v3: 'GND OUT IN', buzzer: '+ గుర్తు', mic: 'డబ్బాకి కలిసిన కాలు −', vs1838: 'OUT GND VCC', buck: 'IN+ IN− OUT− OUT+' };
+    bc547: 'చదునైన ముఖం: C B E', r7805: 'IN GND OUT', r3v3: 'GND OUT IN', buzzer: '+ గుర్తు', mic: 'డబ్బాకి కలిసిన కాలు −', vs1838: 'OUT GND VCC', buck: 'IN+ IN− OUT− OUT+',
+    nmos: 'G D S', dcjack: 'మధ్య పిన్ +', usbc: 'VBUS GND', bat18650: '+ గుర్తు', pam8403: '+5V GND L G R', tp4056: 'B+ B− OUT+ OUT−' };
   const LED_TE = { red: 'ఎరుపు', green: 'ఆకుపచ్చ', blue: 'నీలం', yellow: 'పసుపు', white: 'తెలుపు', orange: 'నారింజ' };
 
   const PREP = [
@@ -182,7 +198,7 @@
     const gnd = D.nets.find((n) => C.isGnd(n.n));
     const pw = D.nets.filter((n) => C.isPower(n.n) && !C.isGnd(n.n)).slice(0, 3);
     const where = (net) => {
-      const conn = D.parts.filter((q) => /^(term2|usba|jack35|hdr|fhdr|buck)$/.test(q.lib));
+      const conn = D.parts.filter((q) => /^(term2|usba|jack35|hdr|fhdr|buck|dcjack|usbc|bat18650|tp4056)$/.test(q.lib));
       for (const q of conn) { const p = net.p.find((s) => s.split('.')[0] === q.ref); if (p) return pinTe(q, p.split('.')[1]); }
       const p = net.p[0];
       return p ? pinTe(D.parts.find((q) => q.ref === p.split('.')[0]) || { ref: p.split('.')[0], lib: '' }, p.split('.')[1]) : '';
@@ -201,12 +217,16 @@
       if (q.lib === 'esp32') ins.push('📶 ' + q.ref + ': ESP32 ని సాకెట్లలో గుచ్చండి: దాని మీది పిన్ పేర్లు బోర్డ్ మీది పేర్లతో సరిపోవాలి, యాంటెనా బోర్డ్ బయటి వైపు.');
       if (q.lib === 'fhdr') ins.push('🧩 ' + q.ref + ': మాడ్యూల్ గుచ్చండి: మాడ్యూల్ మీది పిన్ పేర్లు, బోర్డ్ మీది పేర్లు ఒకటే వరుసలో ఉండాలి. అది కోరే వోల్టేజ్ కూడా చూడండి.');
       if (q.lib === 'buck') ins.push('🔧 ' + q.ref + ': బక్ మాడ్యూల్‌ని ముందు మల్టీమీటర్‌తో 5.1 V కి సెట్ చేసి, తర్వాతే IN+ IN− OUT− OUT+ పేర్లు సరిపోల్చి కలపండి.');
+      if (q.lib === 'pam8403') ins.push('🔊 ' + q.ref + ': PAM8403 మాడ్యూల్‌ని +5V GND L G R పేర్లు సరిపోల్చి వైర్లతో కలపండి. స్పీకర్ వైర్లు దాని L+ L− R+ R− కి నేరుగా: ఏవీ GND కి కాదు.');
+      if (q.lib === 'tp4056') ins.push('🔋 ' + q.ref + ': TP4056 మాడ్యూల్: B+ B− బ్యాటరీ వైపు, OUT+ OUT− బోర్డ్ వైపు (పేర్లు సరిపోల్చి). బోర్డ్ GND OUT− కే.');
+      if (q.lib === 'bat18650') ins.push('🔋 ' + q.ref + ': 18650 బ్యాటరీ చివర్లో, + గుర్తు చూసి పెట్టండి (బ్యాటరీ మీద + ఉబ్బిన వైపు).');
     });
-    if (ins.length) steps.push({ k: 'chips', refs: D.parts.filter((q) => /^(ne555|esp32|fhdr|buck)$/.test(q.lib)).map((q) => q.ref), show: 'all', title: '🔲 IC / మాడ్యూల్స్ పెట్టండి', lines: ins.concat(['⚠️ కరెంట్ తీసేసి ఉన్నప్పుడే పెట్టండి / తీయండి.']),
+    if (ins.length) steps.push({ k: 'chips', refs: D.parts.filter((q) => /^(ne555|esp32|fhdr|buck|pam8403|tp4056|bat18650)$/.test(q.lib)).map((q) => q.ref), show: 'all', title: '🔲 IC / మాడ్యూల్స్ పెట్టండి', lines: ins.concat(['⚠️ కరెంట్ తీసేసి ఉన్నప్పుడే పెట్టండి / తీయండి.']),
       say: 'ఇప్పుడు IC, మాడ్యూల్స్ వాటి సాకెట్లలో పెట్టండి. గుంత, పిన్ పేర్లు సరిపోవాలి. కరెంట్ తీసేసి ఉన్నప్పుడే.' });
     // ⚡ power on
     const names = pw.map((n) => n.n).join(' ');
-    const supply = /9V/i.test(names) ? '9V బ్యాటరీ' : /12V|VIN|BAT|BIKE/i.test(names) ? '12V (బైక్ / అడాప్టర్)' : /5V|USB|VBUS/i.test(names) ? 'USB 5V' : 'మీ సప్లై';
+    const has = (lib) => D.parts.some((q) => q.lib === lib);
+    const supply = has('bat18650') ? '18650 బ్యాటరీ' : has('usbc') ? 'Type-C ఛార్జర్ కేబుల్' : has('dcjack') ? 'అడాప్టర్ (DC జాక్)' : /9V/i.test(names) ? '9V బ్యాటరీ' : /12V|VIN|BAT|BIKE/i.test(names) ? '12V (బైక్ / అడాప్టర్)' : /5V|USB|VBUS/i.test(names) ? 'USB 5V' : 'మీ సప్లై';
     steps.push({ k: 'power', refs: [], show: 'all', title: '⚡ మొదటిసారి కరెంట్', lines: [
       '🔋 ఇప్పుడు ' + supply + ' కలపండి: + , − సరిగ్గా చూసి.',
       '👀 మొదటి 10 సెకన్లు చూడండి: ఏదైనా భాగం బాగా వేడెక్కినా, వాసన / పొగ వచ్చినా వెంటనే కరెంట్ తీసేయండి.',
@@ -283,6 +303,31 @@
         case 'led3': lid.push({ x: pt.x, y: pt.y, r: 1.8, ref: pt.ref, why: 'LED' }); break;
         case 'buzzer': lid.push({ x: pt.x, y: pt.y, r: 2.5, ref: pt.ref, why: 'శబ్దం' }); break;
         case 'mic': lid.push({ x: pt.x, y: pt.y, r: 2.5, ref: pt.ref, why: 'మైక్' }); break;
+        case 'btn':
+          lid.push({ x: pt.x, y: pt.y, r: 2.2, ref: pt.ref, why: 'బటన్' });
+          notes.push('👇 ' + pt.ref + ' బటన్ మూత కింద ఉంటుంది: పొడవైన బటన్ (6×6×13 mm) కొంటే మూత రంధ్రంలోంచి వేలితో నొక్కొచ్చు; లేకపోతే పెన్ను మొనతో.');
+          break;
+        case 'pot': {
+          const p = at(pt, 0.5, 0);
+          lid.push({ x: p[0], y: p[1], r: 3.6, ref: pt.ref, why: 'నాబ్' });
+          notes.push('🎛️ ' + pt.ref + ' నాబ్ షాఫ్ట్ మూత రంధ్రంలోంచి బయటికి వస్తుంది (15 mm షాఫ్ట్ ఉన్నది కొనండి); నాబ్ బయటి నుంచి పెట్టండి.');
+          break;
+        }
+        case 'dcjack': {
+          const s = C.sideAfter('W', pt.rot), d = gapTo(c, s);
+          if (d > 6) warns.push('⚠️ ' + pt.ref + ' (DC జాక్) గోడకి ' + Math.round(d) + ' mm దూరంగా ఉంది: అడాప్టర్ పిన్ అందదు. 🧩 PCB లో అంచుకి జరపండి (నోరు బయటికి).');
+          else cutRound(pt, s, at(pt, -7.25, 0), zTop + 6.4, 4.8, 'అడాప్టర్');
+          break;
+        }
+        case 'usbc': {
+          const s = C.sideAfter('N', pt.rot), d = gapTo(c, s);
+          if (d > 6) warns.push('⚠️ ' + pt.ref + ' (Type-C) గోడకి ' + Math.round(d) + ' mm దూరంగా ఉంది: కేబుల్ అందదు. 🧩 PCB లో అంచుకి జరపండి (నోరు బయటికి).');
+          else cutRect(pt, s, at(pt, 0, -6.2), 5.2, zTop + 2.6, zTop + 8.6, 'Type-C');
+          break;
+        }
+        case 'tp4056':
+          notes.push('🔌 ' + pt.ref + ' TP4056 మాడ్యూల్‌ని డబ్బా లోపల గోడకి అంటించండి; దాని Type-C కోసం ఆ గోడలో చిన్న రంధ్రం (సుమారు 10 × 5 mm) ప్రింట్ అయ్యాక మీరే కత్తిరించండి.');
+          break;
         case 'slide': {
           const a = at(pt, -3.0, -1.3), b = at(pt, 1.8, 0.9);
           lid.push({ x0: Math.min(a[0], b[0]), y0: Math.min(a[1], b[1]), x1: Math.max(a[0], b[0]), y1: Math.max(a[1], b[1]), ref: pt.ref, why: 'స్విచ్' });
@@ -361,7 +406,7 @@
       notes.push('🔩 బోర్డ్‌కి స్క్రూ రంధ్రాలు లేవు: మూలల్లో చిన్న దిమ్మెల మీద కూర్చుంటుంది; కదలకుండా ఒక చుక్క హాట్‌గ్లూ. (🧩 PCB లో 🔩 రంధ్రాలు పెడితే డబ్బాలో స్క్రూ స్తంభాలు వస్తాయి.)');
     } else notes.push('🔩 బోర్డ్ ' + posts.length + ' స్తంభాల మీద: M3 × 6–8 mm స్క్రూలు (ప్లాస్టిక్‌లో తిప్పితే అవే దారి చేసుకుంటాయి).');
     // 🌬️ air slots near the top of the two long walls (for parts that get warm)
-    const warm = D.parts.some((pt) => /^(r7805|r3v3|buck|esp32|d5822)$/.test(pt.lib));
+    const warm = D.parts.some((pt) => /^(r7805|r3v3|buck|esp32|d5822|tp4056|pam8403)$/.test(pt.lib));
     const ventsOn = opt.vents == null ? warm : !!opt.vents;
     const vents = [];
     if (ventsOn) {

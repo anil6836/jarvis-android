@@ -93,6 +93,14 @@
       case 'slide': return 'SS12D00 slide switch';
       case 'jack35': return 'CUI SJ1-3533NG 3.5mm stereo jack';
       case 'mic': return 'electret condenser microphone 9.7mm';
+      case 'dcjack': return 'DC-005 DC power jack 5.5mm 2.1mm PCB';
+      case 'usbc': return 'Type C female breakout board 5.1k';
+      case 'btn': return '6x6 tactile push button 4 pin';
+      case 'pot': return 'RV09 vertical potentiometer ' + (/\d/.test(v) ? v : '10K');
+      case 'nmos': return 'IRLZ44N MOSFET';
+      case 'bat18650': return '18650 battery holder PCB mount';
+      case 'pam8403': return 'PAM8403 mini amplifier module 5V';
+      case 'tp4056': return 'TP4056 Type C charging module with protection';
       case 'usba': return 'USB A female PCB 90 degree';
       case 'esp32': return 'ESP32 30 pin development board';
       case 'vs1838': return 'VS1838B IR receiver';

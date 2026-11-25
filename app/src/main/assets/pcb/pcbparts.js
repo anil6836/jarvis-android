@@ -125,6 +125,36 @@
   }
   esp32(25.4); esp32(22.86);
 
+  // ---- 25 Nov ("1. ఇంకా భాగాలు (₹0)"): power sockets, a push button, a knob, a MOSFET switch, an 18650 holder (+ two modules on headers).
+  // Pad places from KiCad's own library (BarrelJack_Horizontal, SW_PUSH_6mm, Potentiometer_Alps_RK09K_Single_Vertical,
+  // BatteryHolder_MPD_BH-18650-PC2) and the parts' drawings; centred on the body. Sellers' parts differ: each says what to check.
+  // DC-005 power jack 5.5 × 2.1 mm, horizontal: + centre pin at the back, − sleeve 6 mm ahead of it, the switch pin to the side. Its flat
+  // blade legs go into big round holes (no slots, so every factory drills it the same way); the plug goes in from the board edge (x −).
+  def('DCJACK_DC005', { name: 'BarrelJack_DC-005_Horizontal_CircularHoles', pads: [R(1, 6.45, 0, 4.6, 4.6, 3.2), C(2, 0.45, 0, 4.6, 3.2), C(3, 3.45, 4.75, 5.0, 3.8)],
+    silk: [L(7.25, -2.7, 7.25, -4.6, -7.25, -4.6, -7.25, 4.6, 0.7, 4.6), L(6.25, 4.6, 7.25, 4.6, 7.25, 2.7), L(-3.75, -4.6, -3.75, 4.6)],
+    court: [-7.6, -4.9, 9.0, 7.6], body: { t: 'dcjack' }, edge: 'W', overhang: 0.3, polar: true,
+    verify: 'DC జాక్ (DC-005 లాంటిది) కాళ్ళు: మధ్య పిన్ వెనక, − కాలు 6 mm ముందు, మూడో కాలు పక్కకి 4.7 mm. కొన్న జాక్‌ని 📏 1:1 మీద పెట్టి చూడండి' });
+  // 6 × 6 mm tactile push button, 4 legs: the two legs on one side are joined inside the button (1 and 1b, 2 and 2b); 6.5 × 4.5 mm.
+  def('BTN_6MM', { name: 'SW_PUSH_6mm', pads: [R(1, -3.25, -2.25, 2.0, 2.0, 1.1), C('1b', 3.25, -2.25, 2.0, 1.1), C(2, -3.25, 2.25, 2.0, 1.1), C('2b', 3.25, 2.25, 2.0, 1.1)],
+    silk: [L(-2.0, -3.3, 2.0, -3.3), L(-2.0, 3.3, 2.0, 3.3), L(-4.4, -1.0, -4.4, 1.0), L(4.4, -1.0, 4.4, 1.0), arc(0, 0, 1.7, 0, 360, 24)],
+    court: [-4.7, -3.6, 4.7, 3.6], body: { t: 'btn', H: 5 } });
+  // RV09 / Alps RK09K knob, vertical (the shaft points up): legs 1 W 3 in a row 2.5 mm apart in front, two bracket tabs at the sides
+  // (plated holes, soldered for strength; not joined to anything).
+  def('POT_RV09', { name: 'Potentiometer_RV09_Alps_RK09K_Single_Vertical', pads: [R(1, -7, 2.5, 1.8, 1.8, 1.0), C(2, -7, 0, 1.8, 1.0), C(3, -7, -2.5, 1.8, 1.0),
+    C('M1', 0, -4.4, 3.6, 2.0), C('M2', 0, 4.4, 3.6, 2.0)],
+    silk: [L(-2.2, -4.9, -6, -4.9, -6, 4.9, -2.2, 4.9), L(2.2, -4.9, 6, -4.9, 6, 4.9, 2.2, 4.9), arc(0.5, 0, 3, 0, 360, 30)],
+    court: [-8.2, -6.5, 6.3, 6.5], body: { t: 'pot' },
+    verify: 'నాబ్ (RV09 / RK09K) కాళ్ళు 2.5 mm దూరం, పక్క పట్టీలు 8.8 mm దూరం. వేరే నాబ్‌లు (16 mm WH148) వేరు: కొన్నదాన్ని 📏 1:1 మీద చూడండి' });
+  // A USB Type-C power board (a small ready breakout with its CC resistors) standing on 2 pins (VBUS, GND) at its back; its mouth at
+  // the board edge (y −).
+  def('USBC_MOD', { name: 'USB_C_Power_Breakout_2pin_P2.54mm', pads: [R(1, -1.27, 4.2, 1.7, 1.7, 1.0), C(2, 1.27, 4.2, 1.7, 1.0)],
+    silk: [RECT(-4.6, -6.2, 4.6, 6.2), RECT(-3.2, -6.2, 3.2, -2.6)], court: [-4.9, -6.5, 4.9, 6.5], body: { t: 'usbc' }, edge: 'N', overhang: 1.2, polar: true,
+    verify: 'Type-C బోర్డ్ సైజు, VBUS / GND పిన్నుల వరుస సెల్లర్‌ని బట్టి మారతాయి. 5.1kΩ CC రెసిస్టర్లు ఉన్నదే కొనండి' });
+  // One 18650 cell holder, through hole: legs 72 mm apart and two plastic pegs (holes for them, plated, joined to nothing).
+  def('BAT18650', { name: 'BatteryHolder_MPD_BH-18650-PC2', pads: [R(1, -36, 0, 3.6, 3.6, 2.0), C(2, 36, 0, 3.6, 2.0), C('M1', -27.355, 0, 4.4, 3.2), C('M2', 28.255, 0, 4.4, 3.2)],
+    silk: [RECT(-39.0, -10.25, 39.0, 10.25)].concat(PLUS(-36, -5.6, 1.0), [L(35, -5.6, 37, -5.6)]), court: [-39.3, -10.55, 39.3, 10.55], body: { t: 'bat' }, polar: true,
+    verify: '18650 హోల్డర్ కాళ్ళ దూరం 72 mm, ప్లాస్టిక్ పెగ్‌లకి రెండు రంధ్రాలు (MPD BH-18650-PC2 లాంటిది). వేరే హోల్డర్లు వేరు: కొన్నదాన్ని కొలవండి, + ఏ వైపో చూడండి' });
+
   function fp(id) {
     if (FP[id]) return FP[id];
     let m = /^(F?)HDR1x(\d+)$/.exec(id || '');
@@ -136,7 +166,7 @@
 
   // ------------------------------------------------------------------ the parts (what he picks), their symbols and Telugu words
 
-  // sym: res cap cpol led diode npn box conn buzzer fuse spdt mic
+  // sym: res cap cpol led diode npn box conn buzzer fuse spdt mic btn pot nmos cell
   // pins: pad number → the name on the symbol
   const LIB = {
     res: { sym: 'res', fp: 'R_AX10', pre: 'R', pins: { 1: '1', 2: '2' }, te: 'రెసిస్టర్',
@@ -208,6 +238,31 @@
     mic: { sym: 'mic', fp: 'MIC_D9.7', pre: 'MK', pins: { 1: '+', 2: '-' }, te: 'మైక్ (ఎలక్ట్రెట్, 9.7 mm)',
       what: 'మాటని చిన్న కరెంట్ మార్పుగా మార్చే చిన్న మైక్. పనిచేయడానికి 2.2–10 kΩ రెసిస్టర్ ద్వారా కొద్దిగా కరెంట్ (bias) ఇవ్వాలి.',
       how: '⚠️ దిశ ఉంది: కింద చూస్తే ఒక కాలు లోహపు డబ్బాకి కలిసి ఉంటుంది: అది − (GND). రెండోది +.', polar: true },
+    // 25 Nov: power sockets, a button, a knob, a MOSFET switch, an 18650 holder, and two modules joined by wires (like the buck)
+    dcjack: { sym: 'box', fp: 'DCJACK_DC005', pre: 'J', pins: { 1: '+', 2: '-', 3: 'SW' }, box: { L: ['1', '2', '3'] }, te: 'DC పవర్ జాక్ (5.5 × 2.1 mm)',
+      what: 'అడాప్టర్ పిన్ గుచ్చే గుండ్రటి సాకెట్ (రూటర్ / స్పీకర్ అడాప్టర్ లాంటిది). మధ్య పిన్ (1) సాధారణంగా +, బయటి గొట్టం (2) −. మూడో కాలు (SW) ప్లగ్ పెట్టినప్పుడు విడిపోయే చిన్న స్విచ్: మామూలుగా వాడం.',
+      how: 'బోర్డ్ అంచున, నోరు బయటికి. ⚠️ అడాప్టర్ మీది ⊖–◉–⊕ గుర్తు చూడండి: మధ్య + ఉన్నదే వాడండి. 3 కాళ్ళూ టంకం (బలం కోసం).', polar: true },
+    usbc: { sym: 'box', fp: 'USBC_MOD', pre: 'J', pins: { 1: 'VBUS', 2: 'GND' }, box: { L: ['1', '2'] }, te: 'USB Type-C పవర్ బోర్డ్ (మాడ్యూల్)',
+      what: 'ఫోన్ ఛార్జర్ కేబుల్ (Type-C) గుచ్చే చిన్న రెడీమేడ్ బోర్డ్. దాని నుంచి 5 V (VBUS), GND ఈ బోర్డ్‌కి వస్తాయి.',
+      how: '⚠️ "5.1kΩ" (CC రెసిస్టర్లు) ఉన్న Type-C బోర్డ్ కొనండి: అవి లేకపోతే C-to-C కేబుల్ / కొత్త ఛార్జర్లు కరెంట్ ఇవ్వవు. దాని మీది VBUS, GND పేర్లు చూసి, రెండు పిన్నులతో ఈ రంధ్రాల మీద నిలబెట్టి టంకం చేయండి. నోరు బోర్డ్ అంచు బయటికి.', polar: true },
+    btn: { sym: 'btn', fp: 'BTN_6MM', pre: 'SW', pins: { 1: '1', 2: '2' }, te: 'పుష్ బటన్ (6 × 6 mm)',
+      what: 'నొక్కినంత సేపు 1, 2 కలుస్తాయి; వదిలితే విడిపోతాయి. ESP32 / 555 కి "నొక్కారు" అని చెప్పడానికి. ఒకే వైపు ఉన్న రెండు కాళ్ళు బటన్ లోపల కలిసే ఉంటాయి.',
+      how: 'నాలుగు కాళ్ళూ రంధ్రాల్లో పడేలా నొక్కి పెట్టండి. చిన్న కరెంట్‌కే (50 mA వరకు): లైట్ / మోటార్‌ని నేరుగా ఆన్ చేయడానికి కాదు.' },
+    pot: { sym: 'pot', fp: 'POT_RV09', pre: 'RV', pins: { 1: '1', 2: 'W', 3: '3' }, te: 'నాబ్ (పొటెన్షియోమీటర్ RV09)',
+      what: 'తిప్పితే విలువ మారే రెసిస్టర్. రెండు చివర్ల (1, 3) మధ్య మొత్తం విలువ (ఉదా: 10k); మధ్య కాలు W తిప్పినట్టు 1 నుంచి 3 వైపు జరుగుతుంది. వాల్యూమ్, వేగం, వెలుగు మార్చడానికి.',
+      how: 'నాబ్ పైకి. పక్కన ఉన్న రెండు లోహపు పట్టీలు కూడా టంకం చేయండి (తిప్పేటప్పుడు ఊడకుండా). వాల్యూమ్‌కి: 1 → GND, 3 → పాట లోపలికి, W → బయటికి.' },
+    nmos: { sym: 'nmos', fp: 'TO220_V', pre: 'Q', pins: { 1: 'G', 2: 'D', 3: 'S' }, te: 'MOSFET IRLZ44N (కరెంట్ స్విచ్)',
+      what: 'చిన్న సిగ్నల్‌తో (ESP32 / 555 పిన్ 3.3–5 V) పెద్ద కరెంట్ (పంప్, మోటార్, LED స్ట్రిప్) ఆన్ / ఆఫ్ చేసే స్విచ్. G కి వోల్టేజ్ వస్తే D–S కలుస్తాయి.',
+      how: '⚠️ అక్షరాలు మీ వైపు: ఎడమ G, మధ్య D, కుడి S. G కి 100Ω, G నుంచి GND కి 10k తప్పకుండా. పంప్ / మోటార్ అయితే దాని రెండు వైర్ల మధ్య డయోడ్ (గీత + వైపు).', polar: true },
+    bat18650: { sym: 'cell', fp: 'BAT18650', pre: 'BT', pins: { 1: '+', 2: '-' }, te: '18650 బ్యాటరీ హోల్డర్',
+      what: 'ఒక 18650 లిథియం బ్యాటరీ (3.7 V; పూర్తిగా నిండితే 4.2 V, ఖాళీ 3.0 V) పెట్టే హోల్డర్.',
+      how: '⚠️ హోల్డర్ మీది +, − గుర్తులు బోర్డ్ మీది గుర్తులతో సరిపోవాలి. బ్యాటరీ తిరగేస్తే షార్ట్: ప్రొటెక్షన్ ఉన్న TP4056 తో మాత్రమే వాడండి. ఉబ్బిన / దెబ్బతిన్న బ్యాటరీ వాడకండి.', polar: true },
+    pam8403: { sym: 'box', fp: 'HDR1x5', pre: 'J', pins: { 1: '+5V', 2: 'GND', 3: 'L', 4: 'G', 5: 'R' }, box: { L: ['3', '4', '5'], R: ['1', '2'] }, te: 'PAM8403 ఆంప్ మాడ్యూల్ కనెక్షన్ (2 × 3 W)',
+      what: 'చిన్న స్పీకర్లు (4–8 Ω, 3 W వరకు) నేరుగా మోగించే రెడీమేడ్ ఆంప్ బోర్డ్. 5 V మీద నడుస్తుంది; పాట (L, G, R) లోపలికి, స్పీకర్ వైర్లు ఆంప్ మీది L+ L− R+ R− కి నేరుగా.',
+      how: '⚠️ స్పీకర్ వైర్లు (L+ L− R+ R−) ఏవీ GND కి కలపకండి: ఆంప్ కాలిపోతుంది. పెద్ద శబ్దంలో 1 A వరకు తీసుకుంటుంది: 2 A సప్లై మంచిది. మాడ్యూల్ మీది పిన్ పేర్లు చూసి వైర్లు కలపండి.', polar: true },
+    tp4056: { sym: 'box', fp: 'HDR1x6', pre: 'J', pins: { 1: 'IN+', 2: 'IN-', 3: 'B+', 4: 'B-', 5: 'OUT+', 6: 'OUT-' }, box: { L: ['1', '2', '3', '4'], R: ['5', '6'] }, te: 'TP4056 ఛార్జర్ మాడ్యూల్ కనెక్షన్ (ప్రొటెక్షన్‌తో)',
+      what: 'ఒక లిథియం బ్యాటరీ (18650) ని దాని Type-C నుంచి 1 A తో ఛార్జ్ చేసే రెడీమేడ్ బోర్డ్. B+ B− బ్యాటరీకి, OUT+ OUT− బోర్డ్‌కి: బ్యాటరీ 2.4 V కంటే తగ్గినా, షార్ట్ అయినా OUT కట్ చేస్తుంది.',
+      how: '⚠️ OUT+ OUT− ఉన్న (6 ప్యాడ్‌లు, DW01 ప్రొటెక్షన్) మాడ్యూల్ కొనండి. బోర్డ్ GND ఎప్పుడూ OUT− కే, B− కి కాదు. B+ బ్యాటరీ +, B− బ్యాటరీ −: తిరగేస్తే కాలిపోతుంది. ఛార్జింగ్ దాని సొంత Type-C నుంచే (IN+ IN− మామూలుగా వాడం). ఛార్జ్ అవుతున్నప్పుడు వేడెక్కుతుంది.', polar: true },
     vs1838: { sym: 'box', fp: 'IR3', pre: 'U', pins: { 1: 'OUT', 2: 'GND', 3: 'VCC' }, box: { L: ['3', '1', '2'] }, te: 'IR రిసీవర్ VS1838B',
       what: 'TV రిమోట్ వెలుగుని పట్టుకునే కన్ను. రిమోట్ బటన్‌లు నేర్చుకోవడానికి.', how: '⚠️ గుండ్రటి కన్ను మీ వైపు: చాలా వాటికి ఎడమ నుంచి OUT, GND, VCC. కొన్నిటికి వేరేగా ఉంటుంది: కొన్న భాగం చూడండి.', polar: true }
   };

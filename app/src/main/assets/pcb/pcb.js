@@ -672,6 +672,27 @@
         pins[byRole('+') || '1'] = [-25, 0, -1, 0]; pins[byRole('-') || '2'] = [25, 0, 1, 0];
         S.push({ c: [0, 0, 10] }); L(-25, 0, -10, 0); L(10, 0, 25, 0); L(-10, -10, -10, 10); L(-20, -9, -14, -9); L(-17, -12, -17, -6);
         break;
+      case 'btn': // push button: two contacts and the bar above them that comes down when pressed
+        two('1', '2', 30);
+        L(-30, 0, -12, 0); S.push({ c: [-10, 0, 2] }); S.push({ c: [10, 0, 2] }); L(12, 0, 30, 0); L(-13, -8, 13, -8); L(0, -8, 0, -15); L(-5, -15, 5, -15);
+        break;
+      case 'pot': // knob: a resistor with an arrow (the wiper W) pressing on it from above
+        pins[byRole('1') || '1'] = [-30, 0, -1, 0]; pins[byRole('3') || '3'] = [30, 0, 1, 0]; pins[byRole('W') || '2'] = [0, -30, 0, -1];
+        L(-30, 0, -20, 0, -17, -7, -11, 7, -5, -7, 1, 7, 7, -7, 13, 7, 17, -7, 20, 0, 30, 0);
+        L(0, -30, 0, -14); S.push({ poly: [0, -8, -4, -15, 4, -15] });
+        break;
+      case 'nmos': { // N-channel MOSFET: the gate plate on the left, D up, S down, the body arrow pointing in
+        pins[byRole('G') || '1'] = [-30, 8, -1, 0]; pins[byRole('D') || '2'] = [10, -30, 0, -1]; pins[byRole('S') || '3'] = [10, 30, 0, 1];
+        L(-30, 8, -10, 8); L(-10, -12, -10, 12);
+        L(-5, -14, -5, -7); L(-5, -3, -5, 3); L(-5, 7, -5, 14);
+        L(-5, -10, 10, -10, 10, -30); L(-5, 10, 10, 10, 10, 30); L(-5, 0, 10, 0, 10, 10);
+        S.push({ poly: [-4, 0, 3, -3.5, 3, 3.5] });
+        break;
+      }
+      case 'cell': // a battery cell: the long plate +, the short plate −
+        pins[byRole('+') || '1'] = [-25, 0, -1, 0]; pins[byRole('-') || '2'] = [25, 0, 1, 0];
+        L(-25, 0, -3, 0); L(-3, -13, -3, 13); L(4, -7, 4, 7); L(4, 0, 25, 0); L(-14, -11, -8, -11); L(-11, -14, -11, -8);
+        break;
       default: {
         const bx = lib.box || { L: Object.keys(names) };
         const Ls = bx.L || [], Rs = bx.R || [], Ts = bx.T || [], Bs = bx.B || [];
@@ -2133,7 +2154,8 @@
     '9v': [[6.5, 'అయిపోతున్న 9V'], [9, 'కొత్త 9V బ్యాటరీ']],
     bike: [[11.8, 'ఆగిన బండి'], [12.6, 'పూర్తి బ్యాటరీ'], [14.4, 'నడుస్తున్న బండి']],
     usb: [[4.75, 'బలహీన USB'], [5, 'USB / అడాప్టర్ 5V'], [5.25, 'కొంచెం ఎక్కువ']],
-    logic: [[3.0, 'తక్కువ'], [3.3, '3.3V']]
+    logic: [[3.0, 'తక్కువ'], [3.3, '3.3V']],
+    li: [[3.0, 'ఖాళీ 18650'], [3.7, 'సగం'], [4.2, 'పూర్తిగా నిండింది']]
   };
   function simSupply() {
     if (!sim.S) { toast(sim.err || 'ముందు బోర్డ్ తెరవండి'); return; }
@@ -2182,7 +2204,7 @@
       s.appendChild(el('h2', null, '⚡ నడిపిస్తే ఏమవుతుంది'));
       const top = el('div', 'card');
       rep.per.forEach((p) => top.appendChild(el('div', null, (p.s.kind === 'esp' ? '🔌 ' : '🔋 ') + p.s.te + ': ' + SIM.fmtV(p.v) + ', ' + SIM.fmtA(p.i) + (sim.cy && sim.cy.avg ? ' (సగటు)' : ''))));
-      if (rep.hours) top.appendChild(el('div', 'muted', '🔋 9V బ్యాటరీ (సుమారు ' + 500 + ' mAh) సుమారు ' + (rep.hours >= 48 ? Math.round(rep.hours / 24) + ' రోజులు' : Math.round(rep.hours) + ' గంటలు') + ' వస్తుంది.'));
+      if (rep.hours) top.appendChild(el('div', 'muted', '🔋 ' + (rep.bat === 'li' ? '18650 బ్యాటరీ (సుమారు 2000 mAh)' : '9V బ్యాటరీ (సుమారు 500 mAh)') + ' సుమారు ' + (rep.hours >= 48 ? Math.round(rep.hours / 24) + ' రోజులు' : Math.round(rep.hours) + ' గంటలు') + ' వస్తుంది.'));
       if (sim.cy && !sim.cy.stuck) top.appendChild(el('div', 'muted', '⏱️ 555: సెకనుకి ' + (Math.round(sim.cy.f * 100) / 100) + ' సార్లు, ' + Math.round(sim.cy.duty * 100) + '% సమయం OUT ఆన్.'));
       s.appendChild(top);
       rep.items.forEach((it) => {
