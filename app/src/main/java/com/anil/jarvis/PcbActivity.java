@@ -88,7 +88,7 @@ public class PcbActivity extends Activity {
     }
     private static final Set<String> SHOP_HOSTS = new HashSet<>(Arrays.asList("robu.in", "robocraze.com"));
     private static final Set<String> TABS = new HashSet<>(Arrays.asList("home", "idea", "sch", "pcb", "drc", "sim", "d3", "fab", "calc", "learn"));
-    private static final Set<String> KINDS = new HashSet<>(Arrays.asList(Pcb.NEW, Pcb.PHOTO, Pcb.EDIT, Pcb.HELP));
+    private static final Set<String> KINDS = new HashSet<>(Arrays.asList(Pcb.NEW, Pcb.PHOTO, Pcb.EDIT, Pcb.HELP, Pcb.PINS, Pcb.SOLDER));
     private static final Set<String> PROJECTS = new HashSet<>(Arrays.asList("flasher", "usb", "soil", "esp32", "irboard"));
 
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -119,6 +119,8 @@ public class PcbActivity extends Activity {
     private Job job;
     /** 📷 his photo (JPEG, base64): in memory only, until it goes with the one request he taps (or ✕ / leaving drops it). */
     private volatile String photo;
+    /** What the photo is for: "photo" (a drawn circuit), "pins" (a module), "solder" (the soldered side); it goes only with that job. */
+    private volatile String photoFor = Pcb.PHOTO;
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -342,7 +344,12 @@ public class PcbActivity extends Activity {
             case "aistop": { Job j = job; if (j != null) { j.stopped = true; j.cancel.cancel(); } break; }
             case "aicancel": cancelWait(true); break;
             case "pickmodel": pickModel(m.optString("kind"), m.optString("words"), m.optInt("chars")); break;
-            case "photo": if ("cam".equals(m.optString("from"))) openCam(); else openGallery(); break;
+            case "photo": {
+                String f = m.optString("for", Pcb.PHOTO);
+                photo = null; photoFor = Pcb.PINS.equals(f) || Pcb.SOLDER.equals(f) ? f : Pcb.PHOTO;
+                if ("cam".equals(m.optString("from"))) openCam(); else openGallery();
+                break;
+            }
             case "photodrop": photo = null; break;
             // ---- 🎙️ his voice here
             case "mic": if (ear != null) ear.tap(); break;
@@ -486,7 +493,8 @@ public class PcbActivity extends Activity {
 
     private void pickModel(String kind, String words, int chars) {
         final String k = KINDS.contains(kind) ? kind : Pcb.NEW;
-        String what = Pcb.HELP.equals(k) ? "✅ చెక్ లో తప్పులకి AI సహాయం ఖర్చు" : Pcb.EDIT.equals(k) ? "ఈ బోర్డ్‌లో ఒక మార్పుకి ఖర్చు" : Workshop.costWhat(Workshop.PCB);
+        String what = Pcb.HELP.equals(k) ? "✅ చెక్ లో తప్పులకి AI సహాయం ఖర్చు" : Pcb.EDIT.equals(k) ? "ఈ బోర్డ్‌లో ఒక మార్పుకి ఖర్చు"
+                : Pcb.PINS.equals(k) ? "📷 మాడ్యూల్ ఫోటో పిన్ చెక్ ఖర్చు" : Pcb.SOLDER.equals(k) ? "📷 టంకం ఫోటో చెక్ ఖర్చు" : Workshop.costWhat(Workshop.PCB);
         Models.pick(this, Workshop.studioName(Workshop.PCB) + " AI ఎంచుకోండి", new String[]{Prefs.OPENAI, Prefs.ANTHROPIC, Prefs.GEMINI},
                 new String[]{p.openAiKey(), p.anthropicKey(), p.geminiKey()}, Workshop.modelFor(p, Workshop.PCB), what,
                 mm -> Workshop.fine(Pcb.quote(mm, k, words, Math.max(0, chars))), it -> {
@@ -506,8 +514,8 @@ public class PcbActivity extends Activity {
         if (job != null || waiting != null) { aiFail(kind, "ఒక AI పని ఇంకా నడుస్తోంది Sir. అది అయ్యాక అడగండి, లేదా ⏹ ఆపు నొక్కండి.", voice); return; }
         String w = words == null ? "" : Workshop.cap(words.trim(), 3000);
         if ((Pcb.NEW.equals(kind) || Pcb.EDIT.equals(kind)) && w.isEmpty()) return;
-        if ((Pcb.EDIT.equals(kind) || Pcb.HELP.equals(kind)) && (design == null || design.isEmpty() || design.length() > 120_000)) { aiFail(kind, "ఈ బోర్డ్ AI కి పంపలేనంత పెద్దది Sir.", voice); return; }
-        if (Pcb.PHOTO.equals(kind) && photo == null) { aiFail(kind, "ఫోటో లేదు Sir: 📷 మళ్ళీ తీయండి / ఎంచుకోండి.", voice); return; }
+        if ((Pcb.EDIT.equals(kind) || Pcb.HELP.equals(kind) || Pcb.PINS.equals(kind) || Pcb.SOLDER.equals(kind)) && (design == null || design.isEmpty() || design.length() > 120_000)) { aiFail(kind, "ఈ బోర్డ్ AI కి పంపలేనంత పెద్దది Sir.", voice); return; }
+        if (Pcb.photoKind(kind) && (photo == null || !kind.equals(photoFor))) { aiFail(kind, "ఫోటో లేదు Sir: 📷 మళ్ళీ తీయండి / ఎంచుకోండి.", voice); return; }
         Workshop.Engine e;
         try { e = Pcb.engine(p); }
         catch (Workshop.Problem x) { aiFail(kind, x.getMessage(), voice); return; }
@@ -519,13 +527,14 @@ public class PcbActivity extends Activity {
 
     private void start(String kind, String words, String design, Workshop.Engine e, boolean voice) {
         String ph = null;
-        if (Pcb.PHOTO.equals(kind)) { ph = photo; photo = null; } // (his photo goes only with this one request)
-        if (Pcb.PHOTO.equals(kind) && ph == null) { aiFail(kind, "ఫోటో లేదు Sir: 📷 మళ్ళీ తీయండి / ఎంచుకోండి.", voice); return; }
+        if (Pcb.photoKind(kind) && kind.equals(photoFor)) { ph = photo; photo = null; } // (his photo goes only with this one request)
+        if (Pcb.photoKind(kind) && ph == null) { aiFail(kind, "ఫోటో లేదు Sir: 📷 మళ్ళీ తీయండి / ఎంచుకోండి.", voice); return; }
         Job j = new Job(kind, words, design, e, voice, ph);
         job = j;
         String money = Workshop.fine(Pcb.quote(e.model, kind, words, design == null ? 0 : design.length()));
         try { send(json("aistart").put("kind", kind).put("model", WorkshopActivity.label(e.model)).put("money", money)); } catch (Exception ignored) {}
-        if (voice) speak((Pcb.HELP.equals(kind) ? "తప్పులు చూస్తున్నాను Sir, " : Pcb.EDIT.equals(kind) ? "బోర్డ్ మారుస్తున్నాను Sir, " : "బోర్డ్ గీస్తున్నాను Sir, ")
+        if (voice) speak((Pcb.HELP.equals(kind) ? "తప్పులు చూస్తున్నాను Sir, " : Pcb.EDIT.equals(kind) ? "బోర్డ్ మారుస్తున్నాను Sir, "
+                : Pcb.PINS.equals(kind) ? "మాడ్యూల్ పిన్లు చదువుతున్నాను Sir, " : Pcb.SOLDER.equals(kind) ? "టంకాలు చూస్తున్నాను Sir, " : "బోర్డ్ గీస్తున్నాను Sir, ")
                 + "సుమారు " + money + " అవుతుంది.");
         new Thread(() -> run(j), "jarvis-pcb-ai").start();
     }
@@ -535,13 +544,14 @@ public class PcbActivity extends Activity {
         StringBuilder text = new StringBuilder();
         Workshop.Bill bill = new Workshop.Bill();
         String failure = null;
-        boolean help = Pcb.HELP.equals(j.kind);
-        int max = help ? Pcb.HELP_OUT : Pcb.MAX_OUT;
-        String msg = help ? Pcb.helpMessage(j.design) : Pcb.EDIT.equals(j.kind) ? Pcb.editMessage(j.design, j.words)
-                : Pcb.PHOTO.equals(j.kind) ? Pcb.photoMessage(j.words) : Pcb.buildMessage(j.words);
+        boolean help = Pcb.HELP.equals(j.kind), pins = Pcb.PINS.equals(j.kind), solder = Pcb.SOLDER.equals(j.kind);
+        int max = help ? Pcb.HELP_OUT : pins ? Pcb.PINS_OUT : solder ? Pcb.SOLDER_OUT : Pcb.MAX_OUT;
+        String msg = help ? Pcb.helpMessage(j.design) : pins ? Pcb.pinsMessage(j.design) : solder ? Pcb.solderMessage(j.design)
+                : Pcb.EDIT.equals(j.kind) ? Pcb.editMessage(j.design, j.words) : Pcb.PHOTO.equals(j.kind) ? Pcb.photoMessage(j.words) : Pcb.buildMessage(j.words);
+        String sys = help ? Pcb.HELP_SYSTEM : pins ? Pcb.PINS_SYSTEM : solder ? Pcb.SOLDER_SYSTEM : Pcb.SYSTEM;
         long[] told = {0};
         try {
-            Workshop.stream(j.engine, help ? Pcb.HELP_SYSTEM : Pcb.SYSTEM, msg, j.photo, max, s -> {
+            Workshop.stream(j.engine, sys, msg, j.photo, max, s -> {
                 if (text.length() < 200_000) text.append(s);
                 long now = System.currentTimeMillis();
                 if (now - told[0] > 700) { told[0] = now; try { send(json("aiprog").put("n", text.length())); } catch (Exception ignored) {} }
@@ -677,7 +687,7 @@ public class PcbActivity extends Activity {
             ui.post(() -> {
                 if (destroyed) return;
                 photo = b64;
-                try { send(json("photoready").put("thumb", thumb).put("kb", out.size() / 1024)); } catch (Exception ignored) {}
+                try { send(json("photoready").put("thumb", thumb).put("kb", out.size() / 1024).put("for", photoFor)); } catch (Exception ignored) {}
             });
         }, "jarvis-pcb-photo").start();
     }

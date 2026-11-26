@@ -15,8 +15,11 @@ import org.json.JSONObject;
 final class Pcb {
     private Pcb() {}
 
-    static final int MAX_OUT = 9000, HELP_OUT = 1200;
+    static final int MAX_OUT = 9000, HELP_OUT = 1200, PINS_OUT = 700, SOLDER_OUT = 1600;
     static final String NEW = "new", EDIT = "edit", PHOTO = "photo", HELP = "help";
+    /** (26 Nov) 📷 a module's photo → its pin names in order; 📷 a soldered board's photo → joints that look wrong. */
+    static final String PINS = "pins", SOLDER = "solder";
+    static boolean photoKind(String k) { return PHOTO.equals(k) || PINS.equals(k) || SOLDER.equals(k); }
 
     static Workshop.Engine engine(Prefs p) throws Workshop.Problem {
         if (Workshop.modelFor(p, Workshop.PCB).isEmpty())
@@ -138,6 +141,34 @@ final class Pcb {
             "- moves are optional: only when moving / turning parts fixes it. dx / dy in mm (-15 to 15); rot = the new rotation 0, 90, 180 or 270.",
             "- keep parts inside the board; never add or remove parts or change connections; if the board must be bigger, say so.");
 
+    static final String PINS_SYSTEM = String.join("\n",
+            "Anil (India) shows a photo of a small electronics module (a sensor / display / Bluetooth / relay board) he bought, to check its pins",
+            "against the board he designed. Read the pin names PRINTED on the module next to its pins (or pads), in the order they sit along",
+            "the row: left to right as the printing reads upright. Answer JSON only:",
+            "{\"pins\":[\"GND\",\"VCC\",\"SCL\",\"SDA\"],\"side\":\"front|back\",\"module\":\"<what the module is, English>\",",
+            " \"volts\":\"<supply volts printed on it, e.g. 3.3V or 3.3-5V, or empty>\",\"sure\":true,\"say\":\"<1-2 simple Telugu lines>\"}",
+            "- pins: exactly as printed, short (e.g. VCC, GND, SDA, S, +, -, OUT); one entry per pin; \"?\" for a pin whose name you cannot read.",
+            "- side: front if the printing is on the side with the chips, back otherwise. sure: false if the photo is blurry or names are cut off.",
+            "- If you cannot see any pin names, answer {\"pins\":[],\"say\":\"<Telugu: what photo to take instead>\"}.",
+            "- If the photo shows mains (230 V) wiring, a weapon, a shock device or anything to harm, answer {\"refuse\":\"<one Telugu line>\"}.",
+            "Never invent names that are not printed.");
+
+    static final String SOLDER_SYSTEM = String.join("\n",
+            "Anil (India) is learning to solder through-hole parts on a small low-voltage PCB. He shows a photo of the soldered side. Look at the",
+            "solder joints only and find the ones that look wrong. Answer JSON only:",
+            "{\"ok\":true,\"say\":\"<2-3 simple Telugu lines: how the joints look overall>\",",
+            " \"joints\":[{\"x\":0.42,\"y\":0.61,\"kind\":\"bridge\",\"near\":\"U1\",\"te\":\"<one Telugu line: what you see there>\"}]}",
+            "- x, y: where the joint is in the photo, 0..1 from the left and from the top. kind: bridge (solder joins two pads), cold (dull, grainy,",
+            "  ball-shaped, not flowed onto the pad), little (pad or hole not covered), much (big blob), missing (pad with no solder), lifted (pad",
+            "  torn off the board), burnt (scorched board), flux (sticky brown left-over). near: the part's name if printed nearby, else empty.",
+            "- at most 12 joints, the worst first; ok: true when nothing looks wrong. If the photo is too blurry, dark or far, say so in \"say\" with",
+            "  joints empty and ok false. You get the board's size and its parts for reference; the photo is the soldered (bottom) side, mirrored.",
+            "- If the photo shows mains (230 V) wiring, a weapon, a shock device or anything to harm, answer {\"refuse\":\"<one Telugu line>\"}.",
+            "Only report what you can see; never guess hidden joints.");
+
+    static String pinsMessage(String design) { return "The module on his board and the pin names his board expects:\n" + (design == null ? "{}" : design) + "\nRead the pins in this photo."; }
+    static String solderMessage(String design) { return "His board (for reference):\n" + (design == null ? "{}" : design) + "\nCheck the solder joints in this photo."; }
+
     static String buildMessage(String words) { return "Make this board: " + (words == null ? "" : words.trim()); }
 
     static String photoMessage(String words) {
@@ -170,13 +201,21 @@ final class Pcb {
     /** The most one answer of this kind can cost (written to its limit). */
     static double most(String model, String kind, String words, int designChars) {
         if (HELP.equals(kind)) return Workshop.rupees(model, Math.round(HELP_SYSTEM.length() / 3.2) + Math.round(designChars / 3.0), 0, HELP_OUT);
+        if (PINS.equals(kind) || SOLDER.equals(kind)) return photoCheckRupees(model, kind, designChars)[1];
         int len = words == null ? 0 : words.trim().length();
         long in = Math.round(SYSTEM.length() / 3.2) + 150 + Math.round(len / 1.5) + Math.round(designChars / 3.0) + (PHOTO.equals(kind) ? 1600 : 0);
         return Workshop.rupees(model, in, 0, MAX_OUT);
     }
 
+    static double[] photoCheckRupees(String model, String kind, int designChars) {
+        boolean pins = PINS.equals(kind);
+        long in = Math.round((pins ? PINS_SYSTEM : SOLDER_SYSTEM).length() / 3.2) + Math.round(designChars / 3.0) + 1600;
+        return new double[]{Workshop.rupees(model, in, 0, pins ? 120 : 300), Workshop.rupees(model, in, 0, pins ? PINS_OUT : SOLDER_OUT)};
+    }
+
     static double[] quote(String model, String kind, String words, int designChars) {
         if (HELP.equals(kind)) return helpRupees(model, designChars);
+        if (PINS.equals(kind) || SOLDER.equals(kind)) return photoCheckRupees(model, kind, designChars);
         return rupees(model, words, EDIT.equals(kind) ? designChars : 0, PHOTO.equals(kind));
     }
 
@@ -205,9 +244,10 @@ final class Pcb {
         r.cut = cut;
         String ref = o.optString("refuse", "").trim();
         if (!ref.isEmpty()) { r.refuse = Workshop.cap(ref, 240); return r; }
-        JSONArray parts = o.optJSONArray("parts"), moves = o.optJSONArray("moves");
+        JSONArray parts = o.optJSONArray("parts"), moves = o.optJSONArray("moves"), pins = o.optJSONArray("pins"), joints = o.optJSONArray("joints");
         boolean said = !o.optString("say", "").trim().isEmpty();
-        if ((parts == null || parts.length() == 0) && (moves == null || moves.length() == 0) && !said) return null;
+        if ((parts == null || parts.length() == 0) && (moves == null || moves.length() == 0) && (pins == null || pins.length() == 0)
+                && (joints == null || joints.length() == 0) && !said) return null;
         r.json = o;
         return r;
     }
