@@ -77,7 +77,8 @@ dependencies {
     // 📚 library: free Telugu page reading on the phone (Tesseract; its Telugu file is fetched once on his tap)
     implementation 'cz.adaptech.tesseract4android:tesseract4android:4.9.0'
     // 🌱 the plant board: talks to the ESP32's USB serial chip (CP2102 / CH340 / CH9102) to put its program on it (MIT licence)
-    implementation 'com.github.mik3y:usb-serial-for-android:3.11.0'
+    // (3.8.1: built for Android 34 like this app; 3.9+ needs compileSdk 35)
+    implementation 'com.github.mik3y:usb-serial-for-android:3.8.1'
     // ⑮ the car box's 3D city map: MapLibre (free, open source) drawing OpenFreeMap's OpenStreetMap map, no key
     implementation 'org.maplibre.gl:android-sdk:11.13.5'
     // ✋ (7) the 3D workshop's hand signs: Google's MediaPipe hand model on the phone (the model file is downloaded by the build)

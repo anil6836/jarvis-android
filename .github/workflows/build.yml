@@ -105,7 +105,10 @@ jobs:
           curl -fsSL --retry 3 -o "$F" "https://micropython.org/resources/firmware/ESP32_GENERIC-20260824-v1.29.0.bin" || rm -f "$F"
           if [ -f "$F" ]; then
             SIZE=$(stat -c %s "$F"); HEAD=$(head -c 1 "$F" | od -An -tx1 | tr -d ' '); CHIP=$(dd if="$F" bs=1 skip=12 count=2 2>/dev/null | od -An -tx1 | tr -d ' ')
-            if [ "$HEAD" != "e9" ] || [ "$CHIP" != "0000" ] || [ "$SIZE" -lt 600000 ] || [ "$SIZE" -gt 3500000 ]; then
+            SUM=$(sha256sum "$F" | cut -d' ' -f1)
+            if [ "$SUM" != "e67ad6015a0a504c1fec9aa9bbf589d0432ed28e62546f4f8dd8a147f8bd95f6" ]; then
+              echo "::warning::MicroPython file is not the one checked on 27 Nov 2026 (sha256 $SUM); left out"; rm -f "$F"
+            elif [ "$HEAD" != "e9" ] || [ "$CHIP" != "0000" ] || [ "$SIZE" -lt 600000 ] || [ "$SIZE" -gt 3500000 ]; then
               echo "::warning::MicroPython file doesn't look like an ESP32 image (head $HEAD chip $CHIP size $SIZE); left out"; rm -f "$F"
             else
               echo "MicroPython ESP32 image: $SIZE bytes, sha256 $(sha256sum "$F" | cut -d' ' -f1)"
