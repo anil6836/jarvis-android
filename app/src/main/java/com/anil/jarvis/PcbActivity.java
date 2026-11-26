@@ -89,7 +89,7 @@ public class PcbActivity extends Activity {
     private static final Set<String> SHOP_HOSTS = new HashSet<>(Arrays.asList("robu.in", "robocraze.com"));
     private static final Set<String> TABS = new HashSet<>(Arrays.asList("home", "idea", "sch", "pcb", "drc", "sim", "d3", "fab", "calc", "learn"));
     private static final Set<String> KINDS = new HashSet<>(Arrays.asList(Pcb.NEW, Pcb.PHOTO, Pcb.EDIT, Pcb.HELP, Pcb.PINS, Pcb.SOLDER, Pcb.REVIEW, Pcb.SCAN));
-    private static final Set<String> PROJECTS = new HashSet<>(Arrays.asList("flasher", "usb", "soil", "esp32", "irboard"));
+    private static final Set<String> PROJECTS = new HashSet<>(Arrays.asList("flasher", "usb", "soil", "esp32", "irboard", "plant"));
 
     private final Handler ui = new Handler(Looper.getMainLooper());
     private FrameLayout root;

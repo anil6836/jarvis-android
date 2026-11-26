@@ -431,7 +431,8 @@ final class Tools {
                 "🔌 PCB స్టూడియో (phone only): REAL printed circuit boards a factory can make. Ready boards (free): "
                         + "flasher (two LEDs blinking with a 555 timer, 9 V), usb (a bike / car 12 V to 5 V USB phone charger with a buck module), soil "
                         + "(an alarm when a plant's soil is dry), esp32 (an ESP32 sensor board: temperature / humidity, soil, I2C screen), irboard (the "
-                        + "Jarvis speaker's IR board for the TV / AC remote). Inside: the schematic (tap a part: what it is in Telugu), the PCB (move / "
+                        + "Jarvis speaker's IR board for the TV / AC remote), plant (his plant-watering board: ESP32, a small 5 V pump, 3 soil sensors, "
+                        + "a bucket float switch, a test button; its program comes later). Inside: the schematic (tap a part: what it is in Telugu), the PCB (move / "
                         + "turn parts, auto-route, ground fill), the checks against a factory's rules (JLCPCB, PCBWay, Lion Circuits, PCB Power) with an "
                         + "🤖 AI help for the problems, the board in 3D, the factory files (a Gerber .zip saved in Downloads/Jarvis/pcb), the parts to buy with Indian shop search buttons "
                         + "and part pages (Robu, Robocraze, Amazon, Flipkart, Probots; opened in his browser only on his tap, he buys himself) and calculators (LED resistor, track width "
@@ -442,7 +443,7 @@ final class Tools {
                         + "he can say 'Jarvis తర్వాత'), 📦 a 3D-print box (STL), 📏 the board at its real size (on the screen 1:1, or on his table by the "
                         + "camera's AR) and 🎓 a 5-day Telugu PCB class (all free, on the phone; ask with change and his words, e.g. 'టంకం గైడ్'). "
                         + "open = the studio; project = open a ready "
-                        + "board (what = flasher | usb | soil | esp32 | irboard); tab = what = home | sch | pcb | drc | sim | d3 | fab | calc | learn (sim = ⚡ నడిపించు, learn = 🎓 class); idea = the 💡 card "
+                        + "board (what = flasher | usb | soil | esp32 | irboard | plant); tab = what = home | sch | pcb | drc | sim | d3 | fab | calc | learn (sim = ⚡ నడిపించు, learn = 🎓 class); idea = the 💡 card "
                         + "where he types / says his idea or adds a photo of a circuit drawn on paper (free until he taps make); build = the studio's AI "
                         + "makes a NEW board of his idea (paid: the studio shows the cost and waits 3 seconds with ✋ వద్దు); change = his words about "
                         + "the board that is open (a value, turn / move a part, the board size or colour, holes, route, add / remove parts...: small "
@@ -450,7 +451,7 @@ final class Tools {
                         + "site himself: Jarvis never orders or pays. Low-voltage DC boards only (battery / USB / adapter / bike 12 V, up to 24 V): "
                         + "never a 230 V mains board; refuse weapons, shock devices, electric fences, jammers and meter bypass yourself.",
                 schema(new String[][]{{"action", "string", "open | project | tab | idea | build | change"},
-                        {"what", "string", "project: flasher | usb | soil | esp32 | irboard. tab: home | sch | pcb | drc | sim | d3 | fab | calc | learn. build: the board in "
+                        {"what", "string", "project: flasher | usb | soil | esp32 | irboard | plant. tab: home | sch | pcb | drc | sim | d3 | fab | calc | learn. build: the board in "
                                 + "English with every detail he gave (what it does, the supply, parts, how many, ratings); keep Telugu names he used. change: his exact words"}},
                         "action")));
         DEFS.add(new Def("library",
@@ -1869,7 +1870,7 @@ final class Tools {
         String raw = what == null ? "" : what.trim(), w = raw.toLowerCase(java.util.Locale.ROOT);
         Intent i = new Intent(c, PcbActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         if ("project".equals(a)) {
-            if (!java.util.Arrays.asList("flasher", "usb", "soil", "esp32", "irboard").contains(w)) {
+            if (!java.util.Arrays.asList("flasher", "usb", "soil", "esp32", "irboard", "plant").contains(w)) {
                 startIn(i.putExtra(PcbActivity.EXTRA_TAB, "home"));
                 return err("no_such_board", "That ready board is not in the studio; the list of ready boards is on the screen. Say so in one line.");
             }

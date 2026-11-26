@@ -618,7 +618,7 @@ public class SettingsActivity extends Activity {
         rmOpen.setOnClickListener(v -> { autosave(); RoomMeasureActivity.open(this, null); });
         box.addView(rmOpen);
         // 🔌 the PCB studio: real boards a factory can make; our own code (23 Nov); 💡 his idea / voice / a sketch photo → a board by this AI (build 2, 24 Nov)
-        note("🔌 PCB స్టూడియో: నిజమైన PCB బోర్డ్‌లు. 5 రెడీ బోర్డ్‌లు (LED ఫ్లాషర్, 12V→5V USB ఛార్జర్, మట్టి అలారం, ESP32 సెన్సార్, Jarvis IR), "
+        note("🔌 PCB స్టూడియో: నిజమైన PCB బోర్డ్‌లు. 6 రెడీ బోర్డ్‌లు (LED ఫ్లాషర్, 12V→5V USB ఛార్జర్, మట్టి అలారం, ESP32 సెన్సార్, Jarvis IR, 🌱 మొక్కలకి నీళ్ళు), "
                 + "స్కీమాటిక్ (ప్రతి భాగం తెలుగులో), PCB (ఆటో రూట్, GND నింపు), ఫ్యాక్టరీ చెక్, 🧊 3D, Gerber .zip (Downloads/Jarvis/pcb), లెక్కలు: ₹0, AI లేదు. "
                 + "💡 మీ ఐడియా / మాట / చేతి బొమ్మ ఫోటో నుంచి కొత్త బోర్డ్, AI తో మార్పులు, ✅ చెక్ లో 🤖 AI సహాయం: కింద ఎంచుకున్న AI (ఖాళీ అయితే పైన 🛠️ AI), ఇదే నెల హద్దు; "
                 + "ఖర్చు ముందే చూపిస్తుంది, మీరు నొక్కితేనే (మాటతో అడిగితే ✋ 3 సెకన్లు). చిన్న మార్పులు (విలువ, తిప్పు, జరుపు, రంగు, సైజు) మాటతో కూడా ₹0. "
