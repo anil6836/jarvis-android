@@ -624,6 +624,14 @@
             android:label="మొక్కలకి నీళ్ళు"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
 
+        <!-- 💰 his money advisor: the month from bank SMS (counted on the phone), waste, safety net, goals, investments, loans, sums, tax -->
+        <activity
+            android:name=".MoneyActivity"
+            android:exported="false"
+            android:label="డబ్బు సలహాదారు"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
+
         <receiver
             android:name=".AlarmReceiver"
             android:exported="false">

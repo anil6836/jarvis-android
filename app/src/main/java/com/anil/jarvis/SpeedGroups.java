@@ -61,11 +61,11 @@ final class SpeedGroups {
                         "దగ్గర్లో", "మెడికల్ షాప్", "ఆసుపత్రి", "హాస్పిటల్", "బంక్", "కిరాణా", "bus", "train", "pnr", "ticket", "flight", "hotel", "trip",
                         "uber", "ola", "rapido", "cab", "auto", "swiggy", "zomato", "blinkit", "zepto", "food", "order", "rtc", "nearby", "atm",
                         "hospital"});
-        group("money", "money: spending, bank balance, budget and savings, debts / EMI / chits, expenses, the house's milk account, the car's diesel / mileage / service account, "
+        group("money", "money: the 💰 money advisor (month, waste, safety net, goals, investments, sums, tax, can I buy, scheme check), spending, bank balance, budget and savings, debts / EMI / chits, expenses, the house's milk account, the car's diesel / mileage / service account, "
                         + "bill split, bills due, gold and market prices, "
                         + "price alerts and comparison, mobile data plan, expiry and warranty dates",
                 new String[]{"bank_spending", "bank_balance", "budget", "debts", "add_expense", "split_bill", "bills_due", "market_prices", "price_alert",
-                        "compare_prices", "mobile_plan", "expiry", "house_accounts", "car_account"},
+                        "compare_prices", "mobile_plan", "expiry", "house_accounts", "car_account", "money_advisor"},
                 new String[]{"ఖర్చు", "డబ్బు", "డబ్బులు", "బ్యాలెన్స్", "బ్యాంక్", "అప్పు", "లోన్", "ఈఎంఐ", "చిట్టీ", "చిట్", "జీతం", "బిల్", "రూపాయ", "₹",
                         "ధర", "రేటు", "బంగారం", "వెండి", "మిర్చి", "పత్తి", "వరి", "చౌక", "ఇన్సూరెన్స్", "గడువు", "వారంటీ", "లైసెన్స్", "సర్వీస్", "గ్యాస్",
                         "రీఛార్జ్", "డేటా", "అద్దె", "పొదుపు", "దాచాలి", "బడ్జెట్", "కట్టాను", "కట్టాలి", "ఇచ్చాను", "తీసుకున్నా", "రాసుకో", "సిలిండర్", "money", "cylinder", "spent",
@@ -73,7 +73,12 @@ final class SpeedGroups {
                         "డీజిల్", "డీజల్", "మైలేజ్", "మైలేజీ", "మీటర్ రీడింగ్", "ఓడోమీటర్", "ట్యాంక్", "కొట్టించ", "బంక్", "కారు లెక్క", "కారు సర్వీస్", "diesel", "mileage", "odometer",
                         "expense", "balance", "bank", "loan", "emi", "chit", "salary", "bill", "bills", "rupee", "rupees", "price", "prices", "rate",
                         "gold", "silver", "cheap", "amazon", "flipkart", "insurance", "expiry", "warranty", "licence", "license", "service", "gas",
-                        "recharge", "data", "rent", "savings", "budget", "phonepe", "gpay", "paytm"});
+                        "recharge", "data", "rent", "savings", "budget", "phonepe", "gpay", "paytm",
+                        // 💰 the money advisor
+                        "పెట్టుబడి", "ఇన్వెస్ట్", "మ్యూచువల్", "ఫండ్", "ఎస్ఐపీ", "షేర్ మార్కెట్", "స్టాక్ మార్కెట్", "పన్ను", "ట్యాక్స్", "వృథా", "వేస్ట్", "సబ్‌స్క్రిప్షన్",
+                        "లక్ష్యం", "రిటైర్", "కొనొచ్చా", "స్కీమ్", "రెట్టింపు", "వడ్డీ", "ఆస్తి", "సలహా", "ఫైనాన్స్", "ఫైనాన్షియల్",
+                        "invest", "investment", "mutual", "fund", "sip", "fd", "ppf", "nps", "tax", "shares", "subscription", "retire", "interest", "net worth",
+                        "advisor", "adviser", "finance", "financial", "waste", "scheme"});
         group("health", "health: medicine reminders and stock, BP / sugar / weight log and medical reports, watch health (sleep, steps, energy, "
                         + "stress, heart), cough log, water reminder, exercise, habits",
                 new String[]{"medicine", "health_log", "health_watch", "cough_log", "steps_today", "water_reminder", "exercise", "habit_track"},

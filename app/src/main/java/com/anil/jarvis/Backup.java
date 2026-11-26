@@ -254,6 +254,7 @@ final class Backup {
                 || name.startsWith("mbgl-offline.db") || name.equals("map15") // (⑮'s map pieces kept by MapLibre round where he drove: his alone; the free style, fetched again)
                 || name.equals(FilmPack.DIR) || name.equals(FilmPack.PART) || name.equals(FilmPack.DIR + ".old") // (🎬 his own clips: on the box only, never in a backup — his rule)
                 || PhotoText.isIndexFile(name) || FacePhotos.isIndexFile(name) // (📷 the words read from his photos: on the phone only, read again on a new one)
+                || name.equals("amfi_nav.txt") // (💰 the public fund-NAV list: fetched again when needed)
                 || (name.startsWith("greet_") && name.endsWith(".pcm"));
     }
 

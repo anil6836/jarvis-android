@@ -471,6 +471,41 @@ final class Tools {
                         {"time", "string", "For schedule: HH:MM in 24 hours (ఉదయం 7 = 07:00, సాయంత్రం 6 = 18:00)"},
                         {"dry_only", "boolean", "For schedule: water only when the soil is dry (default true)"},
                         {"on", "boolean", "For schedule: false = remove that daily time"}}, "action")));
+        DEFS.add(new Def("money_advisor",
+                "💰 His personal money advisor (phone only; ₹0 except his own AI talk): his month from bank / UPI / card SMS counted on the phone. "
+                        + "overview (default: this month in / out / saved, today's allowance, what to do first; for 'నా డబ్బు ఎలా ఉంది?', 'ఈ నెల ఎంత ఖర్చు'); "
+                        + "today = how much he can spend today ('ఈరోజు ఎంత ఖర్చు పెట్టొచ్చు?'); waste = where money leaks + subscriptions; "
+                        + "safety = emergency fund, health / term cover, costly debt, and the steps in order; goals / goal_add / goal_remove = his goals "
+                        + "(name, target in today's rupees, by = YYYY-MM): the monthly saving each needs and the KINDS of options that fit; investments "
+                        + "/ holding_add / holding_remove / prices = his own FD, RD, PPF, PF, NPS, funds, shares, gold, chit… and net worth (fund NAVs "
+                        + "from AMFI, share prices); calculate = sip | lumpsum | fd | rd | ppf | emi | prepay | inflation | retire | goal | card | double "
+                        + "(amount = the main sum); tax = old vs new regime (amount = yearly income); can_buy = 'ఇది కొనొచ్చా?' (amount = price, "
+                        + "what); scheme_check = a message / offer he got ('ఇది నిజమేనా?', text = its words); review = his month's totals for YOU to "
+                        + "review now by the rules it gives; profile = details he tells (income = take-home a month, save_goal, budget, salary_day, "
+                        + "age, dependents, term, health, risk low | mid | high, card_due); report = the month's PDF; open = the 💰 screen (tab). "
+                        + "Never ask him for his salary or balances in the talk (they are typed in the 💰 screen's ⚙️). Never name a fund, share or "
+                        + "company to buy, never say buy / sell a specific thing, never promise returns (amounts are అంచనా, హామీ కాదు); say Jarvis is "
+                        + "not a SEBI-registered adviser when he asks where to invest; Jarvis never pays, buys, sells, cancels or opens a bank / investment app.",
+                schema(new String[][]{{"action", "string", "overview (default), today, waste, safety, goals, goal_add, goal_remove, investments, holding_add, holding_remove, "
+                        + "prices, calculate, tax, can_buy, scheme_check, review, profile, report or open"},
+                        {"kind", "string", "calculate: sip | lumpsum | fd | rd | ppf | emi | prepay | inflation | retire | goal | card | double. goal_add: house | car | bike | "
+                                + "education | wedding | retire | travel | emergency | gadget | other. holding_add: fd | rd | savings | mf | stock | ppf | epf | nps | post | ssy | gold | lic | chit | land | other"},
+                        {"name", "string", "goal / holding name as he says it (goal_remove / holding_remove: words of its name)"},
+                        {"amount", "number", "The main rupees: SIP a month, lump sum, FD, RD a month, PPF a year, loan, loan left (prepay), today's price, "
+                                + "a goal's target, the card balance, monthly expense (retire), yearly income (tax), the price (can_buy), invested (holding_add)"},
+                        {"rate", "number", "% a year (card: % a month)"}, {"years", "number", "years"}, {"months", "integer", "months"},
+                        {"emi", "number", "prepay: the EMI"}, {"extra_now", "number", "prepay: paid once now"}, {"extra_monthly", "number", "prepay: extra every month"},
+                        {"age", "integer", "his age (retire / tax / profile)"}, {"retire_age", "integer", "retire: at what age"},
+                        {"have", "number", "retire / goal: already saved"}, {"by", "string", "goal_add: YYYY-MM"}, {"what", "string", "can_buy: the thing"},
+                        {"text", "string", "scheme_check: the message's words"}, {"tab", "string", "open: month | waste | safe | goals | invest | loans | calc | tax | buy | scheme | ai | me"},
+                        {"month", "string", "report: YYYY-MM (default: last month in the first 5 days, else this month)"},
+                        {"d80c", "number", "tax: 80C total"}, {"d80d", "number", "tax: health insurance premium"}, {"nps", "number", "tax: own extra NPS"},
+                        {"home_interest", "number", "tax: home-loan interest"}, {"hra", "number", "tax: HRA exempt"},
+                        {"start", "string", "holding_add: YYYY-MM-DD"}, {"maturity", "string", "holding_add: YYYY-MM-DD"}, {"sip", "number", "holding_add: paid a month"},
+                        {"income", "number", "profile: take-home a month"}, {"save_goal", "number", "profile"}, {"budget", "number", "profile"},
+                        {"salary_day", "integer", "profile"}, {"dependents", "integer", "profile"}, {"term", "number", "profile: term cover"},
+                        {"health", "number", "profile: health cover"}, {"risk", "string", "profile: low | mid | high"}, {"card_due", "number", "profile: card balance unpaid"}},
+                        "action")));
         DEFS.add(new Def("library",
                 "📚 Jarvis గ్రంథాలయం (phone only): his books on wooden racks — free classics (Project Gutenberg in English; Telugu Wikisource: "
                         + "శతకాలు, కన్యాశుల్కం, భాగవతం…), free books he finds, and his own PDF / EPUB / TXT / page photos. open = the racks (view sec = by "
@@ -1242,6 +1277,7 @@ final class Tools {
             case "room_measure": return "ఇంటి కొలతలు తెరుస్తున్నాను…";
             case "pcb_studio": return "🔌 PCB స్టూడియో తెరుస్తున్నాను…";
             case "plant": return "🌱 నీళ్ళ బోర్డ్‌ని అడుగుతున్నాను…";
+            case "money_advisor": return "💰 లెక్కలు చూస్తున్నాను…";
             case "library": return "📚 లైబ్రరీ చూస్తున్నాను…";
             case "publish_website": return "ఆన్‌లైన్‌లో పెడుతున్నాను…";
             case "write_code": return "కోడ్ రాస్తున్నాను…";
@@ -1467,6 +1503,7 @@ final class Tools {
                 case "room_measure": return roomMeasure(a.optString("action", "open"));
                 case "pcb_studio": return pcbStudio(a.optString("action", "open"), a.optString("what", ""));
                 case "plant": return plantTool(a);
+                case "money_advisor": return moneyTool(a);
                 case "library": return library(a);
                 case "write_code": return writeCode(a.optString("filename", ""), a.optString("description", ""));
                 case "make_app":
@@ -1982,6 +2019,195 @@ final class Tools {
                 return ok().put("board", Plant.forAi(o)).put("next", "Answer his question from 'said' in one or two short Telugu lines (not every number).").toString();
             }
         }
+    }
+
+    private static final String MONEY_RULES = "Rules: short simple Telugu, the main numbers only. Never name a fund, share or company to buy, never say buy / sell "
+            + "a specific thing, never promise returns (amounts are అంచనా, హామీ కాదు). If he asks where to invest: explain the KINDS that fit his time and comfort "
+            + "with risk, say Jarvis is not a SEBI-registered adviser, and that a fee-only SEBI-registered adviser (RIA) can help with big decisions. Jarvis never pays, "
+            + "buys, sells, cancels or opens a bank / investment app.";
+
+    /** 💰 the money advisor by voice: the same engine as the 💰 screen; to the AI only totals (no SMS text, no account digits, no person's name). */
+    private String moneyTool(JSONObject a) throws Exception {
+        android.content.Context c = act();
+        if (!Workshop.here(c)) return err("phone_only", "The money advisor is on his phone only (not the home tablet or the car box). Say so in one line.");
+        Finance.started(c);
+        String ac = a.optString("action", "overview").trim().toLowerCase(Locale.ROOT);
+        if (ac.isEmpty()) ac = "overview";
+        switch (ac) {
+            case "open": {
+                Intent i = new Intent(c, MoneyActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                String tab = a.optString("tab", "");
+                if (MoneyActivity.TABS.contains(tab)) i.putExtra(MoneyActivity.EXTRA_TAB, tab);
+                startIn(i);
+                return ok().put("next", "Say in one short Telugu line that the 💰 screen is open.").toString();
+            }
+            case "calculate": case "tax": case "can_buy": case "scheme_check": {
+                JSONObject q = new JSONObject();
+                for (String k : new String[]{"rate", "years", "months", "emi", "extra_now", "extra_monthly", "age", "retire_age", "have", "d80c", "d80d", "nps", "home_interest", "hra"})
+                    if (a.has(k) && !Double.isNaN(a.optDouble(k))) q.put(k, a.optDouble(k));
+                double amt = a.optDouble("amount", Double.NaN);
+                String kind = ac.equals("tax") ? "tax" : ac.equals("can_buy") ? "canbuy" : ac.equals("scheme_check") ? "scheme" : a.optString("kind", "").trim().toLowerCase(Locale.ROOT);
+                q.put("kind", kind);
+                if (!Double.isNaN(amt)) {
+                    String key;
+                    switch (kind) {
+                        case "sip": case "rd": key = "monthly"; break;
+                        case "ppf": key = "yearly"; break;
+                        case "emi": key = "principal"; break;
+                        case "prepay": key = "outstanding"; break;
+                        case "retire": key = "monthly_expense"; break;
+                        case "goal": key = "target"; break;
+                        case "card": key = "balance"; break;
+                        case "tax": key = "income"; break;
+                        case "canbuy": key = "price"; break;
+                        default: key = "amount"; break;
+                    }
+                    q.put(key, amt);
+                }
+                if (kind.equals("card") && q.has("rate")) q.put("monthly_rate", q.remove("rate"));
+                if (kind.equals("canbuy")) {
+                    if (!(amt > 0)) return err("no_price", "Ask him the price.");
+                    q.put("what", a.optString("what", ""));
+                }
+                if (kind.equals("tax") && !(amt > 0) && prefs.income() <= 0) return err("no_income", "Ask his yearly income before tax (or tell him to fill ⚙️ in the 💰 screen).");
+                if (kind.equals("scheme")) {
+                    String t = a.optString("text", "").trim();
+                    if (t.length() < 10) return err("no_text", "Ask him to read out or paste the message / offer (or open 💰 → 🚨 స్కీమ్ చెక్).");
+                    q.put("text", t.length() > 5000 ? t.substring(0, 5000) : t);
+                }
+                JSONObject r = new JSONObject(Finance.calc(c, q));
+                return ok().put("result", r).put("next", (kind.equals("scheme") ? "Tell him the verdict and the 2-3 main warning signs in short Telugu; if it is bad say "
+                        + "clearly not to pay, and that 1930 / cybercrime.gov.in is for when money is already lost. " : kind.equals("canbuy")
+                        ? "Tell him the verdict and the main reason in two short Telugu lines. " : "Say the result in two short Telugu lines (the main numbers). ") + MONEY_RULES).toString();
+            }
+            case "profile": {
+                JSONObject v = new JSONObject();
+                for (String k : new String[]{"income", "save_goal", "budget", "salary_day", "age", "dependents", "term", "health", "card_due"})
+                    if (a.has(k) && !Double.isNaN(a.optDouble(k))) v.put(k, a.optDouble(k));
+                String risk = a.optString("risk", "").trim().toLowerCase(Locale.ROOT);
+                if (risk.equals("low") || risk.equals("mid") || risk.equals("high")) v.put("risk", risk);
+                if (v.length() == 0) return err("nothing", "He gave no detail. Don't ask for salary or balances in the talk: the 💰 screen's ⚙️ నా వివరాలు is where he types them.");
+                Finance.saveProfile(c, v);
+                return ok().put("saved", v).put("next", "Say in one short Telugu line that it is saved.").toString();
+            }
+            case "goal_add": {
+                JSONObject g = Finance.cleanGoal(new JSONObject().put("name", a.optString("name", "")).put("kind", a.optString("kind", "other"))
+                        .put("target", a.optDouble("amount", 0)).put("by", a.optString("by", "")).put("saved", a.optDouble("have", 0)));
+                if (g.optString("name").isEmpty() || g.optDouble("target") <= 0 || g.optString("by").isEmpty())
+                    return err("need_more", "A goal needs its name, how much in today's rupees and by when (YYYY-MM). Ask what is missing.");
+                JSONObject saved = Finance.upsert(c, "goals", g);
+                return moneyPart(c, "goals", saved.optString("id"));
+            }
+            case "goal_remove": case "holding_remove": {
+                String key = ac.equals("goal_remove") ? "goals" : "holdings";
+                String w = a.optString("name", "").trim().toLowerCase(Locale.ROOT);
+                JSONArray l = Finance.arr(c, key);
+                JSONObject hit = null;
+                int n = 0;
+                for (int i = 0; i < l.length(); i++) {
+                    JSONObject o = l.optJSONObject(i);
+                    if (o != null && !w.isEmpty() && o.optString("name").toLowerCase(Locale.ROOT).contains(w)) { hit = o; n++; }
+                }
+                if (n != 1) return err(n == 0 ? "not_found" : "many", (n == 0 ? "No such one. " : "More than one match. ") + "Ask him which (or open the 💰 screen to remove it there).");
+                Finance.remove(c, key, hit.optString("id"));
+                return ok().put("removed", hit.optString("name")).put("next", "Say in one short Telugu line that it is removed.").toString();
+            }
+            case "holding_add": {
+                JSONObject h = Finance.cleanHolding(new JSONObject().put("kind", a.optString("kind", "other")).put("name", a.optString("name", ""))
+                        .put("invested", a.optDouble("amount", 0)).put("rate", a.optDouble("rate", 0)).put("start", a.optString("start", ""))
+                        .put("maturity", a.optString("maturity", "")).put("sip", a.optDouble("sip", 0)));
+                if (h.optString("name").isEmpty() || (h.optDouble("invested") <= 0 && h.optDouble("sip") <= 0))
+                    return err("need_more", "It needs what it is (kind, name) and how much he put in (or pays a month). Ask what is missing.");
+                Finance.upsert(c, "holdings", h);
+                String more = "mf".equals(h.optString("kind")) || "stock".equals(h.optString("kind"))
+                        ? " For the daily value: in the 💰 screen → 📈 పెట్టుబడులు → మార్చు, pick the fund from the list (or type the NSE code) and the units." : "";
+                return ok().put("saved", h.optString("name")).put("next", "Say in one short Telugu line that it is saved." + more).toString();
+            }
+            case "prices": {
+                int n = Finance.refreshPrices(c, true);
+                return moneyPartJ(c, "investments", null).put("prices_updated", n).toString();
+            }
+            case "report": {
+                java.time.LocalDate today = java.time.LocalDate.now();
+                java.time.YearMonth ym;
+                try { ym = java.time.YearMonth.parse(a.optString("month", "").trim()); }
+                catch (Exception e) { ym = today.getDayOfMonth() <= 5 ? java.time.YearMonth.from(today).minusMonths(1) : java.time.YearMonth.from(today); }
+                Coder.Made m = MoneyReport.pdf(c, ym);
+                if (m == null) return err("empty", "No money entries for that month. Say so in one line.");
+                if (m.uri != null && unlocked()) Cards.view(c, m);
+                return ok().put("saved", m.where).put("next", "Say in one short Telugu line that the month's PDF is open and saved in " + m.where + ".").toString();
+            }
+            case "review": {
+                return ok().put("totals", new JSONObject(Finance.summaryForAi(c))).put("next", "Now review his money yourself from these totals only, by these rules: "
+                        + Finance.REVIEW_RULES + " Speak it (it is read aloud): short.").toString();
+            }
+            default: return moneyPart(c, ac, null);
+        }
+    }
+
+    /** overview / today / waste / safety / goals / investments: the parts the AI may see (totals, kinds, his own goal and investment names). */
+    private String moneyPart(android.content.Context c, String part, String goalId) throws Exception { return moneyPartJ(c, part, goalId).toString(); }
+
+    private JSONObject moneyPartJ(android.content.Context c, String part, String goalId) throws Exception {
+        JSONObject b = new JSONObject(Finance.bundle(c));
+        JSONObject o = ok();
+        if (!b.optBoolean("sms")) o.put("note", "No SMS permission: only expenses he wrote are counted. The 💰 screen asks for it on his tap.");
+        String next;
+        switch (part) {
+            case "today":
+                o.put("allowance", b.optJSONObject("allowance"));
+                next = "Say how much he can spend today and what is left this month in one or two short Telugu lines. If no plan is set, say the 💰 screen's ⚙️ needs his take-home and savings goal.";
+                break;
+            case "waste": {
+                JSONArray lk = b.optJSONArray("leaks"), l = new JSONArray();
+                for (int i = 0; lk != null && i < lk.length(); i++) {
+                    JSONObject x = lk.getJSONObject(i);
+                    l.put(new JSONObject().put("what", x.optString("title")).put("tip", x.optString("tip")).put("a_month", x.optLong("amount")).put("a_year", x.optLong("yearly")));
+                }
+                JSONArray sb = b.optJSONArray("subs"), s2 = new JSONArray();
+                for (int i = 0; sb != null && i < sb.length(); i++) {
+                    JSONObject x = sb.getJSONObject(i);
+                    s2.put(new JSONObject().put("name", x.optBoolean("ott") ? x.optString("name") : "regular " + x.optString("cat")).put("a_month", x.optLong("amount"))
+                            .put("he_marked", x.optString("mark")));
+                }
+                o.put("waste", l).put("subscriptions", s2);
+                next = "Tell him the 2-3 biggest leaks with how much a month he can save from each, and the subscriptions to check, in short Telugu. Cancelling is done by him in that app.";
+                break;
+            }
+            case "safety":
+                o.put("protection", b.optJSONArray("protection")).put("steps", b.optJSONArray("priorities")).put("emergency_money", b.optLong("liquid"))
+                        .put("avg_monthly_spend", b.optLong("monthly_spend"));
+                next = "Tell him what is weakest first and the next 2 steps in order, short Telugu.";
+                break;
+            case "goals": {
+                JSONArray g = b.optJSONArray("goals");
+                if (goalId != null && g != null) {
+                    for (int i = 0; i < g.length(); i++) if (goalId.equals(g.getJSONObject(i).optString("id"))) o.put("saved_goal", g.getJSONObject(i));
+                    next = "Say the saved goal: about how much a month, and the kinds that fit (from 'fit'), in two short Telugu lines.";
+                } else {
+                    o.put("goals", g == null ? new JSONArray() : g);
+                    next = "Say each goal: how far along and about how much a month, short Telugu. No goals yet: tell him he can say e.g. 'రెండేళ్ళలో 2 లక్షల బండి'.";
+                }
+                break;
+            }
+            case "investments": {
+                JSONArray hs = b.optJSONArray("holdings"), h = new JSONArray();
+                for (int i = 0; hs != null && i < hs.length(); i++) {
+                    JSONObject x = hs.getJSONObject(i);
+                    h.put(new JSONObject().put("kind", x.optString("kind_te")).put("name", x.optString("name")).put("put_in", x.optLong("invested"))
+                            .put("now", x.optLong("now")).put("sip", x.optLong("sip")));
+                }
+                o.put("investments", h).put("net_worth", b.optJSONObject("net")).put("monthly_sip_total", b.optLong("sip_total"));
+                next = "Say his total, the gain or loss, and the mix by kind in short Telugu (not every line).";
+                break;
+            }
+            default: {
+                o.put("totals", new JSONObject(Finance.summaryForAi(c))).put("allowance", b.optJSONObject("allowance")).put("steps", b.optJSONArray("priorities"));
+                next = "Tell him this month so far (came in, spent, invested), what he can spend today, and the first step, in 3 short Telugu lines.";
+                break;
+            }
+        }
+        return o.put("next", next + " " + MONEY_RULES);
     }
 
     private String pcbStudio(String action, String what) throws Exception {

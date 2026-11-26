@@ -597,6 +597,7 @@ public class Panel extends Activity {
         line("₹" + String.format(java.util.Locale.ENGLISH, "%,d", spent) + (budget > 0 ? " / ₹" + String.format(java.util.Locale.ENGLISH, "%,d", budget) : ""), WUi.TEXT);
         if (budget <= 0) line("బడ్జెట్ పెట్టలేదు: \"నెల బడ్జెట్ 20000\" అని Jarvis కి చెప్పండి.", WUi.FAINT);
         else if (spent > budget) line("బడ్జెట్ దాటింది", 0xFFFCA5A5);
+        if (data.has("today")) line("💰 ఈరోజు ₹" + String.format(java.util.Locale.ENGLISH, "%,d", data.optLong("today")) + " వరకు ఖర్చు పెట్టొచ్చు", 0xFF86EFAC);
         line("బ్యాంక్ / UPI SMS నుంచి ఫోన్‌లోనే లెక్క (ఏ AI కీ పంపను). లోపలి గీత = నెలలో గడిచిన రోజులు.", WUi.FAINT);
     }
 

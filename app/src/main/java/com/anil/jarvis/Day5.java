@@ -305,8 +305,16 @@ final class Day5 {
     static JSONObject moneyPanel(Context c) throws Exception {
         if (!spendOn(c)) return new JSONObject().put("kind", "money").put("off", true);
         long[] s = spending(c);
-        return new JSONObject().put("kind", "money").put("spent", s[0]).put("budget", s[1]).put("day", LocalDate.now().getDayOfMonth())
+        JSONObject o = new JSONObject().put("kind", "money").put("spent", s[0]).put("budget", s[1]).put("day", LocalDate.now().getDayOfMonth())
                 .put("days", LocalDate.now().lengthOfMonth());
+        // 💰 (27 Nov) today's allowance from the money advisor's plan (take-home − savings goal, or his budget): one number, nothing else
+        try {
+            if (s[0] >= 0 && Workshop.here(c)) {
+                JSONObject al = new JSONObject(FinCoach.allowance(Finance.txns(c, 40), Finance.profile(c), Finance.zone(), LocalDate.now(Finance.zone())).done());
+                if (al.optLong("left", -1) >= 0 && al.optLong("plan", 0) > 0) o.put("today", al.optLong("per_day"));
+            }
+        } catch (Exception ignored) {}
+        return o;
     }
 
     // ================================================================ his words (offline too) and the watch_tools tool

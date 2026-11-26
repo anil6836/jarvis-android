@@ -133,6 +133,11 @@ public class AlarmReceiver extends BroadcastReceiver {
                 new Thread(() -> { try { Plant.check(c.getApplicationContext()); } catch (Exception ignored) {} finally { pr.finish(); } }, "plant-check").start();
                 break;
             }
+            case Finance.ACTION_DAILY: { // 💰 the evening money check (and the month's report on the 1st)
+                PendingResult pr = goAsync();
+                new Thread(() -> { try { Finance.daily(c.getApplicationContext()); } catch (Exception ignored) {} finally { pr.finish(); } }, "money-daily").start();
+                break;
+            }
             case Journey.ACTION_SEND: Journey.sendReached(c); break;
             case Protocols.ACTION_SEND: Protocols.send(c, i.getStringExtra("text")); break; // W58: his tap on the protocol's message
             case RideCare.ACTION_AWAKE: break; // (the bike's old awake check: removed 18 Oct)
@@ -223,6 +228,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 try { Bike.rearm(c); } catch (Exception ignored) {}
                 try { Automations.schedule(c); } catch (Exception ignored) {}
                 try { Plant.rearm(c); } catch (Exception ignored) {} // 🌱 the daily watering report
+                try { Finance.rearm(c); } catch (Exception ignored) {} // 💰 the evening money check
                 UpdateJob.schedule(c);
                 if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) Updater.cancelNotice(c);
                 if (Intent.ACTION_BOOT_COMPLETED.equals(action) || Intent.ACTION_MY_PACKAGE_REPLACED.equals(action) || "android.intent.action.QUICKBOOT_POWERON".equals(action)) {

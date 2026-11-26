@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="te">
+<head>
+<meta charset="utf-8">
+<!-- 💰 Jarvis money advisor. Only this page's own script runs here; every number and word from Jarvis goes in with textContent. No network. -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src data:; connect-src 'none'; frame-src 'none'; worker-src 'none'; media-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<style>
+  :root { --bg: #08100d; --panel: #0e1915; --card: #12211c; --card2: #172a24; --line: #24392f; --text: #e4f2eb; --muted: #93b2a4; --faint: #5f7d70;
+          --mint: #5fe0a8; --mint2: #1d6b4c; --sky: #7cc8ff; --amber: #ffc861; --coral: #ff8a7a; --ink: #04140d; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: "Noto Sans Telugu", system-ui, "Noto Color Emoji", sans-serif;
+               font-size: 15px; line-height: 1.5; overflow: hidden; }
+  #top { position: absolute; left: 0; right: 0; top: 0; height: 50px; display: flex; align-items: center; gap: 6px; padding: 0 6px 0 4px; background: var(--panel); }
+  #top button { background: none; border: 0; color: var(--muted); font-size: 21px; padding: 6px 10px; }
+  #top .name { flex: 1; min-width: 0; font-weight: 700; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #tabs { position: absolute; left: 0; right: 0; top: 50px; display: flex; gap: 6px; padding: 6px 8px 8px; overflow-x: auto; background: var(--panel);
+          border-bottom: 1px solid var(--line); scrollbar-width: none; }
+  #tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: none; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--text); font: inherit; font-size: 14px; white-space: nowrap; }
+  .tab.on { background: var(--mint); color: var(--ink); border-color: var(--mint); font-weight: 700; }
+  main { position: absolute; top: 101px; left: 0; right: 0; bottom: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  section { display: none; padding: 12px 12px 90px; }
+  section.on { display: block; }
+  h2 { font-size: 16px; margin: 18px 2px 8px; color: var(--mint); font-weight: 700; }
+  h2:first-child { margin-top: 4px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 13px; margin-bottom: 10px; }
+  .card.ok { border-left: 4px solid var(--mint); }
+  .card.warn { border-left: 4px solid var(--amber); }
+  .card.bad { border-left: 4px solid var(--coral); }
+  .card.unknown { border-left: 4px solid var(--faint); }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  .tiny { font-size: 12px; color: var(--faint); }
+  .row { display: flex; align-items: baseline; gap: 8px; }
+  .row .grow { flex: 1; min-width: 0; }
+  .amt { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+  .in { color: var(--mint); }
+  .out { color: var(--text); }
+  .warnc { color: var(--amber); }
+  .badc { color: var(--coral); }
+  .btn { display: inline-block; font: inherit; font-size: 14.5px; padding: 9px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--card2);
+         color: var(--text); margin: 4px 6px 4px 0; }
+  .btn.main { background: var(--mint); border-color: var(--mint); color: var(--ink); font-weight: 700; }
+  .btn.quiet { background: transparent; }
+  .btn.on { border-color: var(--mint); color: var(--mint); }
+  .btn:disabled { opacity: .5; }
+  .btn:focus-visible, .tab:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
+  /* the hero: what he can spend today */
+  .hero { background: linear-gradient(160deg, #123326, #0e1f19 70%); border: 1px solid #2a5242; border-radius: 18px; padding: 16px 16px 14px; margin-bottom: 12px; }
+  .hero .lab { font-size: 14px; color: var(--muted); }
+  .hero .big { font-size: 44px; font-weight: 800; letter-spacing: -1px; line-height: 1.1; margin: 2px 0 6px; font-variant-numeric: tabular-nums; }
+  .hero .big.low { color: var(--amber); }
+  .meter { position: relative; height: 10px; border-radius: 6px; background: #0a1511; border: 1px solid #23463a; overflow: hidden; margin: 8px 0 6px; }
+  .meter > i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--mint); border-radius: 6px; }
+  .meter > i.over { background: var(--coral); }
+  .meter > b { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--text); opacity: .7; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 9px 11px; }
+  .tile .v { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tile .k { font-size: 12.5px; color: var(--muted); }
+  .chips { display: flex; gap: 6px; overflow-x: auto; margin: 0 0 10px; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .bar { margin: 7px 0; }
+  .bar .track { height: 8px; border-radius: 5px; background: #0a1511; overflow: hidden; margin-top: 3px; }
+  .bar .track > i { display: block; height: 100%; background: var(--sky); border-radius: 5px; }
+  .bar .track > i.fixed { background: var(--faint); }
+  .tx { display: flex; gap: 10px; align-items: center; padding: 9px 2px; border-bottom: 1px solid var(--line); }
+  .tx:last-child { border-bottom: 0; }
+  .tx .who { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tx .meta { font-size: 12.5px; color: var(--muted); }
+  .tx button { background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 8px; font: inherit; font-size: 12.5px; padding: 3px 7px; }
+  ol.steps { margin: 0; padding-left: 22px; }
+  ol.steps li { margin: 0 0 8px; }
+  .prog { height: 9px; border-radius: 6px; background: #0a1511; overflow: hidden; margin: 8px 0 4px; }
+  .prog > i { display: block; height: 100%; background: var(--mint); }
+  .dots { letter-spacing: 2px; color: var(--amber); }
+  details { background: var(--card); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 8px; }
+  details summary { padding: 10px 12px; font-weight: 600; list-style: none; }
+  details summary::-webkit-details-marker { display: none; }
+  details > div { padding: 0 12px 12px; font-size: 14px; }
+  details dl { margin: 0; }
+  details dt { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+  details dd { margin: 0; }
+  table.rates { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.rates td { padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  table.rates td:last-child { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  label.f { display: block; margin: 9px 0 0; font-size: 13.5px; color: var(--muted); }
+  input, select, textarea { width: 100%; font: inherit; font-size: 16px; color: var(--text); background: #0a1511; border: 1px solid var(--line); border-radius: 9px;
+                            padding: 9px 10px; margin-top: 3px; }
+  textarea { min-height: 120px; resize: vertical; }
+  input[type=checkbox] { width: auto; margin: 0 8px 0 0; transform: scale(1.25); }
+  label.ck { display: flex; align-items: center; margin: 10px 0 0; font-size: 14.5px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
+  .result { white-space: pre-wrap; background: var(--card2); border: 1px solid #2a5242; border-radius: 12px; padding: 11px 12px; margin-top: 10px; display: none; }
+  .verdict { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+  ul.plain { margin: 6px 0 0; padding-left: 18px; }
+  ul.plain li { margin-bottom: 5px; }
+  .note { font-size: 12.5px; color: var(--faint); margin: 16px 2px 0; }
+  .risk { display: grid; gap: 6px; margin-top: 4px; }
+  .risk button { text-align: left; font: inherit; font-size: 14px; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--line); background: #0a1511; color: var(--text); }
+  .risk button.on { border-color: var(--mint); background: #12352a; }
+  /* the sheet: forms slide up over the screen */
+  #veil { position: absolute; inset: 0; background: rgba(0,0,0,.55); display: none; z-index: 5; }
+  #sheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: 88%; overflow-y: auto; background: var(--panel); border-top: 1px solid var(--line);
+           border-radius: 18px 18px 0 0; padding: 14px 14px 26px; display: none; z-index: 6; }
+  #sheet h3 { margin: 0 0 4px; font-size: 17px; }
+  #toast { position: absolute; left: 12px; right: 12px; bottom: 18px; background: #1c3a2f; color: var(--text); border: 1px solid #2f6a55; border-radius: 12px;
+           padding: 10px 13px; font-size: 14.5px; display: none; z-index: 9; }
+  .empty { color: var(--muted); padding: 6px 2px; }
+  .pill { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); margin-left: 4px; }
+  @media (prefers-reduced-motion: no-preference) { #sheet.show { animation: up .18s ease-out; } @keyframes up { from { transform: translateY(30px); opacity: .4; } } }
+</style>
+</head>
+<body>
+<div id="top"><button id="back" aria-label="వెనక్కి">←</button><div class="name">💰 డబ్బు సలహాదారు</div><button id="reload" aria-label="మళ్ళీ లెక్కించు">🔄</button></div>
+<nav id="tabs"></nav>
+<main id="main">
+  <section id="s-month"></section>
+  <section id="s-waste"></section>
+  <section id="s-safe"></section>
+  <section id="s-goals"></section>
+  <section id="s-invest"></section>
+  <section id="s-loans"></section>
+  <section id="s-calc"></section>
+  <section id="s-tax"></section>
+  <section id="s-buy"></section>
+  <section id="s-scheme"></section>
+  <section id="s-ai"></section>
+  <section id="s-me"></section>
+</main>
+<div id="veil"></div>
+<div id="sheet"></div>
+<div id="toast"></div>
+<script src="money.js"></script>
+</body>
+</html>

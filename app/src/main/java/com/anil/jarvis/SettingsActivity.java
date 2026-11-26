@@ -635,6 +635,14 @@ public class SettingsActivity extends Activity {
         plOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         plOpen.setOnClickListener(v -> { autosave(); startActivity(new android.content.Intent(this, PlantActivity.class)); });
         box.addView(plOpen);
+        // 💰 the money advisor (27 Nov: "నాకు పర్సనల్ గా ఫైనాన్షియల్ అడ్వైసర్ కావాలి"): bank SMS counted on the phone, waste, safety net, goals, investments, tax
+        note("💰 డబ్బు సలహాదారు: బ్యాంక్ / UPI / కార్డ్ SMS ఫోన్‌లోనే లెక్కించి ఈ నెల ఖర్చు, ఈరోజు ఎంత ఖర్చు పెట్టొచ్చు, వృథా, సబ్‌స్క్రిప్షన్‌లు, రక్షణ (అత్యవసర నిధి, ఇన్సూరెన్స్), "
+                + "లక్ష్యాలు, మీ పెట్టుబడులు (ఫండ్ NAV, షేర్ ధర), నికర ఆస్తి, లోన్‌లు, లెక్కలు, పన్ను, కొనొచ్చా?, స్కీమ్ చెక్. ₹0; 🤖 AI సమీక్ష మీరు అడిగితేనే (మొత్తాలు మాత్రమే వెళ్తాయి). "
+                + "Jarvis ఏదీ కట్టదు, కొనదు, అమ్మదు; ఏ ఫండ్ / షేర్ కొనమని చెప్పదు.");
+        TextView mnOpen = Ui.text(this, "💰 డబ్బు సలహాదారు తెరువు →", 15, accent);
+        mnOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        mnOpen.setOnClickListener(v -> { autosave(); MoneyActivity.open(this, null); });
+        box.addView(mnOpen);
         // 📚 the book library: free books and his own, read aloud; Telugu by the phone (₹0) or this same AI in this same limit (20 Nov)
         note("📚 పుస్తకాల లైబ్రరీ: చెక్క రాక్‌లలో ఉచిత పుస్తకాలు (Project Gutenberg, తెలుగు వికీసోర్స్), మీ PDF / EPUB / TXT / పేజీల ఫోటోలు. "
                 + "చదివి వినిపించడం, ఫోన్ తెలుగు అనువాదం (ఒకసారి 30 MB ప్యాక్) ₹0. ✨ AI తెలుగు, తెలుగు పేజీల ఫోటోలు చదవడం: కింద ఎంచుకున్న AI (ఖాళీ అయితే పైన 🛠️ AI), ఇదే నెల హద్దు; "
