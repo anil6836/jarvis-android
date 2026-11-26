@@ -59,6 +59,7 @@
   const xrS = { on: false, wait: false, st: '', box: false };                // 📷 AR on his table
   let speaking = false, scr = { xdpi: 0, k: 1 }, learnSt = { d: {} }, afterOpen = null;
   const lv = { day: 0, ans: {} };                                            // 🎓 the day open, his quiz answers
+  let ft = null;                                                             // 🧪 fault finder: {id, tests, gnd, i, res: [{got, w}]}
 
   function gndName() { const n = D && D.nets.find((q) => C.isGnd(q.n)); return n ? n.n : null; }
 
@@ -68,6 +69,7 @@
     M = C.model(D);
     silkCache = null;
     sim.rep = null; // (⚡ runs the changed board again when asked)
+    if (how !== 'load' && ft) ft = null; // (🧪 a changed board: its points are worked out again)
     const g = gndName();
     fills.B = g && D.pour.B ? C.pour(D, 1, g, M) : null;
     fills.F = g && D.pour.F ? C.pour(D, 0, g, M) : null;
@@ -248,6 +250,7 @@
       cr.appendChild(btn('📏 అసలు సైజు', 'small', openReal));
       cr.appendChild(btn('🔌 వైర్లు', 'small', () => wireSheet(false)));
       cr.appendChild(btn('✅ కొనే లిస్ట్', 'small', buyGo));
+      cr.appendChild(btn('🧪 పనిచేయట్లేదా?', 'small', () => faultStart(true)));
       cur.appendChild(cr);
       h.appendChild(cur);
     }
@@ -1154,6 +1157,98 @@
       if (lib.mod && window.PcbBuy) r.appendChild(btn('🛒 ' + shopName(), '', () => post({ t: 'shopsearch', shop, q: window.PcbBuy.query(pt) })));
       r.appendChild(btn('మూసేయి', '', closeSheet));
       s.appendChild(r);
+    });
+  }
+
+  // ================================================================ 🧪 the multimeter fault finder (26 Nov, "3."): ₹0, our own code
+
+  function faultStart(keep) {
+    if (!D) return;
+    if (!keep || !ft || ft.id !== D.id) {
+      let S = null, R = null;
+      try { S = SIM.setup(D, { src: sim.src, ctl: sim.ctl }); if (!S.err) R = SIM.dc(S); } catch (e) { S = null; }
+      if (!S || S.err || !R) { toast('🧪 ఈ బోర్డ్‌ని ⚡ నడిపించలేకపోయాను: ' + ((S && S.err) || 'తెలియని కారణం'), 4000); return; }
+      const f = MK.faultTests(D, S, R);
+      if (!f.tests.length || !f.gnd) { toast('🧪 ఈ బోర్డ్‌లో కొలవాల్సిన చోట్లు దొరకలేదు (GND / సప్లై లేదు).', 4000); return; }
+      ft = { id: D.id, tests: f.tests, gnd: f.gnd, i: -1, res: [] };
+    }
+    faultSheet();
+  }
+  const fv = (x) => (Math.round(x * 100) / 100) + ' V';
+  function faultSheet() {
+    sheet((s) => {
+      const n = ft.tests.length;
+      if (ft.i < 0) {
+        s.appendChild(el('h2', null, '🧪 బోర్డ్ పనిచేయట్లేదా? మీటర్‌తో వెతుకుదాం'));
+        s.appendChild(el('div', 'muted', '⚡ నడిపించు లెక్క ప్రకారం ప్రతి చోటు ఎంత వోల్టేజ్ చూపాలో నాకు తెలుసు. మీరు కొలిచి అంకె చెప్తే, ఎక్కడ తేడా వచ్చిందో, ఏ భాగం వల్లో చెప్తాను. ' + n + ' చోట్లు, ₹0, AI లేదు.'));
+        [['ముందు 🔧 టంకం గైడ్‌లోని 🔍 చెక్ 1 (కళ్ళతో), 📏 చెక్ 2 (బీప్: + , GND మధ్య షార్ట్ లేదు) చేశారా?', 'షార్ట్ ఉంటే కరెంట్ ఇవ్వకండి'],
+          ['మల్టీమీటర్ నాబ్ DC V (V⎓) మీద, 20 V రేంజ్ (ఆటో మీటర్ అయితే V⎓ చాలు)', 'నలుపు వైరు COM లో, ఎరుపు VΩ లో'],
+          ['నలుపు ప్రోబ్ GND మీద పెట్టి అలాగే ఉంచండి: ' + ft.gnd.te, 'మొసలి క్లిప్ ఉంటే దానితో పట్టించండి'],
+          ['ఇప్పుడు బోర్డ్‌కి కరెంట్ ఇవ్వండి', 'ఏదైనా బాగా వేడెక్కినా, వాసన వచ్చినా వెంటనే తీసేయండి']].forEach((q, i) => {
+          const d = el('div', 'step');
+          d.appendChild(el('div', null, '👉 అడుగు ' + (i + 1) + ': ' + q[0]));
+          d.appendChild(el('div', 'muted', q[1]));
+          s.appendChild(d);
+        });
+        s.appendChild(el('div', 'step warnc', '⚠️ ఎరుపు ప్రోబ్ మొన రెండు పిన్నులకి ఒకేసారి తాకకూడదు (షార్ట్). ఒక్క పిన్ మీదే నిలబెట్టండి.'));
+        const r = el('div', 'row');
+        r.appendChild(btn('▶️ మొదలుపెడదాం', 'main', () => { ft.i = 0; faultSheet(); }));
+        r.appendChild(btn('మూసేయి', '', closeSheet));
+        s.appendChild(r);
+        return;
+      }
+      if (ft.i >= n) {
+        s.appendChild(el('h2', null, '🧪 ఫలితం'));
+        const bad = ft.res.filter((x) => x && !x.w.ok).length;
+        s.appendChild(el('div', 'step', bad ? '❌ ' + bad + ' చోట్ల తేడా వచ్చింది. మొదటి ❌ నుంచి సరిచేయండి: తర్వాతివి దాని మీదే ఆధారపడతాయి.' : '✅ కొలిచిన చోట్లన్నీ సరిగ్గా ఉన్నాయి. అయినా పనిచేయకపోతే: మాడ్యూల్స్ పిన్ వరుస, ESP32 కోడ్ (పిన్ నంబర్లు), LED / డయోడ్ దిశ చూడండి.'));
+        ft.tests.forEach((t, i) => {
+          const x = ft.res[i];
+          s.appendChild(el('div', 'step', (x ? (x.w.ok ? '✅ ' : '❌ ') : '⏭️ ') + t.net + ' @ ' + t.where.te + ': ' + fv(t.v) + ' రావాలి' + (x ? ', ' + fv(x.got) + ' వచ్చింది' : ' (కొలవలేదు)')));
+        });
+        const r = el('div', 'row');
+        r.appendChild(btn('🔄 మళ్ళీ మొదటి నుంచి', '', () => { ft.i = -1; ft.res = []; faultSheet(); }));
+        r.appendChild(btn('మూసేయి', '', closeSheet));
+        s.appendChild(r);
+        return;
+      }
+      const t = ft.tests[ft.i], x = ft.res[ft.i];
+      s.appendChild(el('h2', null, '🧪 చోటు ' + (ft.i + 1) + ' / ' + n + ': ' + t.net));
+      s.appendChild(el('div', 'step', '⚫ నలుపు ప్రోబ్: ' + ft.gnd.te + ' (GND, అలాగే ఉంచండి)'));
+      s.appendChild(el('div', 'step', '🔴 ఎరుపు ప్రోబ్: ' + t.where.te));
+      s.appendChild(el('div', 'step', '🎯 రావాల్సింది: సుమారు ' + fv(t.v) + (t.moving ? ' (ఈ చోటు టిక్ టిక్ మారుతుంది: 0 నుంచి ' + fv(t.max || t.v) + ' మధ్య కదిలే అంకెలు సరే)' : '') +
+        (t.kind === 'supply' ? ' · ఇది బోర్డ్‌కి వస్తున్న సప్లై' : t.kind === 'led' ? ' · LED + కాలు' : '')));
+      if (!x) {
+        const inp = el('input');
+        inp.type = 'number'; inp.inputMode = 'decimal'; inp.step = '0.01'; inp.min = '0'; inp.max = '60'; inp.placeholder = 'మీటర్ చూపిన అంకె (ఉదా: 4.97)';
+        inp.style.cssText = 'width:100%;font-size:18px;padding:10px;margin:8px 0;border-radius:10px;border:1px solid var(--line);background:transparent;color:inherit';
+        s.appendChild(inp);
+        const answer = (got) => { if (!(got >= 0 && got < 100)) { toast('మీటర్ చూపిన అంకె రాయండి (ఉదా: 4.97)'); return; } ft.res[ft.i] = { got, w: MK.faultWhy(D, t, got) }; faultSheet(); };
+        const r = el('div', 'row');
+        r.appendChild(btn('✔️ చూడు', 'main', () => answer(parseFloat(String(inp.value).replace(',', '.')))));
+        r.appendChild(btn('≈ ' + fv(t.v) + ' వచ్చింది', '', () => answer(t.v)));
+        r.appendChild(btn('0 V', '', () => answer(0)));
+        s.appendChild(r);
+      } else {
+        s.appendChild(el('div', x.w.ok ? 'step' : 'step warnc', x.w.head));
+        x.w.lines.forEach((l) => s.appendChild(el('div', 'step', l)));
+        if (!x.w.ok && t.kind !== 'supply') {
+          const bp = MK.beepPairs(D, t.net);
+          if (bp.length) {
+            s.appendChild(el('h3', null, '🔊 బీప్ చెక్ (కరెంట్ తీసేసి, మీటర్ బీప్ 🔊 మీద)'));
+            bp.forEach((b) => s.appendChild(el('div', 'step', '🔊 ' + b + ': బీప్ రావాలి')));
+            s.appendChild(el('div', 'step', '🔇 ' + t.where.te + ' ↔ GND: ఆగకుండా బీప్ రాకూడదు (వస్తే షార్ట్)'));
+          }
+        }
+        if (!x.w.ok && ft.i < n - 1) s.appendChild(el('div', 'muted', 'ముందు ఇది సరిచేయడం మంచిది: తర్వాతి చోట్లు దీని మీదే ఆధారపడతాయి.'));
+      }
+      const r2 = el('div', 'row');
+      if (x) r2.appendChild(btn(ft.i < n - 1 ? '➡️ తర్వాతి చోటు' : '🏁 ఫలితం', 'main', () => { ft.i++; faultSheet(); }));
+      if (x) r2.appendChild(btn('🔁 మళ్ళీ కొలిచాను', '', () => { ft.res[ft.i] = null; faultSheet(); }));
+      if (!x) r2.appendChild(btn('⏭️ వదిలేయి', '', () => { ft.i++; faultSheet(); }));
+      r2.appendChild(btn('🧩 బోర్డ్‌లో చూపించు', '', () => { pv.sel = t.where.ref; closeSheet(); showTab('pcb'); toast('🧩 ' + t.where.te + ' (మళ్ళీ 🧪 నొక్కితే ఇదే చోటు నుంచి)', 4000); }));
+      if (ft.i > 0) r2.appendChild(btn('⬅️', '', () => { ft.i--; faultSheet(); }));
+      r2.appendChild(btn('మూసేయి', '', closeSheet));
+      s.appendChild(r2);
     });
   }
 
@@ -2344,6 +2439,7 @@
     t.appendChild(tool('🔋 కరెంట్', '', simSupply));
     if (sim.S && sim.S.controls.length) t.appendChild(tool('🎛️ స్విచ్‌లు (' + sim.S.controls.length + ')', 'main', simControls));
     t.appendChild(tool('📋 ఫలితం', '', simReport));
+    t.appendChild(tool('🧪 తప్పు వెతుకు', '', () => faultStart(true)));
     t.appendChild(tool('🔄 మళ్ళీ', '', () => { sim.run = true; simBuild(); simTools(); drawSim(); simGo(); toast('⚡ మొదటి నుంచి (స్విచ్ ఆన్ చేసినట్టు)'); }));
     t.appendChild(tool('🔍', '', () => { simv.fit = true; drawSim(); }));
   }
@@ -3069,7 +3165,7 @@
     then();
   }
 
-  window.__pcb = { open, get D() { return D; }, get check() { return check; }, showTab, reroute, changed, onJarvis, texture, partSheet: (ref) => partSheet(D && D.parts.find((q) => q.ref === ref)), modList, modInfo, wireSheet, buyGo, pv, sv,
+  window.__pcb = { open, get D() { return D; }, get check() { return check; }, showTab, reroute, changed, onJarvis, texture, partSheet: (ref) => partSheet(D && D.parts.find((q) => q.ref === ref)), modList, modInfo, wireSheet, buyGo, faultStart, get ft() { return ft; }, pv, sv,
     ai, idea, editSheet, heard, lay: () => schLayout(), sim, simv, simBuild, simReport, simControls, simSupply, simPart, verSheet, verSnap, verDiff, kicadFiles: () => KI.files(D, schLayout()),
     sg, bx, rs, xrS, lv, startGuide, stopGuide, guideGo, guideWords, startBox, stopBox, boxTaller, boxZip, openReal, closeReal, drawReal, startAr, stopAr, xrEnter, xrLeave, xrSaid,
     learnTab, learnGo, get learnSt() { return learnSt; }, set scr(v) { scr = v; }, get v3d() { return v3d; } };

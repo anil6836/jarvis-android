@@ -246,7 +246,7 @@
       '🔋 ఇప్పుడు ' + supply + ' కలపండి: + , − సరిగ్గా చూసి.',
       '👀 మొదటి 10 సెకన్లు చూడండి: ఏదైనా భాగం బాగా వేడెక్కినా, వాసన / పొగ వచ్చినా వెంటనే కరెంట్ తీసేయండి.',
       '⚡ నడిపించు ట్యాబ్‌లో చూపినట్టే పనిచేయాలి' + (opt.simLine ? ': ' + opt.simLine : '.'),
-      '🎉 పనిచేస్తే: బోర్డ్ రెడీ! పనిచేయకపోతే: చెక్ 1, 2 మళ్ళీ, తర్వాత ⚡ లో వోల్టేజ్‌లు మల్టీమీటర్‌తో పోల్చండి.'
+      '🎉 పనిచేస్తే: బోర్డ్ రెడీ! పనిచేయకపోతే: చెక్ 1, 2 మళ్ళీ, తర్వాత ⚡ నడిపించు → 🧪 తప్పు వెతుకు (మల్టీమీటర్‌తో ఒక్కో చోటు).'
     ], say: 'ఇప్పుడు ' + supply + ' కలపండి. మొదటి పది సెకన్లు చూడండి: ఏదైనా వేడెక్కినా, వాసన వచ్చినా వెంటనే కరెంట్ తీసేయండి.' });
     steps.forEach((s, i) => { s.n = i + 1; s.of = steps.length; });
     return steps;
@@ -654,7 +654,127 @@
     return L.join('\n');
   }
 
-  const api = { tall, solderSteps, spoken, valSaid, boxPlan, solids, stl, boxReadme, BOX, ORDER, wireTable, wireText, netColours, COLS };
+  // ================================================================ 🧪 the multimeter fault finder (26 Nov, "3."): ₹0, our own code
+  // The ⚡ simulator says what each point should read; he measures with his meter (DC volts, black probe on GND) and tells the
+  // number; from the first point that is wrong and the part that feeds it, simple Telugu reasons and the beep checks to do.
+
+  const FEED_RANK = { r7805: 1, r3v3: 1, buck: 1, tp4056: 1, d4007: 2, d5822: 2, ptc: 2, slide: 3, btn: 3, nmos: 4, bc547: 4, res: 5, pot: 5 };
+  /** A pad on this net that is easy to touch with a probe: a screw / header pin first, then a regulator or IC leg, then any. */
+  function probeAt(D, net, prefer) {
+    const n = D.nets.find((q) => q.n === net);
+    if (!n) return null;
+    const rank = (p) => {
+      const [ref] = p.split('.'), pt = D.parts.find((q) => q.ref === ref) || {};
+      if (prefer && ref === prefer) return 0;
+      if (/^(term2|dcjack|usbc|hdr|buck|pam8403|tp4056)$/.test(pt.lib) || (P.LIB[pt.lib] && P.LIB[pt.lib].kind === 'wire')) return 1;
+      if (/^(r7805|r3v3|elec)$/.test(pt.lib)) return 2;
+      if (pt.lib === 'esp32') return 3.5;
+      if (pt.lib === 'ne555' || pt.lib === 'fhdr' || (P.LIB[pt.lib] && P.LIB[pt.lib].kind === 'plug')) return 4; // (a module plugged in covers its socket)
+      return 3;
+    };
+    const p = n.p.slice().sort((a, b) => rank(a) - rank(b))[0];
+    const [ref, k] = p.split('.'), pt = D.parts.find((q) => q.ref === ref) || { ref, lib: '' };
+    let te = pinTe(pt, k);
+    if (pt.lib === 'elec') te = pt.ref + ' కెపాసిటర్ ' + (P.pinsOf(pt)[k] === '+' ? '+ కాలు (పొడవైనది)' : '− కాలు (తెల్ల గీత వైపు)');
+    return { ref, pin: k, te };
+  }
+  /**
+   * The points to measure, power first: [{net, v, kind: 'supply'|'power'|'led', where, feeder: {ref, lib} | null, moving}].
+   * S, R: the ⚡ circuit and its reading (dc); gnd: where the black probe stays.
+   */
+  function faultTests(D, S, R) {
+    const g = (D.nets.find((n) => C.isGnd(n.n)) || {}).n;
+    if (!g || !S || !R) return { tests: [], gnd: null };
+    const src = S.sources[0];
+    const gpin = src ? Object.keys(P.pinsOf(D.parts.find((q) => q.ref === src.ref) || { lib: '' })).find((k) => D.nets.some((n) => n.n === g && n.p.indexOf(src.ref + '.' + k) >= 0)) : null;
+    const gnd = src && gpin ? { ref: src.ref, pin: gpin, te: pinTe(D.parts.find((q) => q.ref === src.ref), gpin) } : probeAt(D, g);
+    const moving = new Set(), t555 = D.parts.some((pt) => pt.lib === 'ne555');
+    D.parts.filter((pt) => pt.lib === 'ne555').forEach((pt) => ['2', '3', '6', '7'].forEach((k) => { const n = D.nets.find((q) => q.p.indexOf(pt.ref + '.' + k) >= 0); if (n) moving.add(n.n); }));
+    const vmax = Math.max.apply(null, S.sources.map((s) => s.v).concat([0]));
+    const tests = [], seen = new Set([g]);
+    const add = (net, kind, prefer) => {
+      if (seen.has(net) || tests.length >= 9) return;
+      const v = R.v[net];
+      if (v == null || !isFinite(v)) return;
+      if (kind === 'led' && v < 1 && !t555) return; // (an LED an ESP32 pin turns on: off now, nothing to measure)
+      seen.add(net);
+      tests.push({ net, v, kind, where: probeAt(D, net, prefer), moving: moving.has(net) || (t555 && kind === 'led'), max: vmax });
+    };
+    S.sources.forEach((s) => add(s.net, 'supply', s.ref));
+    const powerName = (n) => C.isPower(n.n) || n.p.some((p) => { const [ref, k] = p.split('.'), pt = D.parts.find((q) => q.ref === ref); const nm = pt && P.LIB[pt.lib] ? String(P.pinsOf(pt)[k] || '') : ''; return /^(\+?\d+(\.\d+)?V|3V3|VCC|VIN|VBUS|VBAT|OUT\+)$/i.test(nm); });
+    D.nets.filter((n) => !C.isGnd(n.n) && powerName(n) && R.v[n.n] > 0.5).sort((a, b) => R.v[b.n] - R.v[a.n]).forEach((n) => add(n.n, 'power'));
+    D.parts.filter((pt) => /^(led5|led3|irled)$/.test(pt.lib)).forEach((pt) => { const n = D.nets.find((q) => q.p.indexOf(pt.ref + '.2') >= 0); if (n) add(n.n, 'led', pt.ref); });
+    // the parts that bring each point its volts: the shortest way (part by part) from a point measured before, nearest first
+    const netsOf = (pt) => Object.keys(P.pinsOf(pt)).map((k) => (D.nets.find((n) => n.p.indexOf(pt.ref + '.' + k) >= 0) || {}).n).filter((n) => n && n !== g);
+    tests.forEach((t, i) => {
+      const before = tests.slice(0, i).map((q) => q.net), prev = new Map(before.map((n) => [n, null])), q = before.slice();
+      while (q.length && !prev.has(t.net)) {
+        const cur = q.shift();
+        D.parts.forEach((pt) => {
+          const ns = netsOf(pt);
+          if (ns.indexOf(cur) < 0) return;
+          ns.forEach((n) => { if (!prev.has(n)) { prev.set(n, { pt, from: cur }); q.push(n); } });
+        });
+      }
+      const path = [];
+      for (let n = t.net, st = prev.get(n); st && path.length < 4; n = st.from, st = prev.get(n)) path.push({ ref: st.pt.ref, lib: st.pt.lib });
+      t.path = path;
+      t.feeder = path[0] || null;
+    });
+    return { tests, gnd };
+  }
+  /** Beep checks for one net (power off): each next pad must beep with the one before. */
+  function beepPairs(D, net) {
+    const n = D.nets.find((q) => q.n === net);
+    if (!n) return [];
+    const te = (p) => { const [ref, k] = p.split('.'); return pinTe(D.parts.find((q) => q.ref === ref) || { ref, lib: '' }, k); };
+    const out = [];
+    for (let i = 1; i < n.p.length && out.length < 6; i++) out.push(te(n.p[i - 1]) + ' ↔ ' + te(n.p[i]));
+    return out;
+  }
+  /** What a reading means: {ok, head, lines}. */
+  function faultWhy(D, t, got) {
+    const v = t.v, tol = Math.max(0.3, v * 0.08), f = (x) => (Math.round(x * 100) / 100) + ' V';
+    if (t.moving) {
+      if (got > 0.2 && got <= (t.max || v) + 0.5) return { ok: true, head: '✅ ' + f(got) + ': సరే (ఈ చోటు మారుతూ ఉంటుంది: మీటర్ అంకెలు కదులుతాయి)', lines: [] };
+    } else if (Math.abs(got - v) <= tol) return { ok: true, head: '✅ ' + f(got) + ': సరిగ్గా ఉంది (' + f(v) + ' రావాలి)', lines: [] };
+    const zero = got < 0.2, low = got < v, L = [];
+    const fl = t.feeder ? t.feeder.lib : null, fr = t.feeder ? t.feeder.ref : '';
+    if (t.moving && got > (t.max || v) + 0.5) return { ok: false, head: '❌ ' + f(got) + ': సప్లై కంటే ఎక్కువ: మీటర్ రేంజ్ / ప్రోబ్ చోటు మళ్ళీ చూడండి', lines: ['📏 మీటర్ DC V మీద ఉందా? నలుపు ప్రోబ్ GND మీదే ఉందా?'] };
+    if (t.kind === 'supply') {
+      if (zero) L.push('🔋 బ్యాటరీ / అడాప్టర్ ఆన్ అయిందా? ప్లగ్ పూర్తిగా లోపలికి వెళ్ళిందా / స్క్రూ బిగుతుగా ఉందా?', '🔌 అడాప్టర్‌ని బోర్డ్ లేకుండా విడిగా కొలవండి: దానికే వోల్టేజ్ రాకపోతే అడాప్టర్ / బ్యాటరీ పాడు.', '↔️ + − తిరగబడ్డాయేమో: మీటర్ − గుర్తు చూపిస్తే తిరగబడ్డాయి.');
+      else if (low) L.push('🔋 బ్యాటరీ ఖాళీ అవుతోంది / అడాప్టర్ బలహీనం: విడిగా కొలవండి.', '🔥 బోర్డ్ ఎక్కువ కరెంట్ లాగుతోంది (సగం షార్ట్): ఏదైనా భాగం వేడెక్కుతోందా చూడండి, వెంటనే కరెంట్ తీసేసి 📏 బీప్ టెస్ట్.');
+      else L.push('⚡ సప్లై అనుకున్నదానికంటే ఎక్కువ: సరైన అడాప్టర్ (' + f(v) + ') వాడండి, ఎక్కువైతే భాగాలు కాలిపోవచ్చు.');
+    } else if (!low) {
+      L.push('⚠️ అనుకున్నదానికంటే ఎక్కువ: ఈ దారి ఎక్కువ వోల్టేజ్ ఉన్న దారికి ఎక్కడో అంటుకుంది (సోల్డర్ వంతెన).');
+      if (fl === 'r7805' || fl === 'r3v3') L.push('🔲 ' + fr + ' సరైన రెగ్యులేటరేనా (3.3V చోట 7805 పెట్టలేదు కదా)? దాని GND కాలు టంకం సరిగ్గా ఉందా?');
+      if (fl === 'buck') L.push('🔧 బక్ మాడ్యూల్ స్క్రూ: మల్టీమీటర్ చూస్తూ ' + f(v) + ' కి తిప్పండి.');
+    } else {
+      (t.path && t.path.length ? t.path : [{}]).slice(0, 3).forEach((pp) => {
+      const fl = pp.lib, fr = pp.ref;
+      switch (fl) {
+        case 'esp32': L.push('📶 ' + fr + ' ESP32 బోర్డ్ 3.3 V ఇవ్వట్లేదు: దాని VIN కి 5 V వస్తోందా? రెండు వరుసలూ సాకెట్‌లో పూర్తిగా కూర్చున్నాయా? దాని మీది ఎరుపు LED వెలుగుతోందా?'); break;
+        case 'r7805': case 'r3v3':
+          L.push('🔲 ' + fr + ' పిన్ వరుస చూడండి (' + (fl === 'r7805' ? 'IN GND OUT' : 'GND OUT IN') + ', అక్షరాలు మీ వైపు). తిరగబడితే వేడెక్కుతుంది.',
+            '🔥 ' + fr + ' బాగా వేడెక్కుతోందా? అయితే దాని తర్వాత ఎక్కడో షార్ట్ / ఎక్కువ కరెంట్.', '🔍 దాని మూడు కాళ్ళ టంకాలు మెరుస్తున్నాయా?'); break;
+        case 'd4007': case 'd5822': L.push('➡️ ' + fr + ' డయోడ్ తిరగబడిందేమో: గీత బోర్డ్ మీది గీత వైపు ఉండాలి.', '🔍 దాని రెండు కాళ్ళ టంకాలు చూడండి.'); break;
+        case 'ptc': L.push('🔥 ' + fr + ' ఫ్యూజ్ కట్ అయిందేమో (ఎక్కువ కరెంట్ / షార్ట్): కరెంట్ తీసేసి 1 నిమిషం ఆగి, 📏 బీప్ టెస్ట్‌తో షార్ట్ వెతకండి.'); break;
+        case 'slide': case 'btn': L.push('🔘 ' + fr + ' స్విచ్ / బటన్ ఆన్‌లో ఉందా? మధ్య కాలు (C) సరైన రంధ్రంలో ఉందా?'); break;
+        case 'buck': L.push('🔧 బక్ మాడ్యూల్: IN+ IN− సరైన వైపా? దాని స్క్రూ ' + f(v) + ' కి సెట్ చేశారా (మల్టీమీటర్ చూస్తూ)?'); break;
+        case 'tp4056': L.push('🔋 బ్యాటరీ ఖాళీ / ప్రొటెక్షన్ కట్ అయి ఉండొచ్చు: TP4056 కి ఒకసారి Type-C ఛార్జర్ పెట్టండి (అది రీసెట్ అవుతుంది). B+ B− బ్యాటరీకి సరిగ్గా ఉన్నాయా?'); break;
+        case 'nmos': case 'bc547': L.push('🔀 ' + fr + ' ఆన్ అవ్వట్లేదు: దాని G / B కాలుకి వోల్టేజ్ వస్తోందా? పిన్ వరుస (' + (fl === 'nmos' ? 'G D S' : 'C B E') + ') సరిచూడండి.'); break;
+        case 'res': case 'pot': L.push('🎨 ' + fr + ' విలువ సరైనదేనా (రంగు గీతలు / మల్టీమీటర్ Ω తో, కరెంట్ తీసేసి)?'); break;
+        default:
+      }
+      });
+      if (t.kind === 'led') L.push('💡 LED తిరగబడిందేమో: పొడవైన కాలు + (గుండ్రటి ప్యాడ్).');
+      if (!zero) L.push('🔥 కొంచెం తక్కువ: ఈ దారి నుంచి ఎక్కువ కరెంట్ లాగుతోంది. ఏదైనా భాగం / మాడ్యూల్ వేడెక్కుతోందా చూడండి.');
+      L.push(zero ? '✂️ దారి తెగిందేమో / టంకం సరిగ్గా పడలేదేమో: కరెంట్ తీసేసి కింది 🔊 బీప్‌లు చూడండి.' : '🔊 కరెంట్ తీసేసి కింది బీప్‌లు, GND తో షార్ట్ లేదని కూడా చూడండి.');
+    }
+    return { ok: false, head: (zero ? '❌ 0 V: ఇక్కడికి కరెంట్ రావట్లేదు' : low ? '❌ ' + f(got) + ': తక్కువ (' + f(v) + ' రావాలి)' : '❌ ' + f(got) + ': ఎక్కువ (' + f(v) + ' రావాలి)'), lines: L };
+  }
+
+  const api = { tall, solderSteps, spoken, valSaid, boxPlan, solids, stl, boxReadme, BOX, ORDER, wireTable, wireText, netColours, COLS, faultTests, faultWhy, beepPairs, probeAt };
   root.PcbMake = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : globalThis);
