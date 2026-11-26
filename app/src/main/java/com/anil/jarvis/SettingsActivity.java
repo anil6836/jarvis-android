@@ -628,6 +628,13 @@ public class SettingsActivity extends Activity {
         pcbOpen.setOnClickListener(v -> { autosave(); PcbActivity.open(this, null, null); });
         box.addView(pcbOpen);
         pcbModel = studioModelBox("🔌 PCB బోర్డ్‌లు గీసే AI (ఖాళీ = పైన 🛠️ వర్క్‌షాప్ AI)", Workshop.PCB);
+        // 🌱 his plant-watering board (the PCB studio's ready board): its program over USB, its own Wi-Fi page, water / schedule (27 Nov)
+        note("🌱 మొక్కలకి నీళ్ళు: ఇంట్లో నీళ్ళ బోర్డ్ (ESP32). ప్రోగ్రామ్ USB OTG తో ఫోన్ నుంచే, ఇంటి Wi-Fi పాస్‌వర్డ్ బోర్డ్ పేజీలో మీరే (Jarvis చూడదు). "
+                + "మట్టి తేమ, బకెట్, ఇప్పుడే పోయడం (మిమ్మల్ని అడిగాకే), రోజూ టైమ్. భద్రత బోర్డ్ లోపలే: ఒక్కసారికి 2 నిమిషాలు, బకెట్ ఖాళీ అయితే పంప్ ఆన్ అవ్వదు. ₹0, AI లేదు.");
+        TextView plOpen = Ui.text(this, "🌱 మొక్కలకి నీళ్ళు తెరువు →", 15, accent);
+        plOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+        plOpen.setOnClickListener(v -> { autosave(); startActivity(new android.content.Intent(this, PlantActivity.class)); });
+        box.addView(plOpen);
         // 📚 the book library: free books and his own, read aloud; Telugu by the phone (₹0) or this same AI in this same limit (20 Nov)
         note("📚 పుస్తకాల లైబ్రరీ: చెక్క రాక్‌లలో ఉచిత పుస్తకాలు (Project Gutenberg, తెలుగు వికీసోర్స్), మీ PDF / EPUB / TXT / పేజీల ఫోటోలు. "
                 + "చదివి వినిపించడం, ఫోన్ తెలుగు అనువాదం (ఒకసారి 30 MB ప్యాక్) ₹0. ✨ AI తెలుగు, తెలుగు పేజీల ఫోటోలు చదవడం: కింద ఎంచుకున్న AI (ఖాళీ అయితే పైన 🛠️ AI), ఇదే నెల హద్దు; "

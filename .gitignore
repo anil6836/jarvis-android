@@ -11,3 +11,4 @@ app/jarvis.keystore
 wear/build/
 # the watch's Telugu font is downloaded by the build (see the workflow)
 wear/src/main/assets/*.ttf
+__pycache__/

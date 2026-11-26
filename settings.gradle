@@ -10,10 +10,14 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        // only for Tesseract4Android (the library's free on-phone Telugu page reader)
+        // only for Tesseract4Android (the library's free on-phone Telugu page reader) and usb-serial-for-android (🌱 the
+        // plant board's ESP32 over a USB OTG cable)
         maven {
             url 'https://jitpack.io'
-            content { includeGroup 'cz.adaptech.tesseract4android' }
+            content {
+                includeGroup 'cz.adaptech.tesseract4android'
+                includeGroup 'com.github.mik3y'
+            }
         }
     }
 }

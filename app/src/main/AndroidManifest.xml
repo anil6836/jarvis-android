@@ -78,6 +78,8 @@
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <!-- 🌱 putting the plant board's program on its ESP32 through a USB OTG cable (phones without USB host still install) -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 
     <queries>
         <intent>
@@ -613,6 +615,13 @@
         <activity
             android:name=".ObdActivity"
             android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
+
+        <!-- 🌱 his plant-watering board: the program onto the ESP32 over USB OTG, its Wi-Fi, water / stop / schedule -->
+        <activity
+            android:name=".PlantActivity"
+            android:exported="false"
+            android:label="మొక్కలకి నీళ్ళు"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
 
         <receiver

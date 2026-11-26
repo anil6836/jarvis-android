@@ -432,7 +432,7 @@ final class Tools {
                         + "flasher (two LEDs blinking with a 555 timer, 9 V), usb (a bike / car 12 V to 5 V USB phone charger with a buck module), soil "
                         + "(an alarm when a plant's soil is dry), esp32 (an ESP32 sensor board: temperature / humidity, soil, I2C screen), irboard (the "
                         + "Jarvis speaker's IR board for the TV / AC remote), plant (his plant-watering board: ESP32, a small 5 V pump, 3 soil sensors, "
-                        + "a bucket float switch, a test button; its program comes later). Inside: the schematic (tap a part: what it is in Telugu), the PCB (move / "
+                        + "a bucket float switch, a test button; its program and phone control are the plant tool). Inside: the schematic (tap a part: what it is in Telugu), the PCB (move / "
                         + "turn parts, auto-route, ground fill), the checks against a factory's rules (JLCPCB, PCBWay, Lion Circuits, PCB Power) with an "
                         + "🤖 AI help for the problems, the board in 3D, the factory files (a Gerber .zip saved in Downloads/Jarvis/pcb), the parts to buy with Indian shop search buttons "
                         + "and part pages (Robu, Robocraze, Amazon, Flipkart, Probots; opened in his browser only on his tap, he buys himself) and calculators (LED resistor, track width "
@@ -454,6 +454,23 @@ final class Tools {
                         {"what", "string", "project: flasher | usb | soil | esp32 | irboard | plant. tab: home | sch | pcb | drc | sim | d3 | fab | calc | learn. build: the board in "
                                 + "English with every detail he gave (what it does, the supply, parts, how many, ratings); keep Telugu names he used. change: his exact words"}},
                         "action")));
+        DEFS.add(new Def("plant",
+                "🌱 His plant-watering board at home (the JARVIS PLANT ESP32 board: a small pump in a bucket, 1-3 soil sensors, a float "
+                        + "switch in the bucket). Phone and watch. Actions: status (default: soil wetness %, bucket water ok / empty, today's "
+                        + "watering seconds and the day's limit, the last watering, the daily schedule; for 'మట్టి ఎలా ఉంది?', 'బకెట్‌లో నీళ్ళు "
+                        + "ఉన్నాయా?', 'చెట్లకి నీళ్ళు పోశావా?'); water = pour water now: FIRST call it without confirmed (it reads the soil and the "
+                        + "bucket and suggests the seconds), ask him with what it says (e.g. 'మట్టి 28%, పొడిగా ఉంది. 20 సెకన్లు పోయనా Sir?'), and "
+                        + "only after his clear yes call it again with confirmed = true (seconds = what he agreed); stop = stop the pump now (no "
+                        + "asking); schedule = a daily time HE asks for (e.g. 'రోజూ ఉదయం 7 కి, పొడిగా ఉంటేనే 20 సెకన్లు' = time 07:00, seconds 20, "
+                        + "dry_only true; on false = remove that time); open = the 🌱 screen (setting the board up over USB, its Wi-Fi, "
+                        + "calibration). The board itself never pumps more than 2 minutes at a time, never with an empty bucket, keeps a daily "
+                        + "limit and stops if its Wi-Fi drops. Never water without his yes in this talk (his own schedule is his yes).",
+                schema(new String[][]{{"action", "string", "status (default), water, stop, schedule or open"},
+                        {"seconds", "integer", "For water / schedule: how many seconds of pumping (the board's limit is 120)"},
+                        {"confirmed", "boolean", "For water: he clearly said yes after Jarvis asked"},
+                        {"time", "string", "For schedule: HH:MM in 24 hours (ఉదయం 7 = 07:00, సాయంత్రం 6 = 18:00)"},
+                        {"dry_only", "boolean", "For schedule: water only when the soil is dry (default true)"},
+                        {"on", "boolean", "For schedule: false = remove that daily time"}}, "action")));
         DEFS.add(new Def("library",
                 "📚 Jarvis గ్రంథాలయం (phone only): his books on wooden racks — free classics (Project Gutenberg in English; Telugu Wikisource: "
                         + "శతకాలు, కన్యాశుల్కం, భాగవతం…), free books he finds, and his own PDF / EPUB / TXT / page photos. open = the racks (view sec = by "
@@ -1224,6 +1241,7 @@ final class Tools {
             case "circuit_lab": return "సర్క్యూట్ ల్యాబ్ తెరుస్తున్నాను…";
             case "room_measure": return "ఇంటి కొలతలు తెరుస్తున్నాను…";
             case "pcb_studio": return "🔌 PCB స్టూడియో తెరుస్తున్నాను…";
+            case "plant": return "🌱 నీళ్ళ బోర్డ్‌ని అడుగుతున్నాను…";
             case "library": return "📚 లైబ్రరీ చూస్తున్నాను…";
             case "publish_website": return "ఆన్‌లైన్‌లో పెడుతున్నాను…";
             case "write_code": return "కోడ్ రాస్తున్నాను…";
@@ -1448,6 +1466,7 @@ final class Tools {
                 case "circuit_lab": return circuitLab(a.optString("action", "open"), a.optString("what", ""));
                 case "room_measure": return roomMeasure(a.optString("action", "open"));
                 case "pcb_studio": return pcbStudio(a.optString("action", "open"), a.optString("what", ""));
+                case "plant": return plantTool(a);
                 case "library": return library(a);
                 case "write_code": return writeCode(a.optString("filename", ""), a.optString("description", ""));
                 case "make_app":
@@ -1863,6 +1882,108 @@ final class Tools {
     }
 
     /** 🔌 The PCB studio (phone only): open it, a ready board, one of its tabs (free, our own code); 💡 the idea card; a new board / a change by the studio's AI (the studio shows the cost, ✋ 3 seconds). */
+    /** 🌱 When Jarvis last asked him "N సెకన్లు పోయనా?" (his yes must come after it), and the seconds it suggested. */
+    private long plantAskAt;
+    private int plantAskSecs;
+
+    /**
+     * 🌱 His plant board: status, water (asked first, then only after his own clear yes, heard after the question), stop,
+     * schedule (a daily time he asks for), open. The board keeps its own safety; the orders go locked (Plant / PlantLink).
+     */
+    private String plantTool(JSONObject a) throws Exception {
+        android.content.Context c = act();
+        if (!Workshop.here(c)) return err("phone_only", "The plant board is set up on his phone (not the home tablet or the car box). Say so in one line.");
+        String ac = a.optString("action", "status").trim().toLowerCase(Locale.ROOT);
+        if (ac.isEmpty()) ac = "status";
+        if (ac.equals("open")) {
+            startIn(new Intent(c, PlantActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+            return ok().put("next", "Say in one short Telugu line that the 🌱 screen is open.").toString();
+        }
+        if (!Plant.paired(c)) {
+            startIn(new Intent(c, PlantActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+            return err("not_set_up", "The plant board isn't set up yet. The 🌱 screen is open: first ① the program goes onto the ESP32 over a USB OTG "
+                    + "cable from this phone, then ② he types his home Wi-Fi on the board's own page. Say this in two short Telugu lines.");
+        }
+        switch (ac) {
+            case "stop": {
+                JSONObject o = Plant.stop(c);
+                if (o == null) return err("no_answer", "Say in Telugu: " + Plant.NO_ANSWER + " (The board stops the pump by itself within 2 minutes anyway.)");
+                return ok().put("stopped", o.optBoolean("stopped")).put("board", Plant.forAi(o))
+                        .put("next", o.optBoolean("stopped") ? "Say in one line: ⏹ the pump is stopped." : "Say in one line: the pump wasn't running.").toString();
+            }
+            case "schedule": {
+                String t = a.optString("time", "").trim();
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(\\d{1,2})[:.](\\d{2})$").matcher(t);
+                if (!m.find()) return err("bad_time", "time must be HH:MM in 24 hours (ఉదయం 7 = 07:00). Ask him the time if he didn't say it.");
+                int h = Integer.parseInt(m.group(1)), mi = Integer.parseInt(m.group(2));
+                if (h > 23 || mi > 59) return err("bad_time", "time must be HH:MM in 24 hours.");
+                JSONObject now = Plant.status(c);
+                if (now == null) return err("no_answer", "Say in Telugu: " + Plant.NO_ANSWER);
+                JSONObject set = now.optJSONObject("set");
+                JSONArray old = set == null ? null : set.optJSONArray("sched"), list = new JSONArray();
+                if (old != null) for (int i = 0; i < old.length(); i++) {
+                    JSONObject e = old.optJSONObject(i);
+                    if (e != null && !(e.optInt("h") == h && e.optInt("m") == mi)) list.put(e);
+                }
+                boolean on = a.optBoolean("on", true);
+                int secs = a.optInt("seconds", set == null ? 20 : set.optInt("s", 20));
+                if (on) {
+                    if (list.length() >= 4) return err("too_many", "The board keeps 4 daily times at most; ask which one to remove first.");
+                    list.put(new JSONObject().put("h", h).put("m", mi).put("s", Math.max(3, Math.min(120, secs))).put("dry", a.optBoolean("dry_only", true)).put("on", true));
+                }
+                JSONObject o = Plant.settings(c, new JSONObject().put("sched", list));
+                if (o == null) return err("no_answer", "Say in Telugu: " + Plant.NO_ANSWER);
+                JSONObject s2 = o.optJSONObject("set");
+                return ok().put("schedule", Plant.schedLine(s2 == null ? null : s2.optJSONArray("sched")))
+                        .put("next", "Say the daily schedule in one short Telugu line; the board waters by itself at that time (even with the phone off) and a notification comes after.").toString();
+            }
+            case "water": {
+                int secs = a.optInt("seconds", 0);
+                if (!a.optBoolean("confirmed", false)) {
+                    JSONObject o = Plant.status(c);
+                    if (o == null) return err("no_answer", "Say in Telugu: " + Plant.NO_ANSWER);
+                    if ("empty".equals(o.optString("tank")))
+                        return err("bucket_empty", "Say in Telugu: బకెట్‌లో నీళ్ళు లేవు, నింపాక చెప్పండి. (The board never runs the pump dry.)");
+                    if (o.optBoolean("pump")) return err("already", "Say in one line: it is watering right now.");
+                    JSONObject set = o.optJSONObject("set");
+                    int usual = set == null ? 20 : set.optInt("s", 20), mx = set == null ? 120 : set.optInt("max", 120);
+                    int sug = Math.max(3, Math.min(mx, secs > 0 ? secs : usual));
+                    int left = o.optInt("cap") - o.optInt("today");
+                    if (left <= 0) return err("day_limit", "Say in Telugu: ఈరోజు హద్దు (" + o.optInt("cap") + " సెకన్లు) అయిపోయింది; రేపు మళ్ళీ. (He can raise it on the 🌱 screen.)");
+                    plantAskAt = System.currentTimeMillis();
+                    plantAskSecs = Math.min(sug, left);
+                    return ok().put("board", Plant.forAi(o)).put("seconds", plantAskSecs)
+                            .put("next", "Ask him in one short Telugu line with the soil and the seconds, e.g. '" + Plant.soilLine(o) + ". " + plantAskSecs
+                                    + " సెకన్లు పోయనా " + prefs.name() + "?'. Water ONLY after his clear yes: call plant water again with confirmed = true and "
+                                    + "seconds = " + plantAskSecs + " (or the seconds he says).").toString();
+                }
+                if (plantAskAt == 0 || System.currentTimeMillis() - plantAskAt > 10 * 60 * 1000L)
+                    return err("ask_first", "Call plant water without confirmed first (it reads the soil and the bucket), ask him, and confirm only after his yes.");
+                JSONObject yes = userTurnAfter(plantAskAt, 3000);
+                if (yes == null || !Plant.saidWater(yes.optString("content")) || !assistantBetween(plantAskAt, yes.optLong("t")))
+                    return err("not_confirmed", "Anil has not clearly said yes to watering after the question" + (yes == null ? "" : " (he said: '" + yes.optString("content") + "')")
+                            + ". Ask 'పోయనా?' and water only after a clear yes." + (liveHandoffSince > 0 ? " (In a live talk: ask him there and call plant water yourself after his yes.)" : ""));
+                plantAskAt = 0;
+                int n = Math.max(3, Math.min(120, secs > 0 ? secs : plantAskSecs));
+                JSONObject o = Plant.water(c, n);
+                if (o == null) return err("no_answer", "Say in Telugu: " + Plant.NO_ANSWER);
+                if (!"start".equals(o.optString("st")))
+                    return err("not_watered", "Say in Telugu: పోయలేదు: " + Plant.why(o.optString("why"), o) + ".");
+                return ok().put("watering_seconds", o.optInt("s")).put("capped_by_day_limit", o.optBoolean("capped"))
+                        .put("next", "Say in one short Telugu line: 💧 " + o.optInt("s") + " సెకన్లు పోస్తున్నాను; అయ్యాక చెబుతాను. (Jarvis tells him by itself when it's done.)").toString();
+            }
+            default: {
+                JSONObject o = Plant.status(c);
+                if (o == null) {
+                    JSONObject l = Plant.last(c);
+                    long at = Plant.sp(c).getLong("last_at", 0);
+                    return err("no_answer", "Say in Telugu: " + Plant.NO_ANSWER + (l.length() > 0 && at > 0 ? " Its last words (" + Plant.hhmm(at) + "): " + Plant.statusText(l) : ""));
+                }
+                return ok().put("board", Plant.forAi(o)).put("next", "Answer his question from 'said' in one or two short Telugu lines (not every number).").toString();
+            }
+        }
+    }
+
     private String pcbStudio(String action, String what) throws Exception {
         android.content.Context c = act();
         if (!Workshop.here(c)) return err("phone_only", "The PCB studio is on his phone only (not the home tablet or the car box). Say so in one line.");

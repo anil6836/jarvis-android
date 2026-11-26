@@ -95,6 +95,36 @@ jobs:
           fi
           ls -la wear/src/main/assets
 
+      - name: Download MicroPython for the plant board's ESP32 (and check the board program)
+        shell: bash
+        run: |
+          # Not fatal: without it Jarvis still updates the program on a board that already has MicroPython, and says so.
+          # Official ESP32_GENERIC v1.29.0 image for offset 0x1000; MIT licence (its LICENSE file goes along).
+          mkdir -p app/src/main/assets/plant
+          F=app/src/main/assets/plant/micropython.bin
+          curl -fsSL --retry 3 -o "$F" "https://micropython.org/resources/firmware/ESP32_GENERIC-20260824-v1.29.0.bin" || rm -f "$F"
+          if [ -f "$F" ]; then
+            SIZE=$(stat -c %s "$F"); HEAD=$(head -c 1 "$F" | od -An -tx1 | tr -d ' '); CHIP=$(dd if="$F" bs=1 skip=12 count=2 2>/dev/null | od -An -tx1 | tr -d ' ')
+            if [ "$HEAD" != "e9" ] || [ "$CHIP" != "0000" ] || [ "$SIZE" -lt 600000 ] || [ "$SIZE" -gt 3500000 ]; then
+              echo "::warning::MicroPython file doesn't look like an ESP32 image (head $HEAD chip $CHIP size $SIZE); left out"; rm -f "$F"
+            else
+              echo "MicroPython ESP32 image: $SIZE bytes, sha256 $(sha256sum "$F" | cut -d' ' -f1)"
+              curl -fsSL --retry 3 -o app/src/main/assets/plant/MICROPYTHON-LICENSE.txt "https://raw.githubusercontent.com/micropython/micropython/v1.29.0/LICENSE" \
+                || echo "MicroPython: Copyright (c) 2013-2026 Damien P. George and contributors. MIT licence (https://github.com/micropython/micropython/blob/master/LICENSE)." > app/src/main/assets/plant/MICROPYTHON-LICENSE.txt
+            fi
+          else
+            echo "::warning::MicroPython not downloaded; this Jarvis can only update the program on a board that already has MicroPython"
+          fi
+          # The board program must compile with MicroPython's own compiler (a mistake here would stop the board, not the app build).
+          if python3 -m venv /tmp/mpyc >/dev/null 2>&1 && { /tmp/mpyc/bin/pip install --quiet "mpy-cross==1.29.*" 2>/dev/null || /tmp/mpyc/bin/pip install --quiet mpy-cross 2>/dev/null; }; then
+            T=$(mktemp -d)
+            for f in app/src/main/assets/plant/board/*.py; do cp "$f" "$T/"; /tmp/mpyc/bin/mpy-cross "$T/$(basename "$f")" || { echo "::error::$f does not compile for MicroPython"; exit 1; }; done
+            echo "Board program compiles for MicroPython: $(ls $T/*.mpy | wc -l) files"
+          else
+            echo "::warning::mpy-cross not installed; the board program was not compiled here"
+          fi
+          ls -la app/src/main/assets/plant
+
       - name: Unlock the signing key
         shell: bash
         env:

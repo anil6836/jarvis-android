@@ -134,6 +134,10 @@ final class SpeedGroups {
                 new String[]{"circuit_lab"},
                 new String[]{"సర్క్యూట్", "ఇన్వర్టర్", "బ్యాటరీ బ్యాకప్", "వైరింగ్", "ఫ్యూజ్", "ఎంసీబీ", "సోలార్", "కరెంట్ బిల్", "బల్బ్", "circuit", "inverter",
                         "wiring", "fuse", "mcb", "solar", "electric", "ఎలక్ట్రిక్"});
+        group("plants", "his plant-watering board at home: soil wetness, the bucket, water now (asked first), stop, a daily watering time",
+                new String[]{"plant"},
+                new String[]{"మొక్క", "చెట్టు", "చెట్లు", "చెట్టుకి", "కుండీ", "మట్టి", "తేమ", "బకెట్", "పంప్", "పోయనా", "నీళ్ళు పోయ", "నీళ్లు పోయ",
+                        "plant", "plants", "soil", "bucket", "pump", "watering", "water the"});
         group("coding", "making websites and apps, writing code, API usage",
                 new String[]{"make_website", "publish_website", "write_code", "make_app", "api_usage"},
                 new String[]{"కోడ్", "వెబ్‌సైట్", "వెబ్ సైట్", "యాప్ తయారు", "ప్రోగ్రామ్", "code", "website", "app", "program", "html", "github", "api"});
