@@ -1160,6 +1160,138 @@
     });
   }
 
+  // ================================================================ 📈 the ⚡ graph (26 Nov, "7."): the board run again for many values, ₹0
+
+  const GCOL = ['#4fc3f7', '#ffb74d', '#81c784', '#f06292', '#ba68c8'];
+  const gr = { id: null, ax: 0, on: null, res: null };
+  function graphSheet() {
+    if (!D) return;
+    const base = { src: sim.src, ctl: sim.ctl };
+    const axes = SIM.axes(D, base), lines = SIM.lines(D, base);
+    if (!axes.length || !lines.length) { toast('📈 ఈ బోర్డ్‌కి గ్రాఫ్ గీయలేను: ⚡ నడిపించు లో 🔋 సప్లై చూడండి.', 4000); return; }
+    if (gr.id !== D.id) { gr.id = D.id; gr.ax = 0; gr.on = null; }
+    if (gr.ax >= axes.length) gr.ax = 0;
+    const ax = axes[gr.ax];
+    if (!gr.on) gr.on = defaultLines(ax, lines);
+    const want = gr.on.map((id) => lines.find((l) => l.k + ':' + l.id === id)).filter(Boolean);
+    let res = null;
+    try { res = SIM.sweep(D, base, ax, want, 41); } catch (e) { res = { err: String((e && e.message) || e).slice(0, 80) }; }
+    sheet((s) => {
+      s.appendChild(el('h2', null, '📈 గ్రాఫ్: ఇది మారితే బోర్డ్ ఎలా ఉంటుంది'));
+      s.appendChild(el('div', 'muted', 'ఏది మారుస్తాం (కింద అడ్డ గీత):'));
+      const sa = el('div', 'seg');
+      axes.forEach((a, i) => sa.appendChild(btn(a.te, i === gr.ax ? 'on small' : 'small', () => { gr.ax = i; gr.on = null; graphSheet(); })));
+      s.appendChild(sa);
+      s.appendChild(el('div', 'muted', 'ఏవి చూపించాలి (4 వరకు):'));
+      const sl = el('div', 'seg');
+      lines.forEach((l) => {
+        const id = l.k + ':' + l.id, on = gr.on.indexOf(id) >= 0;
+        sl.appendChild(btn((on ? '✓ ' : '') + l.te + ' (' + l.unit + ')', on ? 'on small' : 'small', () => {
+          if (on) gr.on = gr.on.filter((q) => q !== id); else { gr.on = gr.on.concat([id]); if (gr.on.length > 4) gr.on.shift(); }
+          graphSheet();
+        }));
+      });
+      s.appendChild(sl);
+      if (!res || res.err || !res.xs || !res.xs.length) { s.appendChild(el('div', 'step warnc', '📈 గీయలేకపోయాను: ' + ((res && res.err) || 'ఫలితం లేదు'))); }
+      else {
+        const cv = el('canvas');
+        cv.style.cssText = 'width:100%;height:240px;display:block;margin:8px 0;border-radius:10px;background:#0b1018;touch-action:none';
+        s.appendChild(cv);
+        const read = el('div', 'step');
+        s.appendChild(read);
+        const lg = el('div');
+        want.forEach((l, j) => { const d = el('div', 'muted'); const sw = el('span'); sw.style.cssText = 'display:inline-block;width:18px;height:3px;margin-right:6px;vertical-align:middle;background:' + GCOL[j % GCOL.length] + (l.unit === 'mA' ? ';border-top:1px dashed #0b1018' : ''); d.appendChild(sw); d.appendChild(document.createTextNode(l.te + ' (' + l.unit + ')' + (l.unit === 'mA' ? ' · కుడి వైపు అంకెలు, చుక్కల గీత' : ''))); lg.appendChild(d); });
+        s.appendChild(lg);
+        // where it goes wrong: the stretches of ❌ / ⚠️ along the line
+        const segs = [];
+        res.bad.forEach((b, i) => { const last = segs[segs.length - 1]; if (b && last && last.b === b && last.why === res.why[i] && last.i1 === i - 1) last.i1 = i; else if (b) segs.push({ b, i0: i, i1: i, why: res.why[i] }); });
+        const u = ax.unit === 's' ? ' s' : ax.unit === '%' ? '%' : ' V', fx = (x) => (ax.unit === 's' ? (Math.round(x * 1000) / 1000) : Math.round(x * 10) / 10) + u;
+        segs.slice(0, 4).forEach((g) => s.appendChild(el('div', 'step ' + (g.b === 'err' ? 'warnc' : ''), (g.b === 'err' ? '❌ ' : '⚠️ ') + fx(res.xs[g.i0]) + (g.i1 > g.i0 ? ' – ' + fx(res.xs[g.i1]) : '') + ': ' + g.why)));
+        if (!segs.length && ax.k !== 'time') s.appendChild(el('div', 'step', '✅ ఈ మొత్తం పరిధిలో (' + fx(ax.lo) + ' – ' + fx(ax.hi) + ') ⚡ ఏ తప్పూ చూపలేదు.'));
+        if (ax.k === 'src' && (ax.kind === 'li' || ax.kind === '9v')) s.appendChild(el('div', 'muted', '🔋 బ్యాటరీ వాడుతూ ఉంటే వోల్టేజ్ తగ్గుతుంది: గ్రాఫ్‌లో కుడి నుంచి ఎడమకి జరుగుతుంది.'));
+        if (ax.k === 'time') s.appendChild(el('div', 'muted', '⏱️ 555 సెకనుకి ' + (Math.round(res.f * 100) / 100) + ' సార్లు టిక్ టిక్: ఇక్కడ మూడు సార్లు చూపిస్తున్నాను.'));
+        s.appendChild(el('div', 'muted', '👆 గ్రాఫ్ మీద వేలు పెట్టి జరిపితే ఆ చోటు అంకెలు. ఇది మా లెక్క (ఒక మోడల్), నిజమైన బోర్డ్ కొంచెం తేడా ఉండొచ్చు.'));
+        requestAnimationFrame(() => drawGraph(cv, read, ax, want, res, fx));
+      }
+      const r = el('div', 'row');
+      r.appendChild(btn('మూసేయి', '', closeSheet));
+      s.appendChild(r);
+    });
+  }
+  /** At first: the power nets and an LED / the supply current for a supply; the knob's own wire for a knob; the 555's legs over time. */
+  function defaultLines(ax, lines) {
+    const pick = [];
+    const add = (l) => { if (l && pick.indexOf(l.k + ':' + l.id) < 0 && pick.length < 3) pick.push(l.k + ':' + l.id); };
+    if (ax.k === 'time') { ['OUT', 'THR', 'TRIG'].forEach((n) => add(lines.find((l) => l.k === 'v' && l.id === n))); add(lines.find((l) => l.k === 'i' && / LED/.test(l.te))); }
+    else if (ax.k === 'pot') {
+      const ref = ax.key.split(':')[1], net = D.nets.find((n) => n.p.indexOf(ref + '.2') >= 0);
+      if (net) add(lines.find((l) => l.k === 'v' && l.id === net.n));
+      add(lines.find((l) => l.k === 'i' && / LED/.test(l.te))); add(lines.find((l) => l.k === 'src'));
+    } else {
+      // (the supply itself and what the board makes from it: the lowest power wire, e.g. +5V after a 12 V input)
+      const pw = lines.filter((l) => l.k === 'v' && l.power), src = pw.find((l) => l.id === ax.net) || pw[0];
+      const R0 = SIM.dc(SIM.setup(D, { src: sim.src, ctl: sim.ctl }));
+      const low = pw.filter((l) => l !== src && R0.v[l.id] > 0.5).sort((a, b) => R0.v[a.id] - R0.v[b.id])[0];
+      add(src); add(low);
+      add(lines.find((l) => l.k === 'i' && / LED/.test(l.te)) || lines.find((l) => l.k === 'src'));
+    }
+    if (!pick.length) add(lines[0]);
+    return pick;
+  }
+  function drawGraph(cv, read, ax, want, res, fx) {
+    const dpr = window.devicePixelRatio || 1, W = cv.clientWidth || 320, H = cv.clientHeight || 240;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    const g = cv.getContext('2d');
+    const L = 38, Rm = want.some((l) => l.unit === 'mA') ? 40 : 10, T = 12, Bm = 26, pw = W - L - Rm, ph = H - T - Bm;
+    const xs = res.xs, x0 = xs[0], x1 = xs[xs.length - 1];
+    const range = (unit) => { let lo = 0, hi = 0; want.forEach((l, j) => { if (l.unit !== unit) return; res.ys[j].forEach((y) => { if (y != null && isFinite(y)) { lo = Math.min(lo, y); hi = Math.max(hi, y); } }); }); hi = hi > lo ? hi * 1.1 : lo + 1; return [lo, nice(hi)]; };
+    const nice = (v) => { const e = Math.pow(10, Math.floor(Math.log10(v))), m = v / e; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * e; };
+    const rV = range('V'), rI = range('mA');
+    const X = (x) => L + (x - x0) / ((x1 - x0) || 1) * pw, Y = (y, r) => T + ph - (y - r[0]) / ((r[1] - r[0]) || 1) * ph;
+    let at = -1;
+    function paint() {
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, W, H);
+      // ❌ / ⚠️ stretches behind
+      res.bad.forEach((b, i) => {
+        if (!b) return;
+        const a = i > 0 ? (X(xs[i - 1]) + X(xs[i])) / 2 : X(xs[i]), c = i < xs.length - 1 ? (X(xs[i]) + X(xs[i + 1])) / 2 : X(xs[i]);
+        g.fillStyle = b === 'err' ? 'rgba(229,57,53,0.22)' : 'rgba(255,183,77,0.16)';
+        g.fillRect(a, T, Math.max(1, c - a), ph);
+      });
+      g.strokeStyle = '#263241'; g.lineWidth = 1; g.font = '10px system-ui'; g.fillStyle = '#8fa3b8';
+      for (let k = 0; k <= 4; k++) {
+        const yy = T + ph * k / 4; g.beginPath(); g.moveTo(L, yy); g.lineTo(L + pw, yy); g.stroke();
+        if (want.some((l) => l.unit === 'V')) { g.textAlign = 'right'; g.fillText((Math.round((rV[1] - (rV[1] - rV[0]) * k / 4) * 10) / 10) + '', L - 4, yy + 3); }
+        if (Rm > 10) { g.textAlign = 'left'; g.fillText(Math.round(rI[1] - (rI[1] - rI[0]) * k / 4) + '', L + pw + 4, yy + 3); }
+      }
+      g.textAlign = 'center';
+      for (let k = 0; k <= 4; k++) { const xv = x0 + (x1 - x0) * k / 4; g.fillText(fx(xv), X(xv), H - 8); }
+      g.textAlign = 'left'; if (want.some((l) => l.unit === 'V')) g.fillText('V', 4, T + 8); if (Rm > 10) { g.textAlign = 'right'; g.fillText('mA', W - 2, T + 8); }
+      // where he has it now
+      if (ax.now != null && ax.k !== 'time') { g.strokeStyle = '#ffffff55'; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(X(ax.now), T); g.lineTo(X(ax.now), T + ph); g.stroke(); g.setLineDash([]); }
+      want.forEach((l, j) => {
+        const r = l.unit === 'mA' ? rI : rV;
+        g.strokeStyle = GCOL[j % GCOL.length]; g.lineWidth = 2; g.setLineDash(l.unit === 'mA' ? [5, 3] : []);
+        g.beginPath(); let pen = false;
+        res.ys[j].forEach((y, i) => { if (y == null || !isFinite(y)) { pen = false; return; } const px = X(xs[i]), py = Y(y, r); if (pen) g.lineTo(px, py); else { g.moveTo(px, py); pen = true; } });
+        g.stroke(); g.setLineDash([]);
+      });
+      if (at >= 0) { g.strokeStyle = '#fff'; g.lineWidth = 1; g.beginPath(); g.moveTo(X(xs[at]), T); g.lineTo(X(xs[at]), T + ph); g.stroke(); }
+    }
+    const show = (i) => {
+      at = i;
+      read.textContent = '👉 ' + fx(xs[i]) + ': ' + want.map((l, j) => { const y = res.ys[j][i]; return l.te + ' ' + (y == null || !isFinite(y) ? '—' : (l.unit === 'mA' ? Math.round(y * 10) / 10 : Math.round(y * 100) / 100) + ' ' + l.unit); }).join(' · ') + (res.why[i] ? '  ·  ' + (res.bad[i] === 'err' ? '❌ ' : '⚠️ ') + res.why[i] : '');
+      paint();
+    };
+    const near = (e) => { const r = cv.getBoundingClientRect(), x = x0 + (e.clientX - r.left - L) / pw * (x1 - x0); let b = 0; xs.forEach((v, i) => { if (Math.abs(v - x) < Math.abs(xs[b] - x)) b = i; }); return b; };
+    cv.addEventListener('pointerdown', (e) => { try { cv.setPointerCapture(e.pointerId); } catch (x) { /* */ } show(near(e)); });
+    cv.addEventListener('pointermove', (e) => { if (e.buttons || e.pressure > 0) show(near(e)); });
+    let i0 = 0;
+    if (ax.now != null && ax.k !== 'time') xs.forEach((v, i) => { if (Math.abs(v - ax.now) < Math.abs(xs[i0] - ax.now)) i0 = i; });
+    show(ax.k === 'time' ? 0 : i0);
+  }
+
   // ================================================================ 🧪 the multimeter fault finder (26 Nov, "3."): ₹0, our own code
 
   function faultStart(keep) {
@@ -2439,6 +2571,7 @@
     t.appendChild(tool('🔋 కరెంట్', '', simSupply));
     if (sim.S && sim.S.controls.length) t.appendChild(tool('🎛️ స్విచ్‌లు (' + sim.S.controls.length + ')', 'main', simControls));
     t.appendChild(tool('📋 ఫలితం', '', simReport));
+    t.appendChild(tool('📈 గ్రాఫ్', '', graphSheet));
     t.appendChild(tool('🧪 తప్పు వెతుకు', '', () => faultStart(true)));
     t.appendChild(tool('🔄 మళ్ళీ', '', () => { sim.run = true; simBuild(); simTools(); drawSim(); simGo(); toast('⚡ మొదటి నుంచి (స్విచ్ ఆన్ చేసినట్టు)'); }));
     t.appendChild(tool('🔍', '', () => { simv.fit = true; drawSim(); }));
@@ -3165,7 +3298,7 @@
     then();
   }
 
-  window.__pcb = { open, get D() { return D; }, get check() { return check; }, showTab, reroute, changed, onJarvis, texture, partSheet: (ref) => partSheet(D && D.parts.find((q) => q.ref === ref)), modList, modInfo, wireSheet, buyGo, faultStart, get ft() { return ft; }, pv, sv,
+  window.__pcb = { open, get D() { return D; }, get check() { return check; }, showTab, reroute, changed, onJarvis, texture, partSheet: (ref) => partSheet(D && D.parts.find((q) => q.ref === ref)), modList, modInfo, wireSheet, buyGo, faultStart, get ft() { return ft; }, graphSheet, gr, pv, sv,
     ai, idea, editSheet, heard, lay: () => schLayout(), sim, simv, simBuild, simReport, simControls, simSupply, simPart, verSheet, verSnap, verDiff, kicadFiles: () => KI.files(D, schLayout()),
     sg, bx, rs, xrS, lv, startGuide, stopGuide, guideGo, guideWords, startBox, stopBox, boxTaller, boxZip, openReal, closeReal, drawReal, startAr, stopAr, xrEnter, xrLeave, xrSaid,
     learnTab, learnGo, get learnSt() { return learnSt; }, set scr(v) { scr = v; }, get v3d() { return v3d; } };

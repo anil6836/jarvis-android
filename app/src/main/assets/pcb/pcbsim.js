@@ -273,7 +273,8 @@
           break;
         }
         case 'pot': {
-          const key = 'pot:' + ref, pos = [0, 25, 50, 75, 100].indexOf(+ctl[key]) >= 0 ? +ctl[key] : 50;
+          // (the 🎛️ buttons give 0 / 25 / 50 / 75 / 100; the 📈 graph turns it in small steps)
+          const key = 'pot:' + ref, pos = ctl[key] != null && ctl[key] !== '' && +ctl[key] >= 0 && +ctl[key] <= 100 ? +ctl[key] : 50;
           let tot = P.ohms(String(pt.val || '').replace(/[^\d.kKmM]/g, ''));
           if (!(tot > 0)) tot = 10000;
           const w = pin(ref, role(pt, 'W') || '2');
@@ -538,33 +539,34 @@
             break;
           }
           case 'Buck': {
-            const vin = V(e.i) - V(e.ig);
-            const m = vin >= Math.max(4.5, e.vset + 1.2) ? 'reg' : vin > 3 ? 'drop' : 'off';
+            const vin = V(e.i) - V(e.ig), th = Math.max(4.5, e.vset + 1.2);
+            // (a little either way around the change-over, so it does not flip back and forth while the volts settle)
+            const m = vin >= th + (e.m === 'reg' ? -0.15 : 0.15) ? 'reg' : vin > 3 ? 'drop' : 'off', was = e.m;
             if (m !== e.m) { e.m = m; changed = true; }
-            if (m === 'reg') {
-              const iout = Math.max(0, (V(e.og) + e.vset - V(e.o)) / 0.05), want = (e.vset * iout) / (Math.max(vin, 1) * 0.85) + 0.005;
+            // (what it takes from its input follows what it gives: only from a solve made in this same mode, and never more than a
+            // real module can give, so one half-way try cannot pull the input down to nothing)
+            if (m === 'reg' && was === 'reg') {
+              const iout = Math.min(4, Math.max(0, (V(e.og) + e.vset - V(e.o)) / 0.05)), want = (e.vset * iout) / (Math.max(vin, 1) * 0.85) + 0.005;
               if (Math.abs(want - e.iin) > 1e-5) { e.iin = e.iin + (want - e.iin) * 0.7; changed = true; }
-            } else if (e.iin) { e.iin = 0; changed = true; }
+            } else if (m !== 'reg' && e.iin) { e.iin = 0; changed = true; }
             break;
           }
-          case 'Fuse': {
-            const i = Math.abs(V(e.a) - V(e.b)) / 0.1;
-            if (!e.trip && i > e.hold * 2) { e.trip = true; changed = true; }
-            break;
-          }
+          case 'Fuse': break; // (below, once everything else has settled)
           case 'M': { // logic-level IRLZ44N: how far on it is goes with the gate volts
             const vgs = V(e.g) - V(e.s);
             const rds = vgs < 1.6 ? 0 : vgs < 2.2 ? 3 : vgs < 2.8 ? 0.4 : vgs < 3.6 ? 0.06 : 0.03;
             if (rds !== e.rds) { e.rds = rds; changed = true; }
             break;
           }
-          case 'Prot': { // the DW01: off when the cell is below 2.4 V or more than 3 A flows
-            const vb = V(e.bp) - V(e.a), i = e.cut ? 0 : Math.abs(V(e.a) - V(e.b)) / 0.06;
-            if (!e.cut && (vb < 2.4 || i > 3)) { e.cut = true; changed = true; }
-            break;
-          }
+          case 'Prot': break; // (below, once everything else has settled)
           default:
         }
+      }
+      // (26 Nov) a fuse / a TP4056's protection cuts for good, so it only looks at the settled board, never at a half-way try of the
+      // others (a buck module finding its mode used to blow the fuse at 7–9 V)
+      if (!changed) for (const e of S.el) {
+        if (e.k === 'Fuse') { const i = Math.abs(V(e.a) - V(e.b)) / 0.1; if (!e.trip && i > e.hold * 2) { e.trip = true; changed = true; } }
+        else if (e.k === 'Prot') { const vb = V(e.bp) - V(e.a), i = e.cut ? 0 : Math.abs(V(e.a) - V(e.b)) / 0.06; if (!e.cut && (vb < 2.4 || i > 3)) { e.cut = true; changed = true; } }
       }
       if (!changed) break;
     }
@@ -783,7 +785,7 @@
           const io = most(ref, 'iout'), w = info.kind === 'reg' ? most(ref, 'w') : 0;
           if (r.vin > info.vmax) push('err', ref, nm + ': IN కి ' + fmtV(r.vin) + ': ' + info.vmax + ' V కంటే ఎక్కువ తట్టుకోదు');
           else if (r.m === 'off') push('err', ref, nm + ': IN కి ' + fmtV(r.vin) + ' మాత్రమే: OUT కి ఏమీ రావట్లేదు');
-          else if (r.m === 'drop') push('warn', ref, nm + ': IN ' + fmtV(r.vin) + ' తక్కువ, అందుకే OUT ' + fmtV(r.vout) + ' మాత్రమే (' + (info.kind === 'buck' ? '' : 'కనీసం ' + (info.vset + info.drop).toFixed(1) + ' V కావాలి') + ')');
+          else if (r.m === 'drop') push('warn', ref, nm + ': IN ' + fmtV(r.vin) + ' తక్కువ, అందుకే OUT ' + fmtV(r.vout) + ' మాత్రమే (కనీసం ' + (info.kind === 'buck' ? Math.max(4.5, info.reg.vset + 1.2) : info.vset + info.drop).toFixed(1) + ' V కావాలి)');
           else push('ok', ref, nm + ': ' + fmtV(r.vin) + ' → ' + fmtV(r.vout) + ', ' + fmtA(io) + (w > 0.01 ? ', వేడి ' + fmtW(w) : ''));
           if (io > info.max) push('err', ref, nm + ': ' + fmtA(io) + ': ' + info.max + ' A కంటే ఎక్కువ ఇవ్వలేదు');
           if (w > 1.5) push('err', ref, nm + ': ' + fmtW(w) + ' వేడి: హీట్‌సింక్ లేకపోతే తనే ఆగిపోతుంది', 'హీట్‌సింక్ పెట్టండి, లేదా బక్ మాడ్యూల్ వాడండి.');
@@ -874,7 +876,75 @@
     return { items, total: { i: ti, w: tw }, per, hours, bat: hours ? one : null };
   }
 
-  const api = { setup, dc, start, step, cycle, report, has555, farads, ratedV, ratedA, voltsOf, fmtV, fmtA, fmtW, MODS };
+  // ---------------------------------------------------------------- 📈 the graph (26 Nov, "7."): the board run again for many values
+
+  /** What a graph can turn (x): each supply, each knob; for a 555 board, time. → [{k, key, te, lo, hi, unit, now}] */
+  function axes(D, base) {
+    base = base || {};
+    const S = setup(D, base);
+    if (S.err) return [];
+    const out = [];
+    if (has555(S)) out.push({ k: 'time', key: 'time', te: '⏱️ సమయం (555 టిక్ టిక్)', unit: 's' });
+    S.sources.forEach((s) => {
+      const r = { '9v': [5, 10], bike: [9, 15], usb: [3.5, 5.5], li: [2.8, 4.2], logic: [2.5, 3.6] }[s.kind] || [Math.max(0.5, s.v0 * 0.4), Math.min(24, s.v0 * 1.25)];
+      out.push({ k: 'src', key: s.key, te: '🔋 ' + s.te + ' వోల్టేజ్', lo: r[0], hi: r[1], unit: 'V', now: s.v, kind: s.kind, net: s.net });
+    });
+    S.controls.filter((c) => /^pot:/.test(c.key)).forEach((c) => out.push({ k: 'pot', key: c.key, te: '🎛️ ' + c.te, lo: 0, hi: 100, unit: '%', now: +c.val }));
+    return out;
+  }
+  /** What a graph can show (y): nets in volts; LEDs, the supply in mA. Power first. */
+  function lines(D, base) {
+    const S = setup(D, base || {});
+    if (S.err) return [];
+    const R = dc(S), out = [];
+    D.nets.filter((n) => !C.isGnd(n.n) && R.v[n.n] != null).sort((a, b) => (C.isPower(b.n) ? 1 : 0) - (C.isPower(a.n) ? 1 : 0)).forEach((n) => out.push({ k: 'v', id: n.n, te: n.n, unit: 'V', power: C.isPower(n.n) }));
+    Object.keys(S.parts).forEach((ref) => { const k = S.parts[ref].kind; if (k === 'led' || k === 'buzzer' || k === 'load') out.push({ k: 'i', id: ref, te: ref + (k === 'led' ? ' LED' : ''), unit: 'mA' }); });
+    S.sources.forEach((s) => out.push({ k: 'src', id: s.key, te: s.ref + ' మొత్తం కరెంట్', unit: 'mA' }));
+    return out;
+  }
+  function pick(R, S, l) {
+    if (l.k === 'v') return R.v[l.id] == null ? null : R.v[l.id];
+    if (l.k === 'i') { const p = R.p[l.id] || {}; if (typeof p.i === 'number') return Math.max(0, p.i) * 1000; const info = S.parts[l.id]; return info && info.kind === 'load' ? (info.on ? NaN : 0) : null; }
+    if (l.k === 'src') { const s = R.src.find((q) => q.key === l.id); return s ? s.i * 1000 : null; }
+    return null;
+  }
+  /**
+   * Runs the board for n values of the axis (or over time for a 555) → { xs, ys: {lineIndex: [y]}, bad: [sev per x], why: [first ❌/⚠️ text per x] }.
+   */
+  function sweep(D, base, ax, want, n) {
+    base = base || {}; n = n || 41;
+    const xs = [], ys = want.map(() => []), bad = [], why = [];
+    if (ax.k === 'time') {
+      const S0 = setup(D, base), cy = cycle(setup(D, base));
+      if (S0.err || !cy || cy.stuck || !(cy.f > 0)) return { xs, ys, bad, why, err: 'ఈ 555 టిక్ టిక్ చేయట్లేదు' };
+      let R = start(S0);
+      const T = Math.min(60, 3 / cy.f), m = 240;
+      R = step(S0, 2 / cy.f); // (past the first, longer charge)
+      const t0 = S0.t;
+      for (let i = 0; i <= m; i++) {
+        if (i) R = step(S0, T / m);
+        xs.push(S0.t - t0);
+        want.forEach((l, j) => ys[j].push(pick(R, S0, l)));
+        bad.push(null); why.push('');
+      }
+      return { xs, ys, bad, why, f: cy.f };
+    }
+    for (let i = 0; i < n; i++) {
+      const x = ax.lo + (ax.hi - ax.lo) * i / (n - 1);
+      const src = Object.assign({}, base.src), ctl = Object.assign({}, base.ctl);
+      if (ax.k === 'src') src[ax.key] = x; else ctl[ax.key] = x;
+      const S = setup(D, { src, ctl });
+      if (S.err) continue;
+      const R = dc(S), rep = report(S, R, null);
+      xs.push(x);
+      want.forEach((l, j) => ys[j].push(pick(R, S, l)));
+      const e = rep.items.find((q) => q.sev === 'err'), w = rep.items.find((q) => q.sev === 'warn');
+      bad.push(e ? 'err' : w ? 'warn' : null); why.push(e ? e.te : w ? w.te : '');
+    }
+    return { xs, ys, bad, why };
+  }
+
+  const api = { setup, dc, start, step, cycle, report, has555, farads, ratedV, ratedA, voltsOf, fmtV, fmtA, fmtW, MODS, axes, lines, sweep };
   root.PcbSim = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : globalThis);
