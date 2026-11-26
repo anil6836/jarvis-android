@@ -392,6 +392,54 @@ function makeBody(g, pt, f) {
       pads.forEach((p) => lead(g, p.x, p.y, -1.2, p.x * 0.8, 0, 3));
       break;
     }
+    case 'mod': { // 📚 a ready module on its socket: lying flat over the board, or standing on its 90° pins
+      const n = b.n, L = n * 2.54, gold = std(0xe8c15a, { metalness: 0.9, roughness: 0.3 }), pcbM = std(b.col || 0x1f57b8, { roughness: 0.5 });
+      const sock = box(L, 8.5, 2.5, BLACK()); sock.position.set(0, 4.25, 0); g.add(sock);
+      const sp = box(L, 2.5, 2.5, BLACK()); sp.position.set(0, 8.5 + 1.25, 0); g.add(sp);
+      const top = 8.5 + 2.5;
+      if (b.stand) {
+        const zb = 0.9, y0 = top - 1;
+        const pcb = box(b.w, b.H, 1.6, pcbM); pcb.position.set(b.cx, y0 + b.H / 2, zb); g.add(pcb);
+        for (let i = 0; i < n; i++) { const pin = box(0.64, 0.64, 2.2, gold); pin.position.set(-(n - 1) * 1.27 + i * 2.54, top + 0.6, zb - 1.0); g.add(pin); }
+        const face = zb - 0.8;
+        if (b.k === 'hc05') {
+          const m = box(12.7, 26.9, 2.2, std(0x2e7d4f)); m.position.set(0, y0 + 9 + 13.45, face - 1.1); g.add(m);
+          const sh = box(9, 9, 0.4, METAL()); sh.position.set(0, y0 + 12, face - 2.4); g.add(sh);
+        } else if (b.k === 'dht') {
+          const white = /22|AM2302/i.test(String(pt.val || ''));
+          const s = box(12, 15.5, 5.5, std(white ? 0xf2f2f0 : 0x3a8de0, { roughness: 0.7 })); s.position.set(0, y0 + b.H - 9, face - 2.75); g.add(s);
+          for (let r = 0; r < 5; r++) for (let c = 0; c < 4; c++) { const h = box(1.6, 1.6, 0.1, std(0x0b0b0b)); h.position.set(-3.6 + c * 2.4, y0 + b.H - 14 + r * 2.4, face - 5.55); g.add(h); }
+        } else if (b.k === 'ds3231') {
+          const ch = box(10.5, 7.6, 2.4, BLACK()); ch.position.set(0, y0 + 24, face - 1.2); g.add(ch);
+          const cell = cyl(10, 10, 3.2, METAL(), 32); cell.rotation.x = Math.PI / 2; cell.position.set(0, y0 + 20, zb + 0.8 + 1.6 + 0.4); g.add(cell);
+        } else if (b.k === 'sr04') {
+          [-13, 13].forEach((x) => {
+            const can = cyl(8, 8, 12, METAL(), 32); can.rotation.x = Math.PI / 2; can.position.set(x, y0 + b.H / 2, face - 6); g.add(can);
+            const mesh = cyl(7.2, 7.2, 0.1, std(0x202020, { roughness: 0.95 }), 32); mesh.rotation.x = Math.PI / 2; mesh.position.set(x, y0 + b.H / 2, face - 12.06); g.add(mesh);
+          });
+          const xt = box(4, 2.2, 1.2, METAL()); xt.position.set(0, y0 + b.H - 4, face - 0.6); g.add(xt);
+        }
+      } else {
+        const yb = top + 0.8;
+        const pcb = box(b.w, 1.6, b.d, pcbM); pcb.position.set(b.cx, yb, b.cy); g.add(pcb);
+        for (let i = 0; i < n; i++) { const pin = box(0.64, 0.6, 0.64, gold); pin.position.set(-(n - 1) * 1.27 + i * 2.54, yb + 1.0, 0); g.add(pin); }
+        const up = yb + 0.8;
+        if (b.k === 'oled') {
+          const glass = box(25.5, 1.5, 15.5, std(0x07090c, { roughness: 0.15, metalness: 0.2 })); glass.position.set(0, up + 0.75, 11.1); g.add(glass);
+          const cyan = std(0x3fe0ff, { emissive: 0x2bb8d8, emissiveIntensity: 0.9 });
+          [[-6, 6.2, 12], [-3, 8.6, 18], [-7.5, 11, 9], [-1.5, 13.4, 21]].forEach(([x, z, w]) => { const t = box(w, 0.1, 1.1, cyan); t.position.set(x, up + 1.52, z); g.add(t); });
+        } else if (b.k === 'mpu') {
+          const ch = box(4, 0.9, 4, BLACK()); ch.position.set(0, up + 0.45, -7.4); g.add(ch);
+          const reg = box(3, 1.1, 1.6, BLACK()); reg.position.set(-6.5, up + 0.55, -10.5); g.add(reg);
+        } else if (b.k === 'bme') {
+          const s = box(2.5, 0.95, 2.5, METAL()); s.position.set(0, up + 0.48, -7); g.add(s);
+        } else if (b.k === 'max') {
+          const ch = box(3, 0.8, 3, BLACK()); ch.position.set(0, up + 0.4, -8); g.add(ch);
+          const term = box(7.6, 8, 7, std(0x2e9e44, { roughness: 0.6 })); term.position.set(0, up + 4, -14); g.add(term);
+        }
+      }
+      break;
+    }
     default: {
       const c = f.court, bd = box(c[2] - c[0], 3, c[3] - c[1], std(0x4b5563)); bd.position.set((c[0] + c[2]) / 2, 1.5, (c[1] + c[3]) / 2); g.add(bd);
     }

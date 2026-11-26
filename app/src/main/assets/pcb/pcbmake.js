@@ -20,6 +20,9 @@
     if (pt.lib === 'buck') return 21;   // (the buck module on its pins)
     if (pt.lib === 'fhdr') return 20.5; // (a module plugged in: its own board and parts on the 8.5 mm socket)
     if (pt.lib === 'pam8403' || pt.lib === 'tp4056') return 16; // (wires on male pins; the module sits beside)
+    const lm = P.LIB[pt.lib] || {};
+    if (lm.mod && lm.kind === 'wire') return 16;    // (📚 a module at the end of jumper wires)
+    if (b.t === 'mod') return 8.5 + 2.5 + (b.stand ? b.H : 6); // (📚 on its socket: lying flat, or standing on its 90° pins)
     switch (b.t) {
       case 'axial': return b.D + 0.8;
       case 'disc': return b.D + 2;
@@ -52,6 +55,11 @@
   const ORDER = { res: 10, d4007: 12, d5822: 14, ne555: 20, cer: 22, ptc: 24, bc547: 30, vs1838: 32, led3: 34, led5: 36, irled: 36, mic: 38,
     slide: 40, btn: 42, hdr: 50, buck: 51, pam8403: 51, tp4056: 51, fhdr: 52, esp32: 54, elec: 60, r7805: 64, r3v3: 64, nmos: 64, pot: 66, buzzer: 70,
     jack35: 80, dcjack: 81, usba: 82, usbc: 83, term2: 84, bat18650: 90 };
+  // (📚 modules: their socket with the other sockets, the male headers for wires with the other headers)
+  const order = (lib) => (ORDER[lib] != null ? ORDER[lib] : P.LIB[lib] && P.LIB[lib].mod ? (P.LIB[lib].kind === 'plug' ? 52 : 50) : 45);
+  const MOD_PLUG = 'సాకెట్ (ఫిమేల్ హెడర్): మాడ్యూల్‌నే సాకెట్‌లో గుచ్చి పెట్టి టంకం చేస్తే వరుస సరిగ్గా వస్తుంది (టంకం సాకెట్ కాళ్ళకే). ముందు ఒక పిన్, నిటారుగా చూసి, తర్వాత మిగతావి. మాడ్యూల్ తీసి పక్కన పెట్టండి (చివర్లో పెడతాం).';
+  const MOD_WIRE = 'పిన్ హెడర్ (మేల్): పిన్నుల పొట్టి వైపు బోర్డ్‌లోకి; ముందు ఒక పిన్, నిటారుగా చూసి మిగతావి. మాడ్యూల్‌ని చివర్లో జంపర్ వైర్లతో (ఫిమేల్–ఫిమేల్) కలుపుతాం.';
+  const mount = (lib) => MOUNT[lib] || (P.LIB[lib] && P.LIB[lib].mod ? (P.LIB[lib].kind === 'plug' ? MOD_PLUG : MOD_WIRE) : '');
   const MOUNT = {
     res: 'కాళ్ళని రెండు రంధ్రాల దూరానికి వంచి, బోర్డ్‌కి ఆనించి పెట్టండి. కింద కాళ్ళు కొంచెం బయటికి వంచితే పడిపోదు.',
     d4007: 'కాళ్ళని రంధ్రాల దూరానికి వంచి, బోర్డ్‌కి ఆనించి పెట్టండి. గీత బోర్డ్ మీది గీత వైపు.',
@@ -151,14 +159,14 @@
       say: 'ఒక మంచి టంకం ఎలా. ఐరన్ మొనని ప్యాడ్‌కీ కాలుకీ ఒకేసారి తాకించి వేడి చేయండి. సోల్డర్ వైర్ ప్యాడ్‌కి తాకించండి, మొనకి కాదు. చిన్న కొండ ఆకారం రాగానే ముందు వైర్, తర్వాత ఐరన్ తీసేయండి. మొత్తం మూడు నాలుగు సెకన్లు.' });
     // the parts in groups of the same kind and value
     const groups = new Map();
-    D.parts.slice().sort((a, b) => (ORDER[a.lib] || 45) - (ORDER[b.lib] || 45) || refCmp(a.ref, b.ref)).forEach((pt) => {
+    D.parts.slice().sort((a, b) => order(a.lib) - order(b.lib) || refCmp(a.ref, b.ref)).forEach((pt) => {
       const k = [pt.lib, pt.val || '', pt.fp || '', pt.color || ''].join('|');
       if (!groups.has(k)) groups.set(k, []);
       groups.get(k).push(pt);
     });
     const listed = [];
     groups.forEach((g) => { for (let i = 0; i < g.length; i += 6) listed.push(g.slice(i, i + 6)); });
-    listed.sort((a, b) => (ORDER[a[0].lib] || 45) - (ORDER[b[0].lib] || 45) || refCmp(a[0].ref, b[0].ref));
+    listed.sort((a, b) => order(a[0].lib) - order(b[0].lib) || refCmp(a[0].ref, b[0].ref));
     listed.forEach((g) => {
       const pt = g[0], L = P.LIB[pt.lib] || {}, refs = g.map((q) => q.ref);
       const v = valShow(pt), n = g.length;
@@ -176,18 +184,19 @@
       else if (pt.lib === 'elec') lines.push('🔋 ' + v + ': డబ్బా మీద రాసిన వోల్టేజ్ ఇంతకంటే తక్కువ ఉండకూడదు.');
       else if (/^led|irled/.test(pt.lib) && LED_TE[pt.color]) lines.push('💡 రంగు: ' + LED_TE[pt.color] + '.');
       if (L.how) lines.push((L.polar ? '' : '↔️ ') + L.how);
-      if (MOUNT[pt.lib]) lines.push('🛠️ ' + MOUNT[pt.lib]);
+      if (mount(pt.lib)) lines.push('🛠️ ' + mount(pt.lib));
       const j = g.reduce((s, q) => s + drilled(q), 0);
       lines.push('🔥 కింది వైపు ' + j + ' టంకాలు. తర్వాత కాళ్ళు కత్తిరించండి.');
       if (n === 1 && pt.note) lines.push('ℹ️ ' + pt.note);
-      if (pt.lib === 'fhdr' || pt.lib === 'esp32') lines.push('⚠️ మాడ్యూల్ పిన్ పేర్లు బోర్డ్ మీది పేర్లతో సరిపోవాలి (ముందే చూసుకోండి).');
+      if (pt.lib === 'fhdr' || pt.lib === 'esp32' || L.mod) lines.push('⚠️ మాడ్యూల్ పిన్ పేర్లు బోర్డ్ మీది పేర్లతో సరిపోవాలి (ముందే చూసుకోండి).');
       const said = [refs.join(', ') + '.', valSaid(pt), te.replace(/\(.*?\)/g, '') + (n > 1 ? ', ' + n + ' ' : '') + '.', L.how ? L.how.split(/[.:]/)[0] + '.' : '',
-        MOUNT[pt.lib] ? MOUNT[pt.lib].split('.')[0] + '.' : ''].filter(Boolean).join(' ');
+        mount(pt.lib) ? mount(pt.lib).split('.')[0] + '.' : ''].filter(Boolean).join(' ');
       steps.push({ k: 'part', refs, lib: pt.lib, title, lines, say: spoken(said), joints: j });
     });
     // 🔍 the last look
     const pol = [];
-    listed.forEach((g) => { if (POL[g[0].lib]) pol.push(g.map((q) => q.ref).join(', ') + ' (' + POL[g[0].lib] + ')'); });
+    const polOf = (q) => POL[q.lib] || (P.LIB[q.lib] && P.LIB[q.lib].mod ? Object.keys(P.pinsOf(q)).map((k) => P.pinsOf(q)[k]).join(' ') : null);
+    listed.forEach((g) => { if (polOf(g[0])) pol.push(g.map((q) => q.ref).join(', ') + ' (' + polOf(g[0]) + ')'); });
     steps.push({ k: 'look', refs: [], show: 'all', title: '🔍 చెక్ 1: కళ్ళతో చూడండి', lines: [
       '🔍 ప్రతి టంకం మెరుస్తూ చిన్న కొండలా ఉందా? మసకగా / బంతిలా ఉంటే మళ్ళీ వేడి చేయండి.',
       '🔍 రెండు ప్యాడ్‌ల మధ్య సోల్డర్ వంతెన లేదు కదా? ఉంటే ఐరన్ మొనతో లాగేయండి.',
@@ -198,7 +207,7 @@
     const gnd = D.nets.find((n) => C.isGnd(n.n));
     const pw = D.nets.filter((n) => C.isPower(n.n) && !C.isGnd(n.n)).slice(0, 3);
     const where = (net) => {
-      const conn = D.parts.filter((q) => /^(term2|usba|jack35|hdr|fhdr|buck|dcjack|usbc|bat18650|tp4056)$/.test(q.lib));
+      const conn = D.parts.filter((q) => /^(term2|usba|jack35|hdr|fhdr|buck|dcjack|usbc|bat18650|tp4056)$/.test(q.lib) || (P.LIB[q.lib] && P.LIB[q.lib].mod));
       for (const q of conn) { const p = net.p.find((s) => s.split('.')[0] === q.ref); if (p) return pinTe(q, p.split('.')[1]); }
       const p = net.p[0];
       return p ? pinTe(D.parts.find((q) => q.ref === p.split('.')[0]) || { ref: p.split('.')[0], lib: '' }, p.split('.')[1]) : '';
@@ -220,8 +229,14 @@
       if (q.lib === 'pam8403') ins.push('🔊 ' + q.ref + ': PAM8403 మాడ్యూల్‌ని +5V GND L G R పేర్లు సరిపోల్చి వైర్లతో కలపండి. స్పీకర్ వైర్లు దాని L+ L− R+ R− కి నేరుగా: ఏవీ GND కి కాదు.');
       if (q.lib === 'tp4056') ins.push('🔋 ' + q.ref + ': TP4056 మాడ్యూల్: B+ B− బ్యాటరీ వైపు, OUT+ OUT− బోర్డ్ వైపు (పేర్లు సరిపోల్చి). బోర్డ్ GND OUT− కే.');
       if (q.lib === 'bat18650') ins.push('🔋 ' + q.ref + ': 18650 బ్యాటరీ చివర్లో, + గుర్తు చూసి పెట్టండి (బ్యాటరీ మీద + ఉబ్బిన వైపు).');
+      const lm = P.LIB[q.lib];
+      if (lm && lm.mod) {
+        const nm = P.pinsOf(q), order = Object.keys(nm).map((k) => nm[k]).join(' ');
+        ins.push((lm.kind === 'plug' ? '🧩 ' + q.ref + ': ' + lm.te + ': సాకెట్‌లో గుచ్చండి (' + order + '): మాడ్యూల్ మీది పేర్లు బోర్డ్ మీది పేర్ల ఎదురుగా.'
+          : '🔌 ' + q.ref + ': ' + lm.te + ': ' + order + ' పేర్లు సరిపోల్చి జంపర్ వైర్లతో కలపండి (🔌 వైర్ పట్టీ చూడండి).') + (lm.mod.v[1] < 4 ? ' ⚠️ ' + lm.mod.v[1] + ' V లోపే!' : ''));
+      }
     });
-    if (ins.length) steps.push({ k: 'chips', refs: D.parts.filter((q) => /^(ne555|esp32|fhdr|buck|pam8403|tp4056|bat18650)$/.test(q.lib)).map((q) => q.ref), show: 'all', title: '🔲 IC / మాడ్యూల్స్ పెట్టండి', lines: ins.concat(['⚠️ కరెంట్ తీసేసి ఉన్నప్పుడే పెట్టండి / తీయండి.']),
+    if (ins.length) steps.push({ k: 'chips', refs: D.parts.filter((q) => /^(ne555|esp32|fhdr|buck|pam8403|tp4056|bat18650)$/.test(q.lib) || (P.LIB[q.lib] && P.LIB[q.lib].mod)).map((q) => q.ref), show: 'all', title: '🔲 IC / మాడ్యూల్స్ పెట్టండి', lines: ins.concat(['⚠️ కరెంట్ తీసేసి ఉన్నప్పుడే పెట్టండి / తీయండి.']),
       say: 'ఇప్పుడు IC, మాడ్యూల్స్ వాటి సాకెట్లలో పెట్టండి. గుంత, పిన్ పేర్లు సరిపోవాలి. కరెంట్ తీసేసి ఉన్నప్పుడే.' });
     // ⚡ power on
     const names = pw.map((n) => n.n).join(' ');
@@ -340,7 +355,22 @@
           if (best.d <= 12) cutRound(pt, best.s, [pt.x, pt.y], Math.min(zLid - 5.2, zTop + 12), 3.5, 'వైర్లు');
           break;
         }
-        default:
+        default: {
+          // 📚 modules: wires out through the nearest wall; a few need the outside world
+          const lm = P.LIB[pt.lib];
+          if (!lm || !lm.mod) break;
+          if (lm.kind === 'wire') {
+            let best = null;
+            ['N', 'S', 'W', 'E'].forEach((s) => { const d = gapTo(c, s); if (!best || d < best.d) best = { s, d }; });
+            if (best.d <= 12) cutRound(pt, best.s, [pt.x, pt.y], Math.min(zLid - 5.2, zTop + 12), 3.5, 'వైర్లు');
+          }
+          if (pt.lib === 'oled') notes.push('🖥️ ' + pt.ref + ' OLED స్క్రీన్ మూత కింద ఉంటుంది: తెల్ల / పారదర్శక (transparent) మూత ప్రింట్ చేయండి, లేదా మూతలో 24 × 13 mm కిటికీ కత్తిరించండి.');
+          if (pt.lib === 'hcsr04') notes.push('🦇 ' + pt.ref + ' HC-SR04 "కళ్ళు" బయటికి చూడాలి: దాని ముందు గోడలో 26 mm దూరంలో రెండు 16.5 mm గుండ్రటి రంధ్రాలు కత్తిరించండి.');
+          if (pt.lib === 'dht11' || pt.lib === 'bme280') notes.push('🌬️ ' + pt.ref + ' సెన్సార్‌కి బయటి గాలి తగలాలి: గాలి సందులు (🌬️) ఆన్ చేయండి; ESP32 / రెగ్యులేటర్ వేడికి దూరంగా ఉంచండి.');
+          if (pt.lib === 'max98357') notes.push('🔊 ' + pt.ref + ' స్పీకర్ వైర్లకి గోడలో చిన్న రంధ్రం; స్పీకర్ ముందు మూతలో చిన్న రంధ్రాలు.');
+          if (pt.lib === 'pir') notes.push('👀 ' + pt.ref + ' PIR గుమ్మటం డబ్బా బయట ఉండాలి (23 mm గుండ్రటి రంధ్రంలోంచి): ప్లాస్టిక్ / గాజు వెనక అది చూడలేదు.');
+          if (pt.lib === 'relay') notes.push('⚠️ ' + pt.ref + ' రిలే: ఈ డబ్బాలో తక్కువ వోల్టేజ్ DC మాత్రమే (24 V వరకు). ఇంటి 230 V కరెంట్ ఎప్పుడూ కాదు.');
+        }
       }
     });
     // fit the cuts on their walls (away from the corners, under the lid), round ones that touch others become one opening
@@ -406,7 +436,7 @@
       notes.push('🔩 బోర్డ్‌కి స్క్రూ రంధ్రాలు లేవు: మూలల్లో చిన్న దిమ్మెల మీద కూర్చుంటుంది; కదలకుండా ఒక చుక్క హాట్‌గ్లూ. (🧩 PCB లో 🔩 రంధ్రాలు పెడితే డబ్బాలో స్క్రూ స్తంభాలు వస్తాయి.)');
     } else notes.push('🔩 బోర్డ్ ' + posts.length + ' స్తంభాల మీద: M3 × 6–8 mm స్క్రూలు (ప్లాస్టిక్‌లో తిప్పితే అవే దారి చేసుకుంటాయి).');
     // 🌬️ air slots near the top of the two long walls (for parts that get warm)
-    const warm = D.parts.some((pt) => /^(r7805|r3v3|buck|esp32|d5822|tp4056|pam8403)$/.test(pt.lib));
+    const warm = D.parts.some((pt) => /^(r7805|r3v3|buck|esp32|d5822|tp4056|pam8403|max98357)$/.test(pt.lib));
     const ventsOn = opt.vents == null ? warm : !!opt.vents;
     const vents = [];
     if (ventsOn) {

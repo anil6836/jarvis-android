@@ -64,6 +64,9 @@
   // ---------------------------------------------------------------- the board → a circuit
 
   const CONN = { term2: 1, hdr: 1, fhdr: 1, dcjack: 1, usbc: 1 };
+  /** (26 Nov) a 📚 library module (HC-05, OLED, relay…) is a connector too: a module on a socket / at the end of wires. */
+  const libMod = (lib) => (P.LIB[lib] && P.LIB[lib].mod) || null;
+  const isConnLib = (lib) => !!(CONN[lib] || libMod(lib));
   const LI_MAH = 2000; // (a usual 18650 cell, roughly; cheap ones less)
   /**
    * The circuit of a board. opts: { src: {key: volts}, ctl: {key: value} } (what he chose on the screen).
@@ -104,21 +107,21 @@
     D.parts.forEach((pt) => {
       if (pt.lib !== 'esp32') return;
       const v = netAt(pt.ref, '15');
-      const fed = v && (driven.has(v) || D.nets.some((n) => n.n === v && n.p.some((p) => { const q = byRef.get(p.split('.')[0]); return q && CONN[q.lib] && Object.keys(pinsOf(q)).some((k) => netAt(q.ref, k) === gnd); })));
+      const fed = v && (driven.has(v) || D.nets.some((n) => n.n === v && n.p.some((p) => { const q = byRef.get(p.split('.')[0]); return q && isConnLib(q.lib) && Object.keys(pinsOf(q)).some((k) => netAt(q.ref, k) === gnd); })));
       if (!fed) { usb.add(pt.ref); if (v) driven.add(v); }
     });
 
     // which connector brings the power in: one per power net nothing on the board drives
-    const isConn = (pt) => !!CONN[pt.lib];
+    const isConn = (pt) => isConnLib(pt.lib);
     const supplyWords = /\bIN\b|BAT|POWER|PWR|VIN|SUPPLY|ADAPT|బ్యాటరీ|అడాప్టర్|సప్లై|బైక్|USB/i;
-    const moduleWords = (pt) => MODS.some((m) => m.re.test(String(pt.note || '') + ' ' + String(pt.val || '')));
+    const moduleWords = (pt) => !!libMod(pt.lib) || MODS.some((m) => m.re.test(String(pt.note || '') + ' ' + String(pt.val || '')));
     const feeds = new Map(); // net → {pt, k}
     D.nets.forEach((n) => {
       if (C.isGnd(n.n) || driven.has(n.n)) return;
       const cands = [];
       (n.p || []).forEach((p) => {
         const [ref, k] = p.split('.'), pt = byRef.get(ref);
-        if (!pt || !isConn(pt)) return;
+        if (!pt || !isConn(pt) || libMod(pt.lib)) return; // (a module takes power, it never brings it)
         const pins = Object.keys(pinsOf(pt));
         if (!pins.some((q) => netAt(ref, q) === gnd)) return;
         const named = String(pinsOf(pt)[k] || '');
@@ -334,7 +337,7 @@
           break;
         }
         default:
-          if (!CONN[pt.lib]) info.kind = 'other';
+          if (!isConnLib(pt.lib)) info.kind = 'other';
       }
     });
 
@@ -351,14 +354,17 @@
       const text = String(pt.note || '') + ' ' + String(pt.val || '');
       // a module (sensor, Bluetooth…) sitting on the socket: a small load at its supply pin
       if (gk.length && pw.length && !isFeed) {
-        const mod = MODS.find((m) => m.re.test(text));
-        const said = saidVolts(String(pt.note || ''));
+        const lm = libMod(pt.lib), mod = lm || MODS.find((m) => m.re.test(text));
+        const said = lm ? null : saidVolts(String(pt.note || ''));
         const vpin = pw[0];
         const want = said || (mod ? mod.v : null);
         const vnom = want ? Math.min(Math.max(voltsOf(names[vpin]) || want[1], want[0]), want[1]) : (voltsOf(names[vpin]) || 5);
         const ma = mod ? mod.ma : 20;
         add({ k: 'R', a: pin(ref, vpin), b: pin(ref, gk[0]), r: vnom / (ma / 1000), ref });
-        Object.assign(info, { kind: 'module', te: mod ? mod.te : 'మాడ్యూల్', want, sure: !!said, why: mod && !said ? mod.why : null, vpin: pin(ref, vpin), gpin: pin(ref, gk[0]), ma, named: !!mod });
+        Object.assign(info, { kind: 'module', te: mod ? mod.te : 'మాడ్యూల్', want, sure: !!said || !!lm, why: mod && !said ? mod.why : null, vpin: pin(ref, vpin), gpin: pin(ref, gk[0]), ma, named: !!mod });
+        // a pin that gives 5 V out (HC-SR04 ECHO) joined straight to an ESP32 pin
+        if (lm && lm.out5) info.o5 = lm.out5.filter((nm) => { const k = ks.find((q) => names[q] === nm), n = k && netAt(ref, k);
+          return n && D.nets.some((q) => q.n === n && q.p.some((p) => { const o = byRef.get(p.split('.')[0]); return o && o.lib === 'esp32'; })); });
       }
       // a pump / motor / fan / LED strip on a two-pin connector: a load he can join or take off
       const loadWord = /PUMP|MOTOR|FAN|STRIP|పంప్|మోటార్|ఫ్యాన్/i.test(text + ' ' + ks.map((k) => names[k]).join(' '));
@@ -397,14 +403,14 @@
       const n = D.nets.find((q) => q.n === net);
       return !!n && n.p.some((p) => {
         const [r, k] = p.split('.'), q = byRef.get(r);
-        if (r === not || !q || CONN[q.lib] || q.lib === 'jack35') return false;
+        if (r === not || !q || isConnLib(q.lib) || q.lib === 'jack35') return false;
         if (q.lib === 'res') { const other = netAt(r, k === '1' ? '2' : '1'); if (other && C.isPower(other)) return false; }
         return true;
       });
     }
     function touchesPart(net, not) {
       const n = D.nets.find((q) => q.n === net);
-      return !!n && n.p.some((p) => { const r = p.split('.')[0], q = byRef.get(r); return r !== not && q && !CONN[q.lib] && q.lib !== 'jack35'; });
+      return !!n && n.p.some((p) => { const r = p.split('.')[0], q = byRef.get(r); return r !== not && q && !isConnLib(q.lib) && q.lib !== 'jack35'; });
     }
     function logicVolts() {
       const vs = sources.map((s) => s.v).concat(D.nets.filter((n) => /3V3|3\.3V/i.test(n.n)).map(() => 3.3));
@@ -842,6 +848,8 @@
             v > w[1] ? (info.sure ? 'ఎక్కువ: కాలిపోవచ్చు. ' : 'కొనే మాడ్యూల్ మీద ' + fmtV(v).replace(' ', '') + ' అని ఉంటే సరే; లేకపోతే ') + (w[1] < 4.5 ? '3.3V రెగ్యులేటర్ (LD1117V33) నుంచి ఇవ్వండి.' : 'సరైన వోల్టేజ్ నుంచి ఇవ్వండి.') : 'తక్కువ: సరిగ్గా పనిచేయకపోవచ్చు.');
           else push('ok', ref, ref + ' ' + info.te + ': ' + fmtV(v) + ' (' + w[0] + '–' + w[1] + ' V కావాలి) ✓');
           if (info.amp && v >= 0.2) push('info', ref, ref + ' ఆంప్: పాటలు గట్టిగా పెడితే 1 A వరకు తీసుకుంటుంది', 'సప్లై కనీసం 2 A ఉండాలి; స్పీకర్ వైర్లు GND కి కలపకండి.');
+          if (info.o5 && info.o5.length && v > 4) push('err', ref, ref + ' ' + info.te + ': ' + info.o5.join(', ') + ' నుంచి 5 V నేరుగా ESP32 పిన్‌కి: ESP32 3.3 V పిన్ పాడవుతుంది',
+            info.o5[0] + ' → 1k → ESP32 పిన్, ఆ పిన్ → 2k → GND (డివైడర్) పెట్టమని ✏️ మార్పులో చెప్పండి.');
           break;
         }
         default:

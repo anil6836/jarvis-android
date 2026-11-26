@@ -155,6 +155,44 @@
     silk: [RECT(-39.0, -10.25, 39.0, 10.25)].concat(PLUS(-36, -5.6, 1.0), [L(35, -5.6, 37, -5.6)]), court: [-39.3, -10.55, 39.3, 10.55], body: { t: 'bat' }, polar: true,
     verify: '18650 హోల్డర్ కాళ్ళ దూరం 72 mm, ప్లాస్టిక్ పెగ్‌లకి రెండు రంధ్రాలు (MPD BH-18650-PC2 లాంటిది). వేరే హోల్డర్లు వేరు: కొన్నదాన్ని కొలవండి, + ఏ వైపో చూడండి' });
 
+  // ---- 26 Nov ("2. 📚 మాడ్యూల్ లైబ్రరీ"): ready modules that plug into a socket on the board. The socket row is the exact 2.54 mm
+  // pitch (pin 1 left, pins in a row along x); around it the module's own board as he sees it from above: lying flat over the
+  // board (body: which side of the row it covers) or standing up on its 90° pins (only its thin edge over the board). The outline
+  // is the usual size of that module (sellers differ by a mm or two: verify). lab: the side the pin names are printed on.
+  function modFp(id, o) {
+    const n = o.n, x0 = -(n - 1) * 1.27, hx = n * 1.27, pads = [];
+    for (let i = 0; i < n; i++) pads.push(i === 0 ? R(1, x0, 0, 1.7, 1.7, 1.0) : C(i + 1, x0 + i * 2.54, 0, 1.7, 1.0));
+    const out = o.out, row = [-hx - 0.06, -1.33, hx + 0.06, 1.33];
+    const court = [Math.min(row[0] - 0.3, out[0] - 0.3), Math.min(row[1] - 0.3, out[1] - 0.3), Math.max(row[2] + 0.3, out[2] + 0.3), Math.max(row[3] + 0.3, out[3] + 0.3)];
+    return def(id, { name: o.name, pads, silk: [RECT(row[0], row[1], row[2], row[3]), RECT(out[0], out[1], out[2], out[3])].concat(o.silk || []), court,
+      body: Object.assign({ t: 'mod', n, w: out[2] - out[0], d: out[3] - out[1], cx: (out[0] + out[2]) / 2, cy: (out[1] + out[3]) / 2 }, o.body), lab: o.lab, verify: o.verify,
+      edge: o.edge, overhang: o.overhang });
+  }
+  // HC-05 (ZS-040 board, 15.5 × 37 mm): its 6 pins are bent 90°, so it stands up on the socket; the parts face y −.
+  modFp('MOD_HC05', { n: 6, name: 'Module_HC-05_ZS-040_Standing_Socket_1x06_P2.54mm', out: [-7.9, -4.4, 7.9, 1.6], lab: 'S',
+    body: { k: 'hc05', stand: true, H: 37, col: 0x1f57b8 }, verify: 'HC-05 బోర్డ్ 15.5 × 37 mm, 90° వంగిన 6 పిన్నులతో నిలబడుతుంది' });
+  // 0.96" OLED (SSD1306, 4-pin I2C, 27.3 × 27.8 mm): lies flat over the board, its pins along its top edge, the screen toward y +.
+  modFp('MOD_OLED096', { n: 4, name: 'Module_OLED_0.96in_I2C_Flat_Socket_1x04_P2.54mm', out: [-13.65, -2.2, 13.65, 25.6], lab: 'N',
+    silk: [RECT(-11.5, 3.6, 11.5, 18.6)], body: { k: 'oled', col: 0x1f57b8 }, verify: 'OLED బోర్డ్ 27.3 × 27.8 mm, పిన్నులు పై అంచున మధ్యలో (కొన్నవి 26 × 26)' });
+  // DHT11 / DHT22 module (3 pins, the sensor on a small board): stands up, the sensor faces y −.
+  modFp('MOD_DHT', { n: 3, name: 'Module_DHT11_DHT22_Standing_Socket_1x03_P2.54mm', out: [-7.0, -7.6, 7.0, 1.6], lab: 'S',
+    body: { k: 'dht', stand: true, H: 26, col: 0x1f57b8 }, verify: 'DHT మాడ్యూల్ బోర్డ్ సుమారు 14 × 26 mm, నిలబడుతుంది (సెన్సార్ ముందుకి)' });
+  // DS3231 real-time clock (ZS-042, 38 × 22 mm): its 6 pins are bent 90°, it stands; the coin cell holder is at its back (y +).
+  modFp('MOD_DS3231', { n: 6, name: 'Module_DS3231_ZS-042_Standing_Socket_1x06_P2.54mm', out: [-11.0, -3.4, 11.0, 8.6], lab: 'N',
+    body: { k: 'ds3231', stand: true, H: 38, col: 0x1f57b8 }, verify: 'DS3231 (ZS-042) బోర్డ్ 38 × 22 mm, నిలబడుతుంది, వెనక బ్యాటరీ' });
+  // GY-BME280 / GY-BMP280, 4-pin I2C (about 11 × 14 mm): lies flat, the sensor toward y −.
+  modFp('MOD_BME280', { n: 4, name: 'Module_GY-BME280_4pin_Flat_Socket_1x04_P2.54mm', out: [-5.6, -12.4, 5.6, 1.6], lab: 'S',
+    body: { k: 'bme', col: 0x6b3fa0 }, verify: 'BME280 4-పిన్ బోర్డ్ సుమారు 11 × 14 mm (6 పిన్నుల 3.3V బోర్డ్ వేరు)' });
+  // GY-521 MPU6050 (21.2 × 16.4 mm, 8 pins along its long edge): lies flat, the chip toward y −.
+  modFp('MOD_MPU6050', { n: 8, name: 'Module_GY-521_MPU6050_Flat_Socket_1x08_P2.54mm', out: [-10.6, -14.8, 10.6, 1.6], lab: 'S',
+    body: { k: 'mpu', col: 0x1f57b8 }, verify: 'GY-521 బోర్డ్ 21.2 × 16.4 mm, 8 పిన్నులు పొడవైన అంచున' });
+  // HC-SR04 ultrasonic (45 × 20 mm, 4 pins at its bottom edge): stands up, the two "eyes" look out toward y −.
+  modFp('MOD_HCSR04', { n: 4, name: 'Module_HC-SR04_Standing_Socket_1x04_P2.54mm', out: [-22.5, -13.6, 22.5, 2.4], lab: 'S', edge: 'N', overhang: 11.5,
+    body: { k: 'sr04', stand: true, H: 20, col: 0x1f57b8 }, verify: 'HC-SR04 బోర్డ్ 45 × 20 mm, కళ్ళు ముందుకి 12 mm బయటికి' });
+  // MAX98357A I2S amplifier (about 17.8 × 19.3 mm, 7 pins at one edge, the speaker screw block at the other): lies flat, toward y −.
+  modFp('MOD_MAX98357', { n: 7, name: 'Module_MAX98357A_I2S_Amp_Flat_Socket_1x07_P2.54mm', out: [-8.9, -17.8, 8.9, 1.6], lab: 'S',
+    body: { k: 'max', col: 0x6b3fa0 }, verify: 'MAX98357A బోర్డ్ సుమారు 17.8 × 19.3 mm, పిన్నులు ఒక అంచున, స్పీకర్ స్క్రూలు ఇంకో అంచున' });
+
   function fp(id) {
     if (FP[id]) return FP[id];
     let m = /^(F?)HDR1x(\d+)$/.exec(id || '');
@@ -264,8 +302,85 @@
       what: 'ఒక లిథియం బ్యాటరీ (18650) ని దాని Type-C నుంచి 1 A తో ఛార్జ్ చేసే రెడీమేడ్ బోర్డ్. B+ B− బ్యాటరీకి, OUT+ OUT− బోర్డ్‌కి: బ్యాటరీ 2.4 V కంటే తగ్గినా, షార్ట్ అయినా OUT కట్ చేస్తుంది.',
       how: '⚠️ OUT+ OUT− ఉన్న (6 ప్యాడ్‌లు, DW01 ప్రొటెక్షన్) మాడ్యూల్ కొనండి. బోర్డ్ GND ఎప్పుడూ OUT− కే, B− కి కాదు. B+ బ్యాటరీ +, B− బ్యాటరీ −: తిరగేస్తే కాలిపోతుంది. ఛార్జింగ్ దాని సొంత Type-C నుంచే (IN+ IN− మామూలుగా వాడం). ఛార్జ్ అవుతున్నప్పుడు వేడెక్కుతుంది.', polar: true },
     vs1838: { sym: 'box', fp: 'IR3', pre: 'U', pins: { 1: 'OUT', 2: 'GND', 3: 'VCC' }, box: { L: ['3', '1', '2'] }, te: 'IR రిసీవర్ VS1838B',
-      what: 'TV రిమోట్ వెలుగుని పట్టుకునే కన్ను. రిమోట్ బటన్‌లు నేర్చుకోవడానికి.', how: '⚠️ గుండ్రటి కన్ను మీ వైపు: చాలా వాటికి ఎడమ నుంచి OUT, GND, VCC. కొన్నిటికి వేరేగా ఉంటుంది: కొన్న భాగం చూడండి.', polar: true }
+      what: 'TV రిమోట్ వెలుగుని పట్టుకునే కన్ను. రిమోట్ బటన్‌లు నేర్చుకోవడానికి.', how: '⚠️ గుండ్రటి కన్ను మీ వైపు: చాలా వాటికి ఎడమ నుంచి OUT, GND, VCC. కొన్నిటికి వేరేగా ఉంటుంది: కొన్న భాగం చూడండి.', polar: true },
+
+    // ---- 26 Nov: 📚 the module library. plug: the module sits in a socket on this board; wire: it stays beside the board and jumper
+    // wires (or its own cable) join its pins to a male header here. mod: the volts it wants, the mA it takes (for ⚡), out5: pins that
+    // give 5 V out when it runs on 5 V (an ESP32 pin must not get them directly). vars: the pin orders sellers' boards come in.
+    hc05: { sym: 'box', fp: 'MOD_HC05', pre: 'U', kind: 'plug', pins: { 1: 'EN', 2: 'VCC', 3: 'GND', 4: 'TXD', 5: 'RXD', 6: 'STATE' }, box: { L: ['4', '5', '6', '1'], T: ['2'], B: ['3'] },
+      te: 'HC-05 బ్లూటూత్ మాడ్యూల్ (సీరియల్)', mod: { v: [3.6, 6], ma: 40, te: 'HC-05 బ్లూటూత్' },
+      what: 'ఫోన్ నుంచి బ్లూటూత్‌తో అక్షరాలు (ఆదేశాలు) పంపడానికి / తీసుకోవడానికి. ESP32 కి సొంత బ్లూటూత్ ఉంది: ఇది సాధారణంగా Arduino లాంటి బోర్డ్‌లకి. జత కలిపే PIN సాధారణంగా 1234.',
+      how: '⚠️ VCC కి 5 V (3.6–6 V), కానీ దాని TXD / RXD 3.3 V వి. TXD → మైక్రోకంట్రోలర్ RX, RXD ← మైక్రోకంట్రోలర్ TX (అడ్డంగా). 5 V బోర్డ్ TX నుంచి RXD కి 1k + 2k డివైడర్ పెట్టాలి (ESP32 అయితే అక్కర్లేదు). STATE జత కలిస్తే HIGH.', polar: true },
+    oled: { sym: 'box', fp: 'MOD_OLED096', pre: 'U', kind: 'plug', pins: { 1: 'GND', 2: 'VCC', 3: 'SCL', 4: 'SDA' }, box: { L: ['3', '4'], T: ['2'], B: ['1'] },
+      vars: [{ te: 'GND · VCC · SCL · SDA (ఎక్కువగా దొరికేది)', pins: { 1: 'GND', 2: 'VCC', 3: 'SCL', 4: 'SDA' } },
+        { te: 'VCC · GND · SCL · SDA (కొన్ని బోర్డ్‌లు, SH1106)', pins: { 1: 'VCC', 2: 'GND', 3: 'SCL', 4: 'SDA' }, box: { L: ['3', '4'], T: ['1'], B: ['2'] } }],
+      te: 'OLED స్క్రీన్ 0.96" (I2C, 4 పిన్)', mod: { v: [3.3, 5.5], ma: 20, te: 'OLED స్క్రీన్' },
+      what: 'అక్షరాలు, అంకెలు, చిన్న బొమ్మలు చూపించే చిన్న స్క్రీన్ (128 × 64). రెండు వైర్ల I2C (SCL, SDA) తో మాట్లాడుతుంది; చిరునామా సాధారణంగా 0x3C.',
+      how: '⚠️ రెండు రకాల బోర్డ్‌లు ఉన్నాయి: కొన్నిటికి GND మొదట, కొన్నిటికి VCC మొదట. తిరగేస్తే స్క్రీన్ కాలిపోతుంది. కొన్న స్క్రీన్ మీది పేర్లు చూసి, అవసరమైతే కింద 🔁 పిన్ వరుస మార్చండి. ESP32 కి SDA = GPIO21, SCL = GPIO22.', polar: true },
+    dht11: { sym: 'box', fp: 'MOD_DHT', pre: 'U', kind: 'plug', pins: { 1: 'VCC', 2: 'DATA', 3: 'GND' }, box: { L: ['2'], T: ['1'], B: ['3'] },
+      vars: [{ te: '+ · OUT · − (VCC, DATA, GND)', pins: { 1: 'VCC', 2: 'DATA', 3: 'GND' } }, { te: 'S · + · − (DATA, VCC, GND)', pins: { 1: 'DATA', 2: 'VCC', 3: 'GND' }, box: { L: ['1'], T: ['2'], B: ['3'] } }],
+      te: 'DHT11 / DHT22 మాడ్యూల్ (ఉష్ణోగ్రత, తేమ)', mod: { v: [3.3, 5.5], ma: 1.5, te: 'DHT సెన్సార్' },
+      what: 'గదిలో ఉష్ణోగ్రత (°C), గాలి తేమ (%) చెప్పే సెన్సార్. DHT11 నీలం (చౌక), DHT22 తెలుపు (ఎక్కువ ఖచ్చితం). ఒక్క DATA వైరుతో మాట్లాడుతుంది.',
+      how: '⚠️ మాడ్యూల్‌లను బట్టి పిన్ వరుస మారుతుంది ("+ OUT −" లేదా "S + −"). కొన్నదాని మీది గుర్తులు చూసి, అవసరమైతే 🔁 పిన్ వరుస మార్చండి. మాడ్యూల్ మీదే 10k రెసిస్టర్ ఉంటుంది: బయట అక్కర్లేదు. రెండు సెకన్లకి ఒకసారే చదవాలి.', polar: true },
+    ds3231: { sym: 'box', fp: 'MOD_DS3231', pre: 'U', kind: 'plug', pins: { 1: '32K', 2: 'SQW', 3: 'SCL', 4: 'SDA', 5: 'VCC', 6: 'GND' }, box: { L: ['3', '4', '2', '1'], T: ['5'], B: ['6'] },
+      te: 'DS3231 గడియారం మాడ్యూల్ (RTC)', mod: { v: [3.3, 5.5], ma: 1, te: 'DS3231 గడియారం' },
+      what: 'కరెంట్ పోయినా సమయం, తేదీ గుర్తుంచుకునే గడియారం (వెనక చిన్న బటన్ బ్యాటరీ). నీళ్ళు పోసే టైమ్, అలారం లాంటి వాటికి. I2C (SCL, SDA), చిరునామా 0x68.',
+      how: '⚠️ ZS-042 బోర్డ్ బ్యాటరీని ఛార్జ్ చేయడానికి చూస్తుంది: మామూలు CR2032 (ఛార్జ్ కానిది) వేస్తే 3.3 V మీద నడపండి (లేదా LIR2032 వాడండి). 32K, SQW మామూలుగా వాడం.', polar: true },
+    bme280: { sym: 'box', fp: 'MOD_BME280', pre: 'U', kind: 'plug', pins: { 1: 'VIN', 2: 'GND', 3: 'SCL', 4: 'SDA' }, box: { L: ['3', '4'], T: ['1'], B: ['2'] },
+      te: 'BME280 / BMP280 సెన్సార్ (4 పిన్, I2C)', mod: { v: [3.3, 3.6], ma: 1, te: 'BME280 సెన్సార్', why: 'BME280 కి 3.3 V ఇవ్వడం సురక్షితం (5 V కి కొన్ని బోర్డ్‌లే తట్టుకుంటాయి)' },
+      what: 'ఉష్ణోగ్రత, గాలి ఒత్తిడి (వర్షం వచ్చే సూచన), ఎత్తు చెప్పే చిన్న సెన్సార్. BME280 తేమ కూడా చెప్తుంది, BMP280 చెప్పదు. I2C, చిరునామా 0x76 లేదా 0x77.',
+      how: '⚠️ VIN కి 3.3 V ఇవ్వండి (ESP32 3V3 పిన్ నుంచి). 6 పిన్నుల (CSB, SDO ఉన్న) బోర్డ్ ఇది కాదు: 4 పిన్నుల బోర్డ్ కొనండి.', polar: true },
+    mpu6050: { sym: 'box', fp: 'MOD_MPU6050', pre: 'U', kind: 'plug', pins: { 1: 'VCC', 2: 'GND', 3: 'SCL', 4: 'SDA', 5: 'XDA', 6: 'XCL', 7: 'AD0', 8: 'INT' }, box: { L: ['3', '4', '8', '7', '5', '6'], T: ['1'], B: ['2'] },
+      te: 'MPU6050 మాడ్యూల్ GY-521 (వంపు, కదలిక)', mod: { v: [3.3, 5.0], ma: 4, te: 'MPU6050' },
+      what: 'బోర్డ్ ఎంత వంగిందో, ఎంత వేగంగా తిరిగిందో, కుదుపులు చెప్పే సెన్సార్ (బండి పడిపోవడం, బ్యాలెన్స్ రోబో). I2C, చిరునామా 0x68 (AD0 HIGH అయితే 0x69).',
+      how: 'VCC కి 3.3–5 V (బోర్డ్ మీద సొంత 3.3 V రెగ్యులేటర్ ఉంది). XDA, XCL మామూలుగా వాడం. చిప్ పైకి కనిపించేలా సాకెట్‌లో పెట్టండి; బోర్డ్‌ని కదలకుండా బిగించండి.', polar: true },
+    hcsr04: { sym: 'box', fp: 'MOD_HCSR04', pre: 'U', kind: 'plug', pins: { 1: 'VCC', 2: 'TRIG', 3: 'ECHO', 4: 'GND' }, box: { L: ['2', '3'], T: ['1'], B: ['4'] },
+      te: 'HC-SR04 దూరం కొలిచే సెన్సార్ (అల్ట్రాసోనిక్)', mod: { v: [4.5, 5.5], ma: 15, te: 'HC-SR04', out5: ['ECHO'] },
+      what: 'గబ్బిలంలా శబ్ద తరంగం పంపి, తిరిగి వచ్చే సమయంతో దూరం (2 cm – 4 m) కొలుస్తుంది. ట్యాంక్‌లో నీళ్ళ ఎత్తు, తలుపు దగ్గర ఎవరైనా వచ్చారా.',
+      how: '⚠️ VCC కి 5 V కావాలి, ECHO నుంచి 5 V వస్తుంది: ESP32 కి నేరుగా ఇస్తే పిన్ పాడవుతుంది. ECHO → 1k → ESP32 పిన్, ఆ పిన్ → 2k → GND (డివైడర్). రెండు "కళ్ళు" బోర్డ్ అంచు బయటికి చూసేలా.', polar: true },
+    max98357: { sym: 'box', fp: 'MOD_MAX98357', pre: 'U', kind: 'plug', pins: { 1: 'LRC', 2: 'BCLK', 3: 'DIN', 4: 'GAIN', 5: 'SD', 6: 'GND', 7: 'VIN' }, box: { L: ['1', '2', '3', '5', '4'], T: ['7'], B: ['6'] },
+      te: 'MAX98357A I2S ఆంప్ మాడ్యూల్ (3 W)', mod: { v: [2.5, 5.5], ma: 300, te: 'MAX98357A ఆంప్' },
+      what: 'ESP32 నుంచి డిజిటల్ పాటని (I2S: LRC, BCLK, DIN) నేరుగా స్పీకర్ శబ్దంగా మార్చే ఆంప్. Jarvis స్పీకర్ లాంటి వాటికి. 5 V మీద 4 Ω స్పీకర్‌కి 3 W.',
+      how: '⚠️ స్పీకర్ వైర్లు దాని సొంత + − స్క్రూలకే, ఏదీ GND కి కాదు. పెద్ద శబ్దంలో 0.8 A వరకు: 5 V 2 A సప్లై. GAIN ఖాళీగా వదిలితే 9 dB. SD ఖాళీ = ఆన్.', polar: true },
+    kcxbt003: { sym: 'box', fp: 'HDR1x4', pre: 'J', kind: 'wire', pins: { 1: 'VBAT', 2: 'GND', 3: 'DAC_L', 4: 'DAC_R' }, box: { L: ['3', '4'], T: ['1'], B: ['2'] },
+      te: 'KCX_BT003 బ్లూటూత్ ఆడియో రిసీవర్ కనెక్షన్', mod: { v: [3.3, 5.0], ma: 35, te: 'KCX_BT003 బ్లూటూత్ రిసీవర్', why: 'KCX_BT003 కి 3.3–5.0 V' },
+      what: 'ఫోన్ పాటని బ్లూటూత్‌తో తీసుకుని ఎడమ (DAC_L), కుడి (DAC_R) శబ్దంగా ఇచ్చే చిన్న మాడ్యూల్. పాత AUX స్పీకర్‌కి బ్లూటూత్ ఇవ్వడానికి.',
+      how: '⚠️ ఈ మాడ్యూల్‌కి పిన్నులు ఉండవు, అంచున బంగారు ప్యాడ్‌లు: VBAT, GND, DAC_L, DAC_R ప్యాడ్‌లకి 4 సన్నని వైర్లు టంకం చేసి, వాటిని ఈ హెడర్‌కి కలపండి. ప్యాడ్ పేర్లు మాడ్యూల్ మీద / దాని ఫోటోలో చూసి సరిచూడండి.', polar: true },
+    dfplayer: { sym: 'box', fp: 'HDR1x5', pre: 'J', kind: 'wire', pins: { 1: 'VCC', 2: 'GND', 3: 'RX', 4: 'TX', 5: 'BUSY' }, box: { L: ['3', '4', '5'], T: ['1'], B: ['2'] },
+      te: 'DFPlayer Mini MP3 మాడ్యూల్ కనెక్షన్', mod: { v: [3.2, 5.0], ma: 80, te: 'DFPlayer MP3' },
+      what: 'మెమరీ కార్డ్ (micro SD) లోని MP3 పాటలు, మాటలు ప్లే చేసే మాడ్యూల్. చిన్న స్పీకర్ (3 W లోపు) నేరుగా దాని SPK1, SPK2 కి. ESP32 RX / TX తో ఆదేశాలు.',
+      how: '⚠️ RX ముందు 1k రెసిస్టర్ పెట్టండి (లేకపోతే "కీ" శబ్దం). TX → ESP32 RX, RX ← ESP32 TX. స్పీకర్ వైర్లు మాడ్యూల్ SPK1, SPK2 కే, GND కి కాదు. కార్డ్‌లో పాటలు 0001.mp3, 0002.mp3 లా పేరు పెట్టండి. (మాడ్యూల్‌ని బోర్డ్ మీదే గుచ్చే సాకెట్ ఇంకా పెట్టలేదు: వరుసల దూరం సరిగ్గా తెలిసే వరకు వైర్లతో.)', polar: true },
+    lcd1602: { sym: 'box', fp: 'HDR1x4', pre: 'J', kind: 'wire', pins: { 1: 'GND', 2: 'VCC', 3: 'SDA', 4: 'SCL' }, box: { L: ['3', '4'], T: ['2'], B: ['1'] },
+      te: '16×2 LCD స్క్రీన్ (I2C బోర్డ్‌తో) కనెక్షన్', mod: { v: [4.5, 5.5], ma: 25, te: 'LCD 16×2' },
+      what: 'రెండు లైన్లు, ఒక్కో లైన్‌కి 16 అక్షరాలు చూపించే నీలం / ఆకుపచ్చ స్క్రీన్. వెనక చిన్న I2C బోర్డ్ (PCF8574) ఉంటే 4 వైర్లే. చిరునామా 0x27 లేదా 0x3F.',
+      how: '⚠️ VCC కి 5 V. అక్షరాలు కనిపించకపోతే వెనక నీలం డబ్బాలో స్క్రూ (కాంట్రాస్ట్) తిప్పండి. ESP32 కి SDA = GPIO21, SCL = GPIO22.', polar: true },
+    relay: { sym: 'box', fp: 'HDR1x3', pre: 'J', kind: 'wire', pins: { 1: 'VCC', 2: 'GND', 3: 'IN' }, box: { L: ['3'], T: ['1'], B: ['2'] },
+      te: 'రిలే మాడ్యూల్ (1 ఛానెల్, 5 V) కనెక్షన్', mod: { v: [4.5, 5.5], ma: 75, te: 'రిలే మాడ్యూల్' },
+      what: 'చిన్న సిగ్నల్‌తో లోపల ఒక స్విచ్ "టక్" అని మూసే మాడ్యూల్. ఈ స్టూడియోలో దాని కాంటాక్ట్‌లు (COM, NO, NC) తక్కువ వోల్టేజ్ DC (24 V వరకు) పంప్ / వాల్వ్ / లైట్ కి మాత్రమే.',
+      how: '⚠️ ఇంటి 230 V కరెంట్ ఈ బోర్డ్‌కి / రిలేకి కలపకండి: అది లైసెన్స్ ఉన్న ఎలక్ట్రీషియన్ పని. చాలా మాడ్యూల్స్ IN = LOW అయితే ఆన్ అవుతాయి (కొన్ని HIGH కి): కొన్నదాని మీద చూడండి. మాడ్యూల్ మీది పేర్లు (VCC / DC+, GND / DC−, IN / S) చూసి వైర్లు కలపండి.', polar: true },
+    soilcap: { sym: 'box', fp: 'HDR1x3', pre: 'J', kind: 'wire', pins: { 1: 'GND', 2: 'VCC', 3: 'AOUT' }, box: { L: ['3'], T: ['2'], B: ['1'] },
+      te: 'మట్టి తేమ సెన్సార్ (capacitive v1.2) కనెక్షన్', mod: { v: [3.3, 5.5], ma: 5, te: 'మట్టి తేమ సెన్సార్' },
+      what: 'కుండీ మట్టిలో గుచ్చే నల్లటి పట్టీ: మట్టి ఎంత తడిగా ఉందో AOUT వోల్టేజ్‌గా చెప్తుంది (పొడి = ఎక్కువ, తడి = తక్కువ). తుప్పు పట్టదు.',
+      how: 'దానితో వచ్చే 3 వైర్ల కేబుల్ (GND, VCC, AOUT) ఈ హెడర్‌కి. AOUT → ESP32 ADC పిన్ (GPIO32–39). తెల్ల గీత పైన ఉన్న భాగం మట్టిలోకి వెళ్ళకూడదు (పైన ఎలక్ట్రానిక్స్ ఉంటాయి).', polar: true },
+    pir: { sym: 'box', fp: 'HDR1x3', pre: 'J', kind: 'wire', pins: { 1: 'VCC', 2: 'OUT', 3: 'GND' }, box: { L: ['2'], T: ['1'], B: ['3'] },
+      te: 'PIR కదలిక సెన్సార్ HC-SR501 కనెక్షన్', mod: { v: [4.5, 12], ma: 1, te: 'PIR సెన్సార్' },
+      what: 'మనిషి / జంతువు వేడి కదిలితే OUT HIGH (3.3 V) చేసే తెల్ల గుమ్మటం సెన్సార్ (7 m వరకు). లైట్ ఆటోమేటిక్‌గా వెలగడానికి, ఎవరైనా వచ్చారని చెప్పడానికి.',
+      how: 'VCC కి 5 V. OUT 3.3 V: ESP32 కి నేరుగా సరే. వెనక రెండు ఆరెంజ్ స్క్రూలు: ఒకటి దూరం, ఒకటి ఎంత సేపు ఆన్. ఆన్ చేశాక 1 నిమిషం సెటిల్ అవుతుంది. పిన్ పేర్లు గుమ్మటం తీసి చూడండి.', polar: true },
+    rc522: { sym: 'box', fp: 'HDR1x8', pre: 'J', kind: 'wire', pins: { 1: 'SDA', 2: 'SCK', 3: 'MOSI', 4: 'MISO', 5: 'IRQ', 6: 'GND', 7: 'RST', 8: '3V3' }, box: { L: ['1', '2', '3', '4', '7', '5'], T: ['8'], B: ['6'] },
+      te: 'RC522 RFID కార్డ్ రీడర్ కనెక్షన్', mod: { v: [3.0, 3.6], ma: 26, te: 'RC522 RFID', why: 'RC522 3.3 V మీదే: 5 V ఇస్తే కాలిపోతుంది' },
+      what: 'కార్డ్ / కీచైన్ ట్యాగ్ దగ్గర పెడితే దాని నంబర్ చదివే రీడర్ (తాళం లేని తలుపు, హాజరు). SPI (SCK, MOSI, MISO, SDA) తో మాట్లాడుతుంది.',
+      how: '⚠️ 3V3 పిన్‌కి 3.3 V మాత్రమే, 5 V ఎప్పుడూ కాదు. ESP32 కి: SCK GPIO18, MISO GPIO19, MOSI GPIO23, SDA GPIO5, RST GPIO22 (కోడ్‌లో మార్చొచ్చు). IRQ మామూలుగా వాడం.', polar: true },
+    servo: { sym: 'box', fp: 'HDR1x3', pre: 'J', kind: 'wire', pins: { 1: 'GND', 2: '+5V', 3: 'SIG' }, box: { L: ['3'], T: ['2'], B: ['1'] },
+      te: 'సర్వో మోటార్ SG90 కనెక్షన్', mod: { v: [4.8, 6.0], ma: 250, te: 'SG90 సర్వో' },
+      what: 'చెప్పిన కోణానికి (0°–180°) తిరిగి ఆగే చిన్న మోటార్: తలుపు గొళ్ళెం, కెమెరా తిప్పడం, నీళ్ళ వాల్వ్. SIG పిన్‌కి PWM పల్స్.',
+      how: '⚠️ సర్వో ప్లగ్ ఇలాగే గుచ్చండి: గోధుమ (GND) పిన్ 1 వైపు, ఎరుపు (+5V) మధ్య, నారింజ (SIG) చివర. కదిలేటప్పుడు 0.7 A వరకు తీసుకుంటుంది: ESP32 3V3 / USB నుంచి కాదు, సొంత 5 V 1 A సప్లై.', polar: true },
+    ws2812: { sym: 'box', fp: 'HDR1x3', pre: 'J', kind: 'wire', pins: { 1: '5V', 2: 'DIN', 3: 'GND' }, box: { L: ['2'], T: ['1'], B: ['3'] },
+      te: 'WS2812B RGB LED పట్టీ / రింగ్ కనెక్షన్', mod: { v: [4.5, 5.5], ma: 300, te: 'WS2812B LED లు' },
+      what: 'ప్రతి LED కి సొంత చిప్: ఒక్క DIN వైరుతో ఏ LED ఏ రంగో చెప్పొచ్చు (Jarvis రింగ్ లాంటి వెలుగు). ఒక్కో LED పూర్తి తెలుపులో 60 mA.',
+      how: '⚠️ పట్టీ మీది బాణం దిశలో DIN వైపు నుంచే కలపండి. DIN ముందు 330Ω, 5V–GND మధ్య 1000 µF కెపాసిటర్ మంచిది. 8 LED లు దాటితే సొంత 5 V 2 A సప్లై; ESP32 3.3 V డేటా చాలా పట్టీలకి సరిపోతుంది.', polar: true }
   };
+  // (every module's first order is its own pins; a part saved with var = i uses vars[i])
+  Object.keys(LIB).forEach((k) => { const L = LIB[k]; if (L.vars && !L.pins) L.pins = L.vars[0].pins; });
 
   /** Resistor colour bands of a value ("4.7k" → yellow violet red gold). */
   const BAND = ['#111', '#7b3f00', '#d0021b', '#f5a623', '#f8e71c', '#2e9e44', '#2f6fd6', '#8b4fd6', '#8c8c8c', '#f4f4f4'];
@@ -292,14 +407,42 @@
   function pinsOf(part) {
     const lib = LIB[part.lib];
     if (part.pins) return part.pins;
+    if (lib && lib.vars && part.var > 0 && lib.vars[part.var]) return lib.vars[part.var].pins;
     if (lib && lib.pins) return lib.pins;
     const f = fp(part.fp || (lib && lib.fp)), out = {};
     if (f) f.pads.forEach((p) => { out[p.n] = p.n; });
     return out;
   }
   function fpOf(part) { const lib = LIB[part.lib]; return fp(part.fp || (lib && lib.fp)); }
+  /** The 📚 library's modules (plug ones first), for lists. */
+  const MODULES = Object.keys(LIB).filter((k) => LIB[k].mod).sort((a, b) => (LIB[a].kind === 'plug' ? 0 : 1) - (LIB[b].kind === 'plug' ? 0 : 1));
 
-  const api = { FP, LIB, fp, fpOf, pinsOf, bands, ohms, BAND_TE };
+  /**
+   * Another pin order for a module (his module's board is the other kind): the joins move with the pin NAMES (VCC stays on VCC),
+   * so the pads under them change. Returns the nets touched, or null when nothing changes. The caller re-routes.
+   */
+  function setVariant(D, part, i) {
+    const lib = LIB[part.lib];
+    if (!lib || !lib.vars || !lib.vars[i] || (part.var | 0) === i || part.pins) return null;
+    const from = pinsOf(part), to = lib.vars[i].pins, padOfName = {};
+    Object.keys(to).forEach((k) => { padOfName[to[k]] = k; });
+    const touched = new Set();
+    D.nets.forEach((n) => {
+      n.p = n.p.map((p) => {
+        const [ref, k] = p.split('.');
+        if (ref !== part.ref) return p;
+        const nk = padOfName[from[k]];
+        if (!nk || nk === k) return p;
+        touched.add(n.n);
+        return ref + '.' + nk;
+      });
+    });
+    part.var = i;
+    if (!i) delete part.var;
+    return touched;
+  }
+
+  const api = { FP, LIB, MODULES, fp, fpOf, pinsOf, setVariant, bands, ohms, BAND_TE };
   root.PcbParts = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : globalThis);

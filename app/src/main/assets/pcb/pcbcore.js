@@ -680,10 +680,13 @@
   function area(pt) { const c = courtOf(pt, 0, 0, 0); return (c[2] - c[0]) * (c[3] - c[1]); }
 
   /** Where a connector's pin names go: away from the board edge it sits on; a header's toward the board's middle. */
-  const LABELED = { term2: 5.0, hdr: 1.9, fhdr: 1.9, buck: 1.9 };
+  const LABELED = { term2: 5.0, hdr: 1.9, fhdr: 1.9, buck: 1.9, pam8403: 1.9, tp4056: 1.9 };
+  /** (26 Nov) every ready module from the 📚 library prints its pin names too. */
+  const labelOff = (pt) => (LABELED[pt.lib] != null ? LABELED[pt.lib] : P.LIB[pt.lib] && P.LIB[pt.lib].mod ? 1.9 : null);
   function labelSide(pt, x, y, r, B) {
     const f = P.fpOf(pt), face = f && f.edge ? sideAfter(f.edge, r) : null;
     if (face) return { W: 'E', E: 'W', N: 'S', S: 'N' }[face];
+    if (f && f.lab) return sideAfter(f.lab, r);
     const pads = partPads(pt, x, y, r), xs = pads.map((p) => p.x), ys = pads.map((p) => p.y);
     const tall = Math.max.apply(null, ys) - Math.min.apply(null, ys) >= Math.max.apply(null, xs) - Math.min.apply(null, xs);
     return tall ? (x > B.w / 2 ? 'W' : 'E') : (y > B.h / 2 ? 'N' : 'S');
@@ -696,10 +699,10 @@
   }
   /** The pin names' box on the board ({side, off, b: [x0, y0, x1, y1]}), or null when the part has no names to print. */
   function labelBox(pt, x, y, r, B) {
-    if (LABELED[pt.lib] == null) return null;
+    if (labelOff(pt) == null) return null;
     const names = P.pinsOf(pt);
     if (!Object.keys(names).some((k) => names[k] !== k)) return null;
-    const side = labelSide(pt, x, y, r, B), off = LABELED[pt.lib], vert = upright(pt, side);
+    const side = labelSide(pt, x, y, r, B), off = labelOff(pt), vert = upright(pt, side);
     let b = null;
     partPads(pt, x, y, r).forEach((p) => {
       const nm = names[p.n];
@@ -1060,6 +1063,7 @@
       if (pt.color) o.color = str(pt.color, 10);
       if (pt.lx != null) { o.lx = num(pt.lx, -60, 60, 0); o.ly = num(pt.ly, -60, 60, 0); o.lr = [0, 90, 180, 270].indexOf(pt.lr) >= 0 ? pt.lr : 0; }
       if (pt.noref) o.noref = true;
+      if (pt.var > 0 && pt.var < 6 && P.LIB[pt.lib].vars && P.LIB[pt.lib].vars[pt.var | 0]) o.var = pt.var | 0;
       if (['N', 'E', 'S', 'W'].indexOf(pt.pl) >= 0) { o.pl = pt.pl; o.plo = num(pt.plo, 0.5, 12, 1.9); }
       if (o.ref && !out.parts.some((q) => q.ref === o.ref)) out.parts.push(o);
     });

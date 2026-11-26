@@ -220,6 +220,7 @@
     const s = clear($('sheet'));
     s.appendChild(el('div', 'grip'));
     build(s);
+    s.scrollTop = 0; // (a new sheet starts at its top, not where the last one was left)
     s.classList.add('on');
   }
   function closeSheet() { $('sheet').classList.remove('on'); }
@@ -249,6 +250,7 @@
       h.appendChild(cur);
     }
     learnCard(h);
+    modLibCard(h);
     h.appendChild(el('h3', null, '📚 రెడీ బోర్డ్‌లు (₹0, మీ కాపీగా తెరుచుకుంటాయి)'));
     J.PROJECTS.forEach((pr) => {
       const c = el('div', 'card tap proj');
@@ -694,7 +696,7 @@
         L(-25, 0, -3, 0); L(-3, -13, -3, 13); L(4, -7, 4, 7); L(4, 0, 25, 0); L(-14, -11, -8, -11); L(-11, -14, -11, -8);
         break;
       default: {
-        const bx = lib.box || { L: Object.keys(names) };
+        const bx = (lib.vars && pt.var > 0 && lib.vars[pt.var] && lib.vars[pt.var].box) || lib.box || { L: Object.keys(names) };
         const Ls = bx.L || [], Rs = bx.R || [], Ts = bx.T || [], Bs = bx.B || [];
         const longest = (arr) => arr.reduce((m, k) => Math.max(m, String(names[k] || k).length), 0);
         const mt = Ts.length ? 22 : 10, mb = Bs.length ? 22 : 10;
@@ -1104,10 +1106,11 @@
 
   /** Modules that plug into a header (what the AI named): buy them first and check their pins against the board. */
   function moduleLines() {
-    const mods = D ? D.parts.filter((p) => (p.lib === 'fhdr' || p.lib === 'hdr') && p.note) : [];
+    const mods = D ? D.parts.filter((p) => ((p.lib === 'fhdr' || p.lib === 'hdr') && p.note) || (P.LIB[p.lib] && P.LIB[p.lib].mod)) : [];
     if (!mods.length) return [];
     return ['👉 🔌 మాడ్యూల్స్ ముందు కొని, వాటి మీది పిన్ పేర్లు, వాటి వరుస, అవి కోరే వోల్టేజ్ బోర్డ్ మీది పేర్లతో సరిచూడండి (తేడా ఉంటే PCB ఆర్డర్ ముందే ✏️ మార్పు):']
-      .concat(mods.map((p) => '🔌 ' + p.ref + ' (' + Object.keys(P.pinsOf(p)).map((k) => P.pinsOf(p)[k]).join(' · ') + '): ' + p.note));
+      .concat(mods.map((p) => '🔌 ' + p.ref + ' (' + Object.keys(P.pinsOf(p)).map((k) => P.pinsOf(p)[k]).join(' · ') + '): ' + (p.note || P.LIB[p.lib].te) +
+        (P.LIB[p.lib] && P.LIB[p.lib].vars && !p.pins ? ' (వేరే వరుస అయితే ఆ భాగం షీట్‌లో 🔁)' : '')));
   }
   /** What a part is, in simple Telugu: what it does, what it does on this board, how to put it in, its pins. */
   function partSheet(pt) {
@@ -1128,6 +1131,7 @@
       if (lib.what) s.appendChild(el('div', 'step', '🔎 ' + lib.what));
       if (pt.note) s.appendChild(el('div', 'step', '📌 ఈ బోర్డ్‌లో: ' + pt.note));
       if (lib.how) s.appendChild(el('div', 'step', '🔧 ' + lib.how));
+      if (lib.mod) s.appendChild(el('div', 'step', modLine(lib)));
       if (f && f.verify) s.appendChild(el('div', 'step warnc', '📏 కొనే ముందు / ఆర్డర్ ముందు: ' + f.verify + '.'));
       s.appendChild(el('h3', null, 'పిన్నులు'));
       const tb = el('table');
@@ -1139,9 +1143,96 @@
         tb.appendChild(tr);
       });
       s.appendChild(tb);
+      if (lib.vars && lib.vars.length > 1 && !pt.pins) varPicker(s, pt);
       if (f) s.appendChild(el('div', 'muted', 'బోర్డ్ మీద ఆకారం (ఫుట్‌ప్రింట్): ' + f.name));
       const r = el('div', 'row');
       r.appendChild(btn('🧩 PCB లో చూపించు', '', () => { pv.sel = pt.ref; showTab('pcb'); }));
+      if (lib.mod && window.PcbBuy) r.appendChild(btn('🛒 ' + shopName(), '', () => post({ t: 'shopsearch', shop, q: window.PcbBuy.query(pt) })));
+      r.appendChild(btn('మూసేయి', '', closeSheet));
+      s.appendChild(r);
+    });
+  }
+
+  // ================================================================ 📚 the module library (26 Nov, "2. మాడ్యూల్ లైబ్రరీ"): ₹0, our own data
+
+  const shopName = () => ((window.PcbBuy && window.PcbBuy.SHOPS.find((q) => q[0] === shop)) || ['', 'షాప్'])[1];
+  /** "⚡ 3.6–6 V · about 40 mA · 🧩 plugs into a socket on the board". */
+  function modLine(lib) {
+    const m = lib.mod;
+    return '⚡ కావాల్సిన వోల్టేజ్: ' + m.v[0] + '–' + m.v[1] + ' V · సుమారు ' + m.ma + ' mA · ' +
+      (lib.kind === 'plug' ? '🧩 బోర్డ్ మీది సాకెట్‌లో గుచ్చేది' : '🔌 బోర్డ్ పక్కన, జంపర్ వైర్లతో కలిపేది') + (m.v[1] < 4 ? ' · ⚠️ 5 V ఇవ్వకండి' : '');
+  }
+  /** His module's board is the other kind: pick its pin order; the joins follow the names (VCC stays VCC), the tracks are laid again. */
+  function varPicker(s, pt) {
+    const lib = P.LIB[pt.lib], cur = pt.var | 0;
+    s.appendChild(el('h3', null, '🔁 పిన్ వరుస (మీ మాడ్యూల్ మీది పేర్లు చూసి ఎంచుకోండి)'));
+    s.appendChild(el('div', 'muted', 'ఎడమ నుంచి కుడికి, మాడ్యూల్ మీది పేర్లు చదివినట్టు. మార్చితే కలుపులు పేర్లతో పాటు జరుగుతాయి, దారులు మళ్ళీ వేస్తాను (₹0). ↩️ తో వెనక్కి.'));
+    lib.vars.forEach((v, i) => {
+      const b = btn((i === cur ? '✓ ' : '') + v.te, i === cur ? 'on' : '', () => {
+        if (i === cur) return;
+        snap();
+        const t = P.setVariant(D, pt, i);
+        if (!t) return;
+        D.parts.forEach((q) => { if (q.ref === pt.ref) delete q.pl; });
+        const lb = C.labelBox(pt, pt.x, pt.y, pt.rot || 0, D.board);
+        if (lb) { pt.pl = lb.side; pt.plo = lb.off; }
+        afterMove(t);
+        toast('🔁 ' + pt.ref + ': ' + v.te + '. బోర్డ్ మీది పేర్లు, కలుపులు మారాయి' + (autoRoute ? '; దారులు మళ్ళీ వేస్తున్నాను.' : '; ⚡ రూట్ నొక్కండి.'), 4000);
+        partSheet(pt);
+      });
+      b.style.display = 'block'; b.style.width = '100%'; b.style.margin = '4px 0';
+      s.appendChild(b);
+    });
+  }
+  /** The card on 📚 బోర్డ్‌లు. */
+  function modLibCard(h) {
+    const c = el('div', 'card tap');
+    c.appendChild(el('div', null, '📚 మాడ్యూల్ లైబ్రరీ: ' + P.MODULES.length + ' రెడీ మాడ్యూల్స్, అసలు పిన్ వరుసతో'));
+    c.appendChild(el('div', 'muted', 'బ్లూటూత్, స్క్రీన్లు, సెన్సార్లు, రిలే, సర్వో… ఒక్కోదానికి పిన్ పేర్లు, వోల్టేజ్, జాగ్రత్తలు. బోర్డ్‌లో కావాలంటే ✏️ మార్పులో పేరుతో చెప్పండి.'));
+    c.addEventListener('click', modList);
+    h.appendChild(c);
+  }
+  function modList() {
+    sheet((s) => {
+      s.appendChild(el('h2', null, '📚 మాడ్యూల్ లైబ్రరీ'));
+      s.appendChild(el('div', 'muted', 'ఒకటి నొక్కితే దాని వివరాలు. ఇవి మేము గీసిన పిన్ వరుసలు: కొన్న మాడ్యూల్ మీది పేర్లతో ఎప్పుడూ ఒకసారి సరిచూడండి.'));
+      [['plug', '🧩 బోర్డ్ మీది సాకెట్‌లో గుచ్చేవి'], ['wire', '🔌 వైర్లతో కలిపేవి']].forEach(([kind, title]) => {
+        s.appendChild(el('h3', null, title));
+        P.MODULES.filter((k) => P.LIB[k].kind === kind).forEach((k) => {
+          const L = P.LIB[k], it = el('div', 'item tap');
+          const x = el('div', 'x');
+          x.appendChild(el('div', null, L.te));
+          x.appendChild(el('div', 'f', Object.keys(L.pins).map((q) => L.pins[q]).join(' · ') + '  ·  ' + L.mod.v[0] + '–' + L.mod.v[1] + ' V' + (L.vars ? '  ·  🔁 ' + L.vars.length + ' వరుసలు' : '')));
+          it.appendChild(x);
+          it.addEventListener('click', () => modInfo(k));
+          s.appendChild(it);
+        });
+      });
+      const r = el('div', 'row');
+      r.appendChild(btn('మూసేయి', '', closeSheet));
+      s.appendChild(r);
+    });
+  }
+  /** One module from the library (no board needed). */
+  function modInfo(k) {
+    const L = P.LIB[k], f = P.fp(L.fp);
+    sheet((s) => {
+      s.appendChild(el('h2', null, '📚 ' + L.te));
+      s.appendChild(el('div', 'step', '🔎 ' + L.what));
+      s.appendChild(el('div', 'step', '🔧 ' + L.how));
+      s.appendChild(el('div', 'step', modLine(L)));
+      if (f && f.verify) s.appendChild(el('div', 'step warnc', '📏 ' + f.verify + '.'));
+      (L.vars || [{ te: '', pins: L.pins }]).forEach((v) => {
+        s.appendChild(el('h3', null, 'పిన్నులు' + (v.te ? ': ' + v.te : '')));
+        const tb = el('table'), hr = el('tr');
+        ['పిన్', 'పేరు'].forEach((t) => hr.appendChild(el('th', null, t))); tb.appendChild(hr);
+        Object.keys(v.pins).forEach((q) => { const tr = el('tr'); tr.appendChild(el('td', null, q)); tr.appendChild(el('td', null, v.pins[q])); tb.appendChild(tr); });
+        s.appendChild(tb);
+      });
+      const r = el('div', 'row');
+      if (window.PcbBuy) r.appendChild(btn('🛒 ' + shopName(), '', () => post({ t: 'shopsearch', shop, q: window.PcbBuy.query({ lib: k, val: '' }) })));
+      if (D) r.appendChild(btn('✏️ నా బోర్డ్‌లో పెట్టు', 'main', () => editSheet(L.te + ' (' + k + ') కలుపు: ')));
+      r.appendChild(btn('⬅️ లిస్ట్', '', modList));
       r.appendChild(btn('మూసేయి', '', closeSheet));
       s.appendChild(r);
     });
@@ -2871,7 +2962,7 @@
     then();
   }
 
-  window.__pcb = { open, get D() { return D; }, get check() { return check; }, showTab, reroute, changed, onJarvis, texture, partSheet: (ref) => partSheet(D && D.parts.find((q) => q.ref === ref)), pv, sv,
+  window.__pcb = { open, get D() { return D; }, get check() { return check; }, showTab, reroute, changed, onJarvis, texture, partSheet: (ref) => partSheet(D && D.parts.find((q) => q.ref === ref)), modList, modInfo, pv, sv,
     ai, idea, editSheet, heard, lay: () => schLayout(), sim, simv, simBuild, simReport, simControls, simSupply, simPart, verSheet, verSnap, verDiff, kicadFiles: () => KI.files(D, schLayout()),
     sg, bx, rs, xrS, lv, startGuide, stopGuide, guideGo, guideWords, startBox, stopBox, boxTaller, boxZip, openReal, closeReal, drawReal, startAr, stopAr, xrEnter, xrLeave, xrSaid,
     learnTab, learnGo, get learnSt() { return learnSt; }, set scr(v) { scr = v; }, get v3d() { return v3d; } };

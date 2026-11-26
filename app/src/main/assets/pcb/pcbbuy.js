@@ -104,6 +104,24 @@
       case 'usba': return 'USB A female PCB 90 degree';
       case 'esp32': return 'ESP32 30 pin development board';
       case 'vs1838': return 'VS1838B IR receiver';
+      // 📚 modules (26 Nov): search words only (no shop pages looked up for them yet)
+      case 'hc05': return 'HC-05 Bluetooth module 6 pin';
+      case 'oled': return '0.96 inch OLED I2C 4 pin SSD1306';
+      case 'dht11': return /22/.test(v) ? 'DHT22 AM2302 module' : 'DHT11 temperature humidity sensor module';
+      case 'ds3231': return 'DS3231 RTC module ZS-042';
+      case 'bme280': return 'BME280 sensor module 4 pin I2C';
+      case 'mpu6050': return 'MPU6050 GY-521 module';
+      case 'hcsr04': return 'HC-SR04 ultrasonic sensor';
+      case 'max98357': return 'MAX98357A I2S amplifier module';
+      case 'kcxbt003': return 'KCX_BT003 Bluetooth audio receiver module';
+      case 'dfplayer': return 'DFPlayer Mini MP3 module';
+      case 'lcd1602': return '16x2 LCD with I2C module';
+      case 'relay': return '5V 1 channel relay module';
+      case 'soilcap': return 'capacitive soil moisture sensor v1.2';
+      case 'pir': return 'HC-SR501 PIR motion sensor';
+      case 'rc522': return 'RC522 RFID module';
+      case 'servo': return 'SG90 servo motor';
+      case 'ws2812': return 'WS2812B LED ring ' + (/\d+/.test(v) ? (/(\d+)/.exec(v)[1]) + ' LED' : '8 LED');
       default: return v;
     }
   }
