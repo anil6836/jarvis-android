@@ -373,6 +373,85 @@
     return { tracks, vias, failed };
   }
 
+  /**
+   * ✍️ (27 Nov, "6.") a track he draws with his finger: one net, one layer. Everything else on the board (other nets' pads, tracks,
+   * vias, holes, the edge) is a wall; the line goes from his start to where his finger is, walking around the walls, in 45° steps.
+   * → { route(x0, y0, x1, y1) → {pts: [[x, y]…], reached} , w } (reached: it got all the way to his finger).
+   */
+  function fingerRouter(D, M, netName, layer) {
+    M = M || model(D);
+    const B = D.board, R = rules(D), g = 0.25, ni = M.nets.findIndex((n) => n.n === netName);
+    if (ni < 0) return null;
+    const v = ni + 1, L = layer === 'B' ? 1 : 0, net = M.nets[ni], w = netWidth(D, net), hw = w / 2;
+    const nx = Math.floor(B.w / g) + 1, ny = Math.floor(B.h / g) + 1, N = nx * ny, own = new Int32Array(N), infl = g * 0.71;
+    copper(D, M).forEach((c) => {
+      if (c.L.indexOf(L) < 0) return;
+      const o = c.o, bb = bbox(o), e = infl;
+      const i0 = Math.max(0, Math.floor((bb[0] - e) / g)), i1 = Math.min(nx - 1, Math.ceil((bb[2] + e) / g));
+      const j0 = Math.max(0, Math.floor((bb[1] - e) / g)), j1 = Math.min(ny - 1, Math.ceil((bb[3] + e) / g));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (dist(o, i * g, j * g) <= e) { const k = j * nx + i; if (own[k] === 0 || c.id !== v) own[k] = c.id === v ? v : (c.id || -1); }
+    });
+    holes(D).forEach((h) => { const o = { k: 'c', x1: h.x, y1: h.y, x2: h.x, y2: h.y, r: h.keep }, bb = bbox(o);
+      for (let j = Math.max(0, Math.floor(bb[1] / g)); j <= Math.min(ny - 1, Math.ceil(bb[3] / g)); j++) for (let i = Math.max(0, Math.floor(bb[0] / g)); i <= Math.min(nx - 1, Math.ceil(bb[2] / g)); i++) if (dist(o, i * g, j * g) <= infl) own[j * nx + i] = -1; });
+    const offs = disc((hw + R.clr + g) / g), margin = R.edge + hw, pass = new Int8Array(N);
+    const passable = (c) => {
+      if (pass[c]) return pass[c] === 1;
+      const i = c % nx, j = (c - i) / nx;
+      let ok = boardSdf(B, i * g, j * g) <= -margin;
+      for (let k = 0; ok && k < offs.length; k += 2) {
+        const ii = i + offs[k], jj = j + offs[k + 1];
+        if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;
+        const o = own[jj * nx + ii];
+        if (o !== 0 && o !== v) ok = false;
+      }
+      pass[c] = ok ? 1 : 2;
+      return ok;
+    };
+    const cellOf = (x, y) => Math.max(0, Math.min(ny - 1, Math.round(y / g))) * nx + Math.max(0, Math.min(nx - 1, Math.round(x / g)));
+    const gs = new Float32Array(N), came = new Int32Array(N), dirOf = new Int8Array(N), closed = new Uint8Array(N);
+    const DX = [1, 1, 0, -1, -1, -1, 0, 1], DY = [0, 1, 1, 1, 0, -1, -1, -1];
+    function route(x0, y0, x1, y1) {
+      const s0 = cellOf(x0, y0), t = cellOf(x1, y1), ti = t % nx, tj = (t - ti) / nx;
+      gs.fill(Infinity); came.fill(-1); closed.fill(0); dirOf.fill(-1);
+      const h = (c) => { const i = c % nx, j = (c - i) / nx, dx = Math.abs(i - ti), dy = Math.abs(j - tj); return Math.max(dx, dy) + 0.4142 * Math.min(dx, dy); };
+      const heap = new Heap();
+      gs[s0] = 0; heap.push(h(s0), s0);
+      let best = s0, bestH = h(s0), n = 0;
+      while (heap.n) {
+        const c = heap.pop();
+        if (closed[c]) continue;
+        closed[c] = 1;
+        const hc = h(c);
+        if (hc < bestH) { bestH = hc; best = c; }
+        if (c === t) break;
+        if (++n > 60000) break;
+        const i = c % nx, j = (c - i) / nx, pd = dirOf[c];
+        for (let d = 0; d < 8; d++) {
+          const ii = i + DX[d], jj = j + DY[d];
+          if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;
+          const c2 = jj * nx + ii;
+          if (closed[c2] || (c2 !== s0 && !passable(c2))) continue;
+          const g2 = gs[c] + ((d & 1) ? 1.4142 : 1) + (pd >= 0 && pd !== d ? 0.35 : 0);
+          if (g2 < gs[c2]) { gs[c2] = g2; came[c2] = c; dirOf[c2] = d; heap.push(g2 + h(c2), c2); }
+        }
+      }
+      const cells = [];
+      for (let c = best; c >= 0; c = came[c]) cells.push(c);
+      cells.reverse();
+      // straight runs only: keep the corners
+      const pts = [[r4(x0), r4(y0)]];
+      for (let k = 1; k < cells.length; k++) {
+        const c = cells[k], i = c % nx, j = (c - i) / nx;
+        const nxt = cells[k + 1];
+        if (nxt != null && dirOf[nxt] === dirOf[c]) continue;
+        pts.push([r4(i * g), r4(j * g)]);
+      }
+      return { pts, reached: best === t };
+    }
+    const r4 = (x) => Math.round(x * 1e4) / 1e4;
+    return { route, w, layer: L === 1 ? 'B' : 'F', net: netName };
+  }
+
   /** Cell offsets within r cells (flat [di, dj, …]). */
   const DISCS = new Map();
   function disc(r) {
@@ -1104,7 +1183,7 @@
   }
 
   const api = { FABS, RULES, rules, widthFor, netWidth, isPower, isGnd, rot, partPads, courtOf, sideAfter, boardSdf, outline, holes, padObj, dist, gap, bbox,
-    model, copper, route, pour, rects, connectivity, autoplace, labelSide, labelBox, fitBoard, drc, text, textWidth, silk, texts, refAt, clean, GLYPH };
+    model, copper, route, fingerRouter, pour, rects, connectivity, autoplace, labelSide, labelBox, fitBoard, drc, text, textWidth, silk, texts, refAt, clean, GLYPH };
   root.PcbCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : globalThis);

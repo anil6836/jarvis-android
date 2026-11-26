@@ -434,7 +434,22 @@
 
   function pcbTools() {
     const t = clear($('pcbtools'));
+    if (fr.on) {
+      // ✍️ his own tracks: the tools of this mode only
+      t.appendChild(tool('✅ అయింది', 'main', () => { fr.on = false; fr.del = false; fr.cur = null; pcbTools(); drawPcb(); }));
+      t.appendChild(tool(fr.layer === 'F' ? '🔴 పై పొర (F)' : '🔵 కింది పొర (B)', 'on', () => { fr.layer = fr.layer === 'F' ? 'B' : 'F'; pcbTools(); toast(fr.layer === 'F' ? '🔴 ఇక దారులు పై పొర మీద' : '🔵 ఇక దారులు కింది పొర మీద'); }));
+      t.appendChild(tool(fr.del ? '🗑️ తీసేయి ✓' : '🗑️ దారి తీసేయి', fr.del ? 'on' : '', () => { fr.del = !fr.del; pcbTools(); toast(fr.del ? '🗑️ తీసేయాల్సిన దారి మీద నొక్కండి' : '✍️ ప్యాడ్ నుంచి వేలు జరపండి'); }));
+      t.appendChild(tool('↩️', '', back1));
+      t.appendChild(tool('🔍', '', () => { pv.fit = true; drawPcb(); }));
+      return;
+    }
     t.appendChild(tool('⚡ రూట్', 'main', () => { snap(); reroute(); changed(); }));
+    t.appendChild(tool('✍️ చేతితో దారి', '', () => {
+      fr.on = true; fr.del = false; fr.cur = null;
+      if (autoRoute) { autoRoute = false; }
+      pcbTools(); drawPcb();
+      toast('✍️ ఒక ప్యాడ్ మీద వేలు పెట్టి, అదే దారి (net) ఉన్న ప్యాడ్ వరకు జరపండి. అడ్డం ఉన్నవాటి చుట్టూ తానే తిరుగుతుంది. (ఆటో రూట్ ఆపాను: ఇక ⚡ రూట్ నొక్కితేనే అన్నీ మళ్ళీ వేస్తుంది.)', 6000);
+    }));
     t.appendChild(tool(autoRoute ? '🔁 ఆటో రూట్ ఆన్' : '🔁 ఆటో రూట్ ఆఫ్', autoRoute ? 'on' : '', () => { autoRoute = !autoRoute; pcbTools(); toast(autoRoute ? 'భాగం కదిపిన ప్రతిసారీ దారులు తానే మళ్ళీ వేస్తుంది' : 'కదిపాక ⚡ రూట్ మీరే నొక్కాలి'); }));
     t.appendChild(tool('👁️ ' + ({ both: 'రెండు పొరలు', top: 'పై పొర', bottom: 'కింది పొర' }[pv.layer]), '', () => { pv.layer = { both: 'top', top: 'bottom', bottom: 'both' }[pv.layer]; pcbTools(); drawPcb(); }));
     t.appendChild(tool(pv.real ? '🎨 అసలు రంగు' : '🎨 పొరల రంగు', pv.real ? 'on' : '', () => { pv.real = !pv.real; pcbTools(); drawPcb(); }));
@@ -477,6 +492,7 @@
     }
     drawBoard(ctx, D, M, fills, pv, { real: pv.real, layer: pv.layer, sel: pv.sel, drag: drag, dragNets: drag && drag.nets,
       rats: check ? check.con.open : null, markers: check ? check.list : null });
+    if (fr.on) frDraw(ctx);
     const c = clear($('pcbchips'));
     if (check) {
       const open = check.con.open.length;
@@ -499,17 +515,97 @@
     return best ? best.pt : null;
   }
   let drag = null;
+
+  // ---------------------------------------------------------------- ✍️ tracks by his finger (27 Nov, "6."): ₹0, our own router
+  const fr = { on: false, del: false, layer: 'F', cur: null };
+  /** Copper of a net under the finger: a pad, a track or a via (its net name, and the point to start from). */
+  function frHit(w) {
+    const cu = C.copper(D, M);
+    let best = null;
+    cu.forEach((c) => {
+      if (c.net < 0) return;
+      const d = C.dist(c.o, w[0], w[1]);
+      if (d > 0.6) return;
+      const pri = c.kind === 'pad' ? 0 : c.kind === 'via' ? 1 : 2;
+      if (!best || pri < best.pri || (pri === best.pri && d < best.d)) best = { c, d, pri };
+    });
+    if (!best) return null;
+    const c = best.c, n = M.nets[c.net].n;
+    let at = [w[0], w[1]];
+    if (c.kind === 'pad') at = [c.pad.x, c.pad.y];
+    else if (c.kind === 'via') at = [c.o.x1, c.o.y1];
+    return { net: n, ni: c.net, at, kind: c.kind, pad: c.pad || null };
+  }
+  function frStart(w) {
+    const h = frHit(w);
+    if (!h) { toast('✍️ ప్యాడ్ / దారి మీద నుంచే మొదలుపెట్టండి'); return false; }
+    const r = C.fingerRouter(D, M, h.net, fr.layer);
+    if (!r) return false;
+    fr.cur = { net: h.net, ni: h.ni, from: h.at, startPad: h.pad, r, pts: [h.at], reached: false, end: null, raf: 0, want: null };
+    drawPcb();
+    return true;
+  }
+  function frMove(w) {
+    const c = fr.cur;
+    c.want = w;
+    if (c.raf) return;
+    c.raf = requestAnimationFrame(() => {
+      c.raf = 0;
+      if (fr.cur !== c || !c.want) return;
+      // a finger over the net's own pad / track: aim at its centre so the line ends inside it
+      const h = frHit(c.want), aim = h && h.net === c.net && !(c.startPad && h.pad === c.startPad) ? h.at : c.want;
+      const out = c.r.route(c.from[0], c.from[1], aim[0], aim[1]);
+      c.pts = out.pts; c.reached = out.reached; c.end = h && h.net === c.net && out.reached && !(c.startPad && h.pad === c.startPad) ? h : null;
+      drawPcb();
+    });
+  }
+  function frEnd(cancel) {
+    const c = fr.cur;
+    fr.cur = null;
+    if (c && c.raf) cancelAnimationFrame(c.raf);
+    if (cancel || !c || c.pts.length < 2) { drawPcb(); return; }
+    const len = c.pts.reduce((sum, p, i) => (i ? sum + Math.hypot(p[0] - c.pts[i - 1][0], p[1] - c.pts[i - 1][1]) : 0), 0);
+    if (len < 0.5) { drawPcb(); return; }
+    snap();
+    const pts = c.pts.slice();
+    if (c.end) pts[pts.length - 1] = c.end.at.slice();
+    D.tracks.push({ n: c.net, l: c.r.layer, w: c.r.w, p: pts.map((q) => [r2(q[0]), r2(q[1])]) });
+    changed();
+    pcbTools();
+    toast(c.end ? '✅ ' + c.net + ' కలిసింది (' + (c.r.layer === 'F' ? 'పై' : 'కింది') + ' పొర)' : c.reached ? '✍️ ముక్క వేశాను: దాని చివర నుంచి కొనసాగించండి' : '✍️ అడ్డం ఉన్న చోట ఆగాను: అక్కడి నుంచి కొనసాగించండి, లేదా 🔴/🔵 పొర మార్చండి', 3500);
+  }
+  function frDelete(w) {
+    let best = null;
+    D.tracks.forEach((t, ti) => { for (let i = 1; i < t.p.length; i++) { const d = C.dist({ k: 'c', x1: t.p[i - 1][0], y1: t.p[i - 1][1], x2: t.p[i][0], y2: t.p[i][1], r: (t.w || 0.4) / 2 }, w[0], w[1]); if (d < 0.5 && (!best || d < best.d)) best = { ti, d }; } });
+    if (!best) { toast('🗑️ దారి మీదే నొక్కండి'); return; }
+    snap();
+    const t = D.tracks.splice(best.ti, 1)[0];
+    changed();
+    toast('🗑️ ' + t.n + ' దారి ముక్క తీసేశాను (↩️ తో వెనక్కి)');
+  }
+  function frDraw(ctx) {
+    const s = pv.s, X = (x) => pv.ox + x * s, Y = (y) => pv.oy + y * s, c = fr.cur;
+    if (!c) return;
+    // the net's other copper glows: that is where the line may end
+    M.pads.forEach((p) => { if (p.net !== c.ni || p === c.startPad) return; ctx.strokeStyle = 'rgba(116,228,255,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), Math.max(5, Math.max(p.w, p.h) / 2 * s + 3), 0, Math.PI * 2); ctx.stroke(); });
+    ctx.strokeStyle = c.r.layer === 'F' ? 'rgba(229,83,59,.85)' : 'rgba(79,163,255,.85)';
+    ctx.lineWidth = Math.max(2, c.r.w * s); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); c.pts.forEach((q, i) => (i ? ctx.lineTo(X(q[0]), Y(q[1])) : ctx.moveTo(X(q[0]), Y(q[1])))); ctx.stroke();
+    if (c.want) { ctx.fillStyle = c.end ? '#43a047' : c.reached ? '#fff' : '#ffb74d'; ctx.beginPath(); ctx.arc(X(c.want[0]), Y(c.want[1]), 5, 0, Math.PI * 2); ctx.fill(); }
+  }
   function netsOfPart(ref) { const s = new Set(); D.nets.forEach((n) => { if (n.p.some((p) => p.split('.')[0] === ref)) s.add(n.n); }); return s; }
   gestures($('pcbcv'), pv, {
     redraw: () => drawPcb(),
     tap(x, y) {
       if (!D) return;
+      if (fr.on && fr.del) { frDelete(toWorld(pv, x, y)); return; }
       const w = toWorld(pv, x, y), pt = partAt(w[0], w[1]);
       pv.sel = pt ? pt.ref : null;
       selBar();
       drawPcb();
     },
     dragStart(x, y) {
+      if (D && fr.on) return !fr.del && frStart(toWorld(pv, x, y));
       if (!D || !pv.sel) return false;
       const w = toWorld(pv, x, y), pt = partAt(w[0], w[1]);
       if (!pt || pt.ref !== pv.sel) return false;
@@ -517,11 +613,13 @@
       return true;
     },
     dragMove(x, y) {
+      if (fr.cur) { frMove(toWorld(pv, x, y)); return; }
       const w = toWorld(pv, x, y), g = 0.635;
       drag.x = Math.round((w[0] - drag.dx) / g) * g; drag.y = Math.round((w[1] - drag.dy) / g) * g;
       drawPcb();
     },
     dragEnd(cancel) {
+      if (fr.cur) { frEnd(cancel); return; }
       const d = drag;
       drag = null;
       if (cancel || !d) { drawPcb(); return; }
@@ -3652,7 +3750,7 @@
     then();
   }
 
-  window.__pcb = { open, get D() { return D; }, get check() { return check; }, showTab, reroute, changed, onJarvis, texture, partSheet: (ref) => partSheet(D && D.parts.find((q) => q.ref === ref)), modList, modInfo, wireSheet, buyGo, faultStart, get ft() { return ft; }, graphSheet, gr, advSheet, adv, pinStart, solderStart, get ph() { return ph; }, pinsDone, solderDone, pv, sv,
+  window.__pcb = { open, get D() { return D; }, get check() { return check; }, showTab, reroute, changed, onJarvis, texture, partSheet: (ref) => partSheet(D && D.parts.find((q) => q.ref === ref)), modList, modInfo, wireSheet, buyGo, faultStart, get ft() { return ft; }, graphSheet, gr, advSheet, adv, fr, frStart, frMove, frEnd, frDelete, pinStart, solderStart, get ph() { return ph; }, pinsDone, solderDone, pv, sv,
     ai, idea, editSheet, heard, lay: () => schLayout(), sim, simv, simBuild, simReport, simControls, simSupply, simPart, verSheet, verSnap, verDiff, kicadFiles: () => KI.files(D, schLayout()),
     sg, bx, rs, xrS, lv, startGuide, stopGuide, guideGo, guideWords, startBox, stopBox, boxTaller, boxZip, openReal, closeReal, drawReal, startAr, stopAr, xrEnter, xrLeave, xrSaid,
     learnTab, learnGo, get learnSt() { return learnSt; }, set scr(v) { scr = v; }, get v3d() { return v3d; } };
