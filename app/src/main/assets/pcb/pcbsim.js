@@ -179,7 +179,7 @@
         case 'res': {
           const r = P.ohms(pt.val);
           two({ k: 'R', a: pin(ref, '1'), b: pin(ref, '2'), r: r > 0 ? r : 1000 });
-          info.kind = 'res'; info.rated = 0.25;
+          info.kind = 'res'; info.rated = P.isSmd(pt) ? 0.125 : 0.25; // (an 0805 SMD resistor takes ⅛ W)
           if (!(r > 0)) notes.push({ sev: 'warn', ref, te: ref + ': విలువ "' + (pt.val || '') + '" చదవలేకపోయాను; 1k అనుకున్నాను.' });
           break;
         }
@@ -187,7 +187,7 @@
           let f = farads(pt.val);
           if (!(f > 0)) f = pt.lib === 'elec' ? 10e-6 : 100e-9;
           two({ k: 'Cap', a: pin(ref, '1'), b: pin(ref, '2'), c: f, vp: 0 });
-          info.kind = 'cap'; info.polar = pt.lib === 'elec'; info.rated = ratedV(pt.val) || (pt.lib === 'cer' ? 50 : NaN);
+          info.kind = 'cap'; info.polar = pt.lib === 'elec'; info.rated = ratedV(pt.val) || (pt.lib === 'cer' ? (P.isSmd(pt) && P.capKey(pt.val) === '10uF' ? 25 : 50) : NaN);
           break;
         }
         case 'led5': case 'led3': case 'irled': {
@@ -748,7 +748,10 @@
         }
         case 'res': {
           const w = most(ref, 'w');
-          if (w > 0.25) push('err', ref, ref + ' (' + (pt(ref).val || '') + '): ' + fmtW(w) + ' వేడి: ¼ W రెసిస్టర్ కాలిపోతుంది', '½ W / 1 W రెసిస్టర్ వాడండి, లేదా విలువ మార్చండి.');
+          if (info.rated < 0.25) { // (an 0805 SMD one: ⅛ W)
+            if (w > 0.125) push('err', ref, ref + ' (' + (pt(ref).val || '') + '): ' + fmtW(w) + ' వేడి: ⅛ W SMD రెసిస్టర్ కాలిపోతుంది', '🏭 లో ఈ రెసిస్టర్‌ని కాళ్ళ రెసిస్టర్‌గా (¼ W / ½ W) ఉంచండి, లేదా విలువ మార్చండి.');
+            else if (w > 0.075) push('warn', ref, ref + ' (' + (pt(ref).val || '') + '): ' + fmtW(w) + ': ⅛ W SMD రెసిస్టర్‌కి ఎక్కువ', '🏭 లో దీన్ని కాళ్ళ రెసిస్టర్‌గా ఉంచడం మంచిది.');
+          } else if (w > 0.25) push('err', ref, ref + ' (' + (pt(ref).val || '') + '): ' + fmtW(w) + ' వేడి: ¼ W రెసిస్టర్ కాలిపోతుంది', '½ W / 1 W రెసిస్టర్ వాడండి, లేదా విలువ మార్చండి.');
           else if (w > 0.15) push('warn', ref, ref + ' (' + (pt(ref).val || '') + '): ' + fmtW(w) + ': బాగా వేడెక్కుతుంది', '½ W రెసిస్టర్ పెడితే మంచిది.');
           break;
         }
@@ -768,7 +771,7 @@
         case 'npn': {
           const ic = most(ref, 'ic');
           const m = r.m === 'sat' ? 'పూర్తిగా ఆన్' : r.m === 'act' ? 'కొంచెం ఆన్' : 'ఆఫ్';
-          if (ic > info.max) push('err', ref, ref + ': ' + fmtA(ic) + ' — BC547 కి 100 mA వరకే', 'పెద్ద ట్రాన్సిస్టర్ (BD139 / TIP120) లేదా తక్కువ కరెంట్.');
+          if (ic > info.max) push('err', ref, ref + ': ' + fmtA(ic) + ' — ' + (P.isSmd(pt(ref)) ? 'MMBT3904' : 'BC547') + ' కి 100 mA వరకే', 'పెద్ద ట్రాన్సిస్టర్ (BD139 / TIP120) లేదా తక్కువ కరెంట్.');
           else push('info', ref, ref + ' ట్రాన్సిస్టర్: ' + m + (ic > 1e-5 ? ' (' + fmtA(ic) + ')' : ''));
           break;
         }
@@ -1037,6 +1040,8 @@
 
   // °C per watt in still air on a small board (datasheets' junction-to-air, rounded): how hot a part gets for its watts
   const THETA = { res: 230, r7805: 65, r3v3: 50, nmos: 62, d4007: 100, d5822: 45, bc547: 200, led: 300 };
+  // the SMD ones (Build C): 0805 resistor (⅛ W: twice the ¼ W one's), SOT-223 AMS1117 90, SMA diode (M7 / SS34) 80, SOT-23 MMBT3904 357
+  const THETA_SMD = { res: 460, r3v3: 90, d4007: 80, d5822: 80, bc547: 357 };
   const T_AIR = 35; // (a warm Indian room)
   /** How hot each part and each copper wire gets. → { parts: [{ref, te, w, t, max, sev}], nets: [{n, a, w, dt, sev, pour}] } */
   function heat(S, R, cy) {
@@ -1047,11 +1052,13 @@
       const info = S.parts[ref], r = R.p[ref] || {}, pt = D.parts.find((q) => q.ref === ref) || {};
       let w = avgW(ref); if (w == null) w = typeof r.w === 'number' ? r.w : 0;
       let th = null, max = 125, te = '';
-      if (info.kind === 'res') { th = THETA.res; max = 155; te = 'రెసిస్టర్ ' + (pt.val || ''); }
-      else if (info.kind === 'reg') { th = pt.lib === 'r3v3' ? THETA.r3v3 : THETA.r7805; te = pt.lib === 'r3v3' ? '3.3V రెగ్యులేటర్' : '7805'; }
+      const smd = P.isSmd(pt);
+      if (info.kind === 'res') { th = THETA.res; max = 155; te = (smd ? 'SMD ' : '') + 'రెసిస్టర్ ' + (pt.val || ''); }
+      else if (info.kind === 'reg') { th = pt.lib === 'r3v3' ? THETA.r3v3 : THETA.r7805; te = pt.lib === 'r3v3' ? (smd ? 'AMS1117-3.3' : '3.3V రెగ్యులేటర్') : '7805'; }
       else if (info.kind === 'nmos') { th = THETA.nmos; max = 175; te = 'MOSFET'; }
-      else if (info.kind === 'diode') { th = pt.lib === 'd5822' ? THETA.d5822 : THETA.d4007; te = 'డయోడ్ ' + (pt.val || ''); }
-      else if (info.kind === 'npn') { th = THETA.bc547; max = 150; te = 'BC547'; }
+      else if (info.kind === 'diode') { th = pt.lib === 'd5822' ? THETA.d5822 : THETA.d4007; te = 'డయోడ్ ' + (smd ? (pt.lib === 'd5822' ? 'SS34' : 'M7') : (pt.val || '')); }
+      else if (info.kind === 'npn') { th = THETA.bc547; max = 150; te = smd ? 'MMBT3904' : 'BC547'; }
+      if (smd && THETA_SMD[pt.lib]) th = THETA_SMD[pt.lib];
       if (th == null || !(w > 0.002)) return;
       const t = T_AIR + w * th;
       parts.push({ ref, te, w, t, max, sev: t > max ? 'err' : t > 60 ? 'warn' : 'ok' });

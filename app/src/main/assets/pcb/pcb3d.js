@@ -230,6 +230,43 @@ function makeBody(g, pt, f) {
   const b = f.body || {}, pads = f.pads;
   const P0 = pads[0], P1 = pads[1] || pads[0];
   switch (b.t) {
+    // ---- Build C: the small SMD parts the factory solders (flat on the top copper, metal ends / legs on their pads)
+    case 'chip': { // 0805 resistor (black, white ends), capacitor (tan), LED (clear coloured top)
+      const h = b.H || 0.55;
+      if (b.col === 'led') {
+        const col = LED[pt.color || 'red'] || LED.red;
+        const base = box(b.w, 0.3, b.d, std(0xf2f2f2)); base.position.y = 0.15; g.add(base);
+        const lens = box(b.w * 0.9, h - 0.3, b.d * 0.9, std(col, { emissive: col, emissiveIntensity: 0.5, transparent: true, opacity: 0.85, roughness: 0.2 }));
+        lens.position.y = 0.3 + (h - 0.3) / 2; g.add(lens);
+        const mark = box(0.18, 0.02, b.d * 0.7, std(0x2a8f3a)); mark.position.set(-b.w / 2 + 0.3, h + 0.01, 0); g.add(mark); // (the cathode mark, pad 1)
+      } else {
+        const bd = box(b.w - 0.5, h, b.d, std(b.col === 'c' ? 0xb08a5a : 0x18191c, { roughness: 0.6 })); bd.position.y = h / 2; g.add(bd);
+        [-1, 1].forEach((sx) => { const e = box(0.3, h + 0.02, b.d + 0.02, METAL()); e.position.set(sx * (b.w / 2 - 0.15), h / 2, 0); g.add(e); });
+      }
+      break;
+    }
+    case 'sma': { // SMA diode: black body, a white band on the cathode (pad 1) end, flat metal legs
+      const bd = box(4.3, 2.1, 2.6, BLACK()); bd.position.y = 1.05; g.add(bd);
+      const band = box(0.5, 0.02, 2.6, std(0xd8d8d8)); band.position.set(-1.6, 2.11, 0); g.add(band);
+      pads.forEach((p) => { const leg = box(1.4, 0.2, 1.5, METAL()); leg.position.set(p.x * 0.85, 0.1, p.y); g.add(leg); });
+      break;
+    }
+    case 'sot23': { // SOT-23: a tiny black block on three legs
+      const bd = box(1.3, 1.0, 2.9, BLACK()); bd.position.y = 0.6; g.add(bd);
+      pads.forEach((p) => { const leg = box(0.7, 0.15, 0.4, METAL()); leg.position.set(p.x * 0.75, 0.08, p.y); g.add(leg); });
+      break;
+    }
+    case 'soic': { // SOIC-8: a black block, gull-wing legs, the pin-1 dot
+      const bd = box(3.9, 1.5, 4.9, BLACK()); bd.position.y = 0.95; g.add(bd);
+      const dot = cyl(0.3, 0.3, 0.05, std(0x55585e)); dot.position.set(-1.3, 1.71, -1.7); g.add(dot);
+      pads.forEach((p) => { const leg = box(1.1, 0.2, 0.42, METAL()); leg.position.set(p.x * 0.88, 0.1, p.y); g.add(leg); });
+      break;
+    }
+    case 'sot223': { // SOT-223 regulator: a black block, three legs on one side, the wide tab on the other
+      const bd = box(6.5, 1.6, 3.5, BLACK()); bd.position.y = 0.8; g.add(bd);
+      pads.forEach((p) => { const wide = p.w > 3; const leg = box(wide ? 3.0 : 0.7, 0.2, wide ? 1.6 : 1.5, METAL()); leg.position.set(p.x, 0.1, p.y * 0.85); g.add(leg); });
+      break;
+    }
     case 'axial': {
       const y = b.D / 2 + 0.8, body = cyl(b.D / 2, b.D / 2, b.L, std(b.color === '#26262a' ? 0x26262a : 0xd8c49a, { roughness: 0.6 }));
       body.rotation.z = Math.PI / 2; body.position.y = y; g.add(body);

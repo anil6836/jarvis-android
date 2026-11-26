@@ -157,9 +157,20 @@
       say: 'ముందు సిద్ధం. ఐరన్, స్టాండ్, సోల్డర్ వైర్, తడి స్పాంజ్, కట్టర్, మల్టీమీటర్ పక్కన పెట్టుకోండి. ఐరన్ మొన చాలా వేడి: ఎప్పుడూ స్టాండ్‌లోనే పెట్టండి. గాలి వచ్చే చోట చేయండి.' });
     steps.push({ k: 'how', refs: [], show: 'none', title: '✨ ఒక మంచి టంకం ఎలా', lines: HOW.slice(),
       say: 'ఒక మంచి టంకం ఎలా. ఐరన్ మొనని ప్యాడ్‌కీ కాలుకీ ఒకేసారి తాకించి వేడి చేయండి. సోల్డర్ వైర్ ప్యాడ్‌కి తాకించండి, మొనకి కాదు. చిన్న కొండ ఆకారం రాగానే ముందు వైర్, తర్వాత ఐరన్ తీసేయండి. మొత్తం మూడు నాలుగు సెకన్లు.' });
-    // the parts in groups of the same kind and value
+    // 🏭 (Build C) the small SMD parts came soldered from the factory: one look at them, then only the through-hole ones by hand
+    const smd = D.parts.filter((q) => P.isSmd(q));
+    if (smd.length) {
+      const pol = smd.filter((q) => /^(led5|led3|d4007|d5822|bc547|ne555|r3v3)$/.test(q.lib)).map((q) => q.ref);
+      steps.push({ k: 'smd', refs: smd.map((q) => q.ref), title: '🏭 ఫ్యాక్టరీ టంకం చేసిన SMD భాగాలు (' + smd.length + ')', lines: [
+        '📍 ' + smd.map((q) => q.ref).join(', ') + ': ఇవి ఫ్యాక్టరీ పెట్టి టంకం చేసి పంపింది (3D లో మెరుస్తున్నాయి). వీటికి ఐరన్ అక్కర్లేదు.',
+        '🔍 ఒక్కసారి చూడండి: ఏదీ తప్పిపోలేదు, ఏదీ ఒరిగిపోలేదు, రెండు ప్యాడ్‌ల మధ్య వంతెన లేదు.',
+        pol.length ? '➡️ దిశ ఉన్నవి (' + pol.join(', ') + '): LED ఆకుపచ్చ గుర్తు / డయోడ్ తెల్ల గీత / చిప్ చుక్క బోర్డ్ మీది గుర్తు వైపే ఉండాలి.' : '',
+        '⚠️ SMD భాగాలు చిన్నవి: ఐరన్ వాటికి తగలకుండా పక్కనున్న కాళ్ళ భాగాలు టంకం చేయండి.'
+      ].filter(Boolean), say: 'ఈ చిన్న SMD భాగాలు ఫ్యాక్టరీ టంకం చేసింది. ఏదీ తప్పిపోలేదు, వంతెన లేదు, దిశ సరిగ్గా ఉంది అని ఒక్కసారి చూడండి.' });
+    }
+    // the parts in groups of the same kind and value (the through-hole ones: his iron)
     const groups = new Map();
-    D.parts.slice().sort((a, b) => order(a.lib) - order(b.lib) || refCmp(a.ref, b.ref)).forEach((pt) => {
+    D.parts.filter((q) => !P.isSmd(q)).slice().sort((a, b) => order(a.lib) - order(b.lib) || refCmp(a.ref, b.ref)).forEach((pt) => {
       const k = [pt.lib, pt.val || '', pt.fp || '', pt.color || ''].join('|');
       if (!groups.has(k)) groups.set(k, []);
       groups.get(k).push(pt);
@@ -223,7 +234,7 @@
     // 🔌 chips and modules in their sockets
     const ins = [];
     D.parts.forEach((q) => {
-      if (q.lib === 'ne555') ins.push('🔲 ' + q.ref + ': NE555 ని సాకెట్‌లో పెట్టండి, చిప్ గుంత సాకెట్ గుంత వైపు. కాళ్ళు కొంచెం బయటికి ఉంటాయి: టేబుల్ మీద పక్కకి ఆనించి కొద్దిగా లోపలికి వంచి, అన్ని కాళ్ళూ రంధ్రాల మీద పెట్టి ఒకేసారి నొక్కండి.');
+      if (q.lib === 'ne555' && !P.isSmd(q)) ins.push('🔲 ' + q.ref + ': NE555 ని సాకెట్‌లో పెట్టండి, చిప్ గుంత సాకెట్ గుంత వైపు. కాళ్ళు కొంచెం బయటికి ఉంటాయి: టేబుల్ మీద పక్కకి ఆనించి కొద్దిగా లోపలికి వంచి, అన్ని కాళ్ళూ రంధ్రాల మీద పెట్టి ఒకేసారి నొక్కండి.');
       if (q.lib === 'esp32') ins.push('📶 ' + q.ref + ': ESP32 ని సాకెట్లలో గుచ్చండి: దాని మీది పిన్ పేర్లు బోర్డ్ మీది పేర్లతో సరిపోవాలి, యాంటెనా బోర్డ్ బయటి వైపు.');
       if (q.lib === 'fhdr') ins.push('🧩 ' + q.ref + ': మాడ్యూల్ గుచ్చండి: మాడ్యూల్ మీది పిన్ పేర్లు, బోర్డ్ మీది పేర్లు ఒకటే వరుసలో ఉండాలి. అది కోరే వోల్టేజ్ కూడా చూడండి.');
       if (q.lib === 'buck') ins.push('🔧 ' + q.ref + ': బక్ మాడ్యూల్‌ని ముందు మల్టీమీటర్‌తో 5.1 V కి సెట్ చేసి, తర్వాతే IN+ IN− OUT− OUT+ పేర్లు సరిపోల్చి కలపండి.');
@@ -237,7 +248,7 @@
           : '🔌 ' + q.ref + ': ' + lm.te + ': ' + order + ' పేర్లు సరిపోల్చి జంపర్ వైర్లతో కలపండి (🔌 వైర్ పట్టీ చూడండి).') + (lm.mod.v[1] < 4 ? ' ⚠️ ' + lm.mod.v[1] + ' V లోపే!' : ''));
       }
     });
-    if (ins.length) steps.push({ k: 'chips', refs: D.parts.filter((q) => /^(ne555|esp32|fhdr|buck|pam8403|tp4056|bat18650)$/.test(q.lib) || (P.LIB[q.lib] && P.LIB[q.lib].mod)).map((q) => q.ref), show: 'all', title: '🔲 IC / మాడ్యూల్స్ పెట్టండి', lines: ins.concat(['⚠️ కరెంట్ తీసేసి ఉన్నప్పుడే పెట్టండి / తీయండి.']),
+    if (ins.length) steps.push({ k: 'chips', refs: D.parts.filter((q) => (q.lib === 'ne555' && !P.isSmd(q)) || /^(esp32|fhdr|buck|pam8403|tp4056|bat18650)$/.test(q.lib) || (P.LIB[q.lib] && P.LIB[q.lib].mod)).map((q) => q.ref), show: 'all', title: '🔲 IC / మాడ్యూల్స్ పెట్టండి', lines: ins.concat(['⚠️ కరెంట్ తీసేసి ఉన్నప్పుడే పెట్టండి / తీయండి.']),
       say: 'ఇప్పుడు IC, మాడ్యూల్స్ వాటి సాకెట్లలో పెట్టండి. గుంత, పిన్ పేర్లు సరిపోవాలి. కరెంట్ తీసేసి ఉన్నప్పుడే.' });
     // ⚡ power on
     const names = pw.map((n) => n.n).join(' ');

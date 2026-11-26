@@ -110,6 +110,49 @@
     D.parts.forEach((pt) => L.push([pt.ref, pt.x.toFixed(3) + 'mm', (H - pt.y).toFixed(3) + 'mm', 'Top', String((360 - (pt.rot || 0)) % 360)].join(',')));
     return L.join('\r\n') + '\r\n';
   }
+  // ------------------------------------------------------------------ Build C: the factory solders the SMD parts (PCBA)
+
+  /** The parts the factory places: the SMD ones (the through-hole ones he solders himself, so they are not in these files). */
+  function pcbaParts(D) { return (D.parts || []).filter((pt) => P.isSmd(pt)); }
+  /** JLCPCB's assembly parts list: Comment, Designator, Footprint, JLCPCB Part # (one line per same part). */
+  function jlcBom(D) {
+    const groups = new Map();
+    pcbaParts(D).forEach((pt) => {
+      const s = P.smdOf(pt) || {}, comment = ascii(s.mpn || pt.val || pt.lib), key = comment + '|' + (s.jfp || '') + '|' + (s.lcsc || '');
+      if (!groups.has(key)) groups.set(key, { comment, fp: s.jfp || (P.fpOf(pt) || {}).name || '', lcsc: s.lcsc || '', refs: [] });
+      groups.get(key).refs.push(pt.ref);
+    });
+    const L = ['Comment,Designator,Footprint,JLCPCB Part #'];
+    groups.forEach((g) => L.push([csv(g.comment), csv(g.refs.join(',')), csv(g.fp), csv(g.lcsc)].join(',')));
+    return L.join('\r\n') + '\r\n';
+  }
+  /** JLCPCB's placement list: Designator, Mid X, Mid Y, Layer, Rotation (counter-clockwise, plus their library's own turn for the package). */
+  function jlcCpl(D) {
+    const H = D.board.h, L = ['Designator,Mid X,Mid Y,Layer,Rotation'];
+    pcbaParts(D).forEach((pt) => {
+      const s = P.smdOf(pt) || {}, r = ((360 - (pt.rot || 0)) % 360 + (s.rot || 0)) % 360;
+      L.push([pt.ref, pt.x.toFixed(3) + 'mm', (H - pt.y).toFixed(3) + 'mm', 'Top', String(r)].join(','));
+    });
+    return L.join('\r\n') + '\r\n';
+  }
+  /** What the factory places and what he solders (for the README and the 🏭 card). */
+  function pcbaSplit(D) {
+    const smd = pcbaParts(D), th = (D.parts || []).filter((pt) => !P.isSmd(pt));
+    const noNum = smd.filter((pt) => !(P.smdOf(pt) || {}).lcsc).map((pt) => pt.ref);
+    return { smd, th, noNum };
+  }
+  function pcbaReadme(D, base) {
+    const sp = pcbaSplit(D);
+    return ['Board: ' + ascii(D.title || 'JARVIS PCB') + ' - factory assembly (PCBA) of the SMD parts, top side only', '',
+      'Files: ' + base + '-gerber zip (the board), ' + base + '-BOM-JLCPCB.csv (parts), ' + base + '-CPL-JLCPCB.csv (positions, mm, rotation counter-clockwise).', '',
+      'The factory places and solders: ' + (sp.smd.map((p) => p.ref).join(', ') || '-'),
+      'Not in the files (through-hole: soldered by hand): ' + (sp.th.map((p) => p.ref).join(', ') || '-'), '',
+      'JLCPCB: upload the gerber zip, turn on "PCB Assembly", side "Top", then upload the BOM and the CPL.',
+      'Check every part on their BOM page (photo, value, Basic / Extended) and every part\'s pin 1 / polarity in their placement preview; turn a part there if it is wrong.',
+      (sp.noNum.length ? 'No LCSC number in the BOM for: ' + sp.noNum.join(', ') + ' - pick the part on their BOM page.' : 'Every line has an LCSC number (looked up 26 Nov 2026; stock and prices change).'),
+      'Other factories (Lion Circuits, PCB Power): send the gerber zip, the BOM and the CPL for an assembly quote.', ''].join('\r\n');
+  }
+
   function readme(D, base, nDrill, nNp) {
     const B = D.board, F = C.FABS[D.fab] || C.FABS.jlc;
     return ['Board: ' + ascii(D.title || 'JARVIS PCB'), 'Made with: Jarvis PCB studio (Gerber RS-274X, metric, 4.6; Excellon metric decimal)', '',
@@ -162,7 +205,7 @@
     return btoa(s);
   }
 
-  const api = { files, zip, b64, crc32, slug, bom, cpl };
+  const api = { files, zip, b64, crc32, slug, bom, cpl, pcbaParts, pcbaSplit, jlcBom, jlcCpl, pcbaReadme };
   root.PcbFab = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : globalThis);

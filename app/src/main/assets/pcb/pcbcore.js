@@ -244,6 +244,12 @@
     };
     holes(D).forEach((h) => mark({ k: 'c', x1: h.x, y1: h.y, x2: h.x, y2: h.y, r: h.keep }, [0, 1], -1));
     M.pads.forEach((p) => mark(padObj(p), p.smd ? [0] : [0, 1], p.id));
+    const mark0 = (arr, o, e) => {
+      const bb = bbox(o);
+      for (let j = Math.max(0, Math.floor((bb[1] - e) / g)); j <= Math.min(ny - 1, Math.ceil((bb[3] + e) / g)); j++)
+        for (let i = Math.max(0, Math.floor((bb[0] - e) / g)); i <= Math.min(nx - 1, Math.ceil((bb[2] + e) / g)); i++)
+          if (dist(o, i * g, j * g) <= e) arr[j * nx + i] = 1;
+    };
 
     const S2 = 2 * N, gs = new Float32Array(S2), came = new Int32Array(S2), dirOf = new Int8Array(S2), closed = new Uint8Array(S2);
     const pass = new Int8Array(S2), viaOk = new Int8Array(N), target = new Int32Array(S2);
@@ -256,16 +262,25 @@
       const pins = M.pads.filter((p) => p.net === ni);
       if (pins.length < 2) continue;
       const discR = (hw + R.clr + g) / g, viaR = (R.via / 2 + R.clr + g) / g;
-      const offs = disc(discR), voffs = disc(viaR);
+      const offsW = disc(discR), voffs = disc(viaR);
       const margin = R.edge + hw;
       pass.fill(0); viaOk.fill(0);
+      // (Build C) next to this net's own SMD pads (fine-pitch SOIC / SOT legs) the way out is checked as a thin track (it "necks down"
+      // there, as every router does); boards without SMD parts route exactly as before
+      const smdOwn = M.pads.filter((p) => p.net === ni && p.smd);
+      let neck = null, offsN = null;
+      if (smdOwn.length && w > R.track) {
+        neck = new Uint8Array(N);
+        offsN = disc((R.track / 2 + R.clr + g) / g);
+        smdOwn.forEach((p) => mark0(neck, padObj(p), 0.6));
+      }
       const passable = (L, c) => {
         const s = L * N + c;
         if (pass[s]) return pass[s] === 1;
         const i = c % nx, j = (c - i) / nx;
         let ok = boardSdf(B, i * g, j * g) <= -margin;
         if (ok) {
-          const O = own[L];
+          const O = own[L], offs = neck && L === 0 && neck[c] ? offsN : offsW;
           for (let k = 0; k < offs.length; k += 2) {
             const ii = i + offs[k], jj = j + offs[k + 1];
             if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;

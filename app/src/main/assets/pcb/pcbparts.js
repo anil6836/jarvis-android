@@ -193,6 +193,84 @@
   modFp('MOD_MAX98357', { n: 7, name: 'Module_MAX98357A_I2S_Amp_Flat_Socket_1x07_P2.54mm', out: [-8.9, -17.8, 8.9, 1.6], lab: 'S',
     body: { k: 'max', col: 0x6b3fa0 }, verify: 'MAX98357A బోర్డ్ సుమారు 17.8 × 19.3 mm, పిన్నులు ఒక అంచున, స్పీకర్ స్క్రూలు ఇంకో అంచున' });
 
+  // ---- 26 Nov (Build C, "5 SMD + ఫ్యాక్టరీ టంకం"): the small parts as surface-mount ones the factory solders (PCBA). Pad places
+  // and sizes from KiCad's own library (R_0805_2012Metric, C_0805_2012Metric, LED_0805_2012Metric, D_SMA, SOT-23, SOIC-8_3.9x4.9mm_P1.27mm,
+  // SOT-223-3_TabPin2), with the same zero turn as KiCad's (the factory's turn is worked out from it). The pads keep the LIBRARY's pin
+  // numbers (a SOT-23 transistor's physical pin 1 is the base, so its pad is named "2" = B here): every net stays as it was.
+  const S = (n, x, y, w, h) => ({ n: String(n), x, y, s: 'r', w, h });
+  function chip(id, name, px, pw, ph, bw, bd, col, polar) {
+    const cx = px + pw / 2 + 0.25, cy = Math.max(ph / 2, bd / 2) + 0.25;
+    const silk = polar ? [L(-cx - 0.35, -cy + 0.2, -cx - 0.35, cy - 0.2), L(-bw / 2 + 0.3, -cy, bw / 2 - 0.3, -cy), L(-bw / 2 + 0.3, cy, bw / 2 - 0.3, cy)]
+      : [L(-0.25, -cy, 0.25, -cy), L(-0.25, cy, 0.25, cy)];
+    return def(id, { name, pads: [S(1, -px, 0, pw, ph), S(2, px, 0, pw, ph)], silk, court: [-cx - 0.6, -cy - 0.3, cx + 0.4, cy + 0.3],
+      body: { t: 'chip', w: bw, d: bd, H: polar === 'led' ? 0.8 : col === 'c' ? 1.25 : 0.55, col }, polar: !!polar, smt: true });
+  }
+  chip('R_0805', 'R_0805_2012Metric', 0.9125, 1.025, 1.4, 2.0, 1.25, 'r');
+  chip('C_0805', 'C_0805_2012Metric', 0.95, 1.0, 1.45, 2.0, 1.25, 'c');
+  chip('LED_0805', 'LED_0805_2012Metric', 0.9375, 0.975, 1.4, 2.0, 1.25, 'led', 'led');
+  def('D_SMA', { name: 'D_SMA', pads: [S(1, -2.0, 0, 2.5, 1.8), S(2, 2.0, 0, 2.5, 1.8)],
+    silk: [L(2.1, -1.55, -3.5, -1.55, -3.5, 1.55, 2.1, 1.55)], court: [-3.75, -1.8, 3.6, 1.8], body: { t: 'sma' }, polar: true, smt: true });
+  // SOT-23 NPN (MMBT3904): physical 1 = B, 2 = E, 3 = C → our pads "2", "3", "1" (the library's C B E)
+  def('SOT23_NPN', { name: 'SOT-23', pads: [S(2, -1.1375, -0.95, 1.325, 0.6), S(3, -1.1375, 0.95, 1.325, 0.6), S(1, 1.1375, 0, 1.325, 0.6)],
+    silk: [L(0.2, -1.55, 0.75, -1.55, 0.75, -0.6), L(0.2, 1.55, 0.75, 1.55, 0.75, 0.6), L(-0.75, -1.55, -0.35, -1.55)], court: [-2.05, -1.75, 2.05, 1.75],
+    body: { t: 'sot23' }, polar: true, smt: true });
+  (function soic8() {
+    const pads = [];
+    for (let i = 0; i < 4; i++) pads.push(S(i + 1, -2.475, -1.905 + i * 1.27, 1.95, 0.6));
+    for (let i = 0; i < 4; i++) pads.push(S(5 + i, 2.475, 1.905 - i * 1.27, 1.95, 0.6));
+    def('SOIC8', { name: 'SOIC-8_3.9x4.9mm_P1.27mm', pads, silk: [L(-1.95, -2.56, 1.95, -2.56), L(-1.95, 2.56, 1.95, 2.56), L(-3.45, -2.6, -3.45, -2.3)],
+      court: [-3.7, -2.7, 3.7, 2.7], body: { t: 'soic', n: 8 }, polar: true, smt: true });
+  })();
+  // SOT-223 regulator (AMS1117-3.3): 1 GND, 2 OUT, 3 IN in a row; the wide tab is OUT too (KiCad's TabPin2: the same pad name "2")
+  def('SOT223_REG', { name: 'SOT-223-3_TabPin2', pads: [S(1, -2.3, 3.15, 1.5, 2.0), S(2, 0, 3.15, 1.5, 2.0), S(3, 2.3, 3.15, 1.5, 2.0), S(2, 0, -3.15, 3.8, 2.0)],
+    silk: [L(-3.45, -1.9, -3.45, 1.9), L(3.45, -1.9, 3.45, 1.9)], court: [-4.0, -4.4, 4.0, 4.4], body: { t: 'sot223' }, polar: true, smt: true });
+
+  /** SMD parts the factory solders: the footprint, the part it is, its LCSC / JLCPCB number (looked up on jlcpcb.com, 26 Nov 2026), the
+   *  footprint name the factory's form wants and the turn the factory adds to KiCad's (its own library's zero differs for some). */
+  const RES_LCSC = { '100': 'C17408', '220': 'C17557', '330': 'C17630', '470': 'C17710', '1k': 'C17513', '2.2k': 'C17520', '4.7k': 'C17673', '10k': 'C17414',
+    '22k': 'C17560', '47k': 'C17713', '100k': 'C149504', '1M': 'C17514' };
+  const CAP_LCSC = { '10nF': 'C1710', '100nF': 'C49678', '1uF': 'C28323', '10uF': 'C15850' };
+  const LED_LCSC = { red: 'C84256', green: 'C2297', white: 'C34499', yellow: 'C2296', blue: 'C84259' };
+  const SMD = {
+    res: { fp: 'R_0805', jfp: '0805', te: '0805 SMD రెసిస్టర్ (⅛ W)', rot: 0, how: 'దిశ లేదు. 2 × 1.25 mm నల్లటి ముక్క; మీద 103 (= 10k) లాంటి అంకెలు ఉండొచ్చు, ఉండకపోవచ్చు.' },
+    cer: { fp: 'C_0805', jfp: '0805', te: '0805 SMD కెపాసిటర్', rot: 0, how: 'దిశ లేదు. మీద ఏమీ రాసి ఉండదు: విలువ ఫ్యాక్టరీ జాబితాలోనే.' },
+    led5: { fp: 'LED_0805', jfp: 'LED0805', te: '0805 SMD LED', rot: 0, how: '⚠️ దిశ ఉంది: కింద / మీద ఆకుపచ్చ గుర్తు (T లేదా బాణం) ఉన్న చివర − (K, ప్యాడ్ 1, బోర్డ్ మీది గీత వైపు).' },
+    led3: { fp: 'LED_0805', jfp: 'LED0805', te: '0805 SMD LED', rot: 0, how: '⚠️ దిశ ఉంది: కింద / మీద ఆకుపచ్చ గుర్తు (T లేదా బాణం) ఉన్న చివర − (K, ప్యాడ్ 1, బోర్డ్ మీది గీత వైపు).' },
+    d4007: { fp: 'D_SMA', jfp: 'SMA', te: 'M7 (SMD 1N4007, 1 A)', mpn: 'M7', lcsc: 'C95872', rot: 0, how: '⚠️ తెల్ల గీత ఉన్న చివర K (−, ప్యాడ్ 1), బోర్డ్ మీది గీత వైపు.' },
+    d5822: { fp: 'D_SMA', jfp: 'SMA', te: 'SS34 (SMD షాట్కీ, 3 A 40 V)', mpn: 'SS34', lcsc: 'C8678', rot: 0, how: '⚠️ తెల్ల గీత ఉన్న చివర K (−, ప్యాడ్ 1), బోర్డ్ మీది గీత వైపు.' },
+    bc547: { fp: 'SOT23_NPN', jfp: 'SOT-23', te: 'MMBT3904 (SMD NPN)', mpn: 'MMBT3904', lcsc: 'C20526', rot: 180, how: 'SOT-23: ఒక వైపు రెండు కాళ్ళు (B, E), ఇంకో వైపు ఒకటి (C). 200 mA వరకు; ఈ స్టూడియో 100 mA వరకే అనుకుంటుంది.' },
+    ne555: { fp: 'SOIC8', jfp: 'SOIC-8', te: 'NE555DR (SMD 555)', mpn: 'NE555DR', lcsc: 'C7593', rot: 270, how: '⚠️ చిప్ మీది చిన్న చుక్క / గీత ఉన్న మూల పిన్ 1. సాకెట్ ఉండదు: ఫ్యాక్టరీ నేరుగా టంకం చేస్తుంది.' },
+    r3v3: { fp: 'SOT223_REG', jfp: 'SOT-223', te: 'AMS1117-3.3 (SMD 3.3 V)', mpn: 'AMS1117-3.3', lcsc: 'C6186', rot: 180, how: 'SOT-223: మూడు కాళ్ళు GND · OUT · IN, వెనక వెడల్పాటి పట్టీ కూడా OUT. IN 15 V కంటే మించకూడదు; OUT దగ్గర 10 µF తప్పకుండా.' }
+  };
+  function resKey(v) {
+    const o = ohms(v);
+    if (!(o > 0)) return '';
+    const s = o >= 1e6 ? o / 1e6 + 'M' : o >= 1e3 ? o / 1e3 + 'k' : String(o);
+    return s.replace(/\.0+(?=[kM]?$)/, '');
+  }
+  function capKey(v) {
+    const m = /^\s*([\d.]+)\s*([pnuµm]?)F?/i.exec(String(v || ''));
+    if (!m) return '';
+    const f = parseFloat(m[1]) * ({ p: 1e-12, n: 1e-9, u: 1e-6, 'µ': 1e-6, m: 1e-3 }[m[2].toLowerCase()] || 1);
+    return [['10nF', 1e-8], ['100nF', 1e-7], ['1uF', 1e-6], ['10uF', 1e-5]].reduce((a, k) => (Math.abs(f - k[1]) / k[1] < 0.02 ? k[0] : a), '');
+  }
+  /** What this part becomes as an SMD part (null: it stays a through-hole part). */
+  function smdOf(part) {
+    const s = SMD[part && part.lib];
+    if (!s) return null;
+    const o = Object.assign({ lib: part.lib }, s);
+    if (part.lib === 'res') { const k = resKey(part.val); o.mpn = (k || ascii(part.val)) + ' 0805'; o.lcsc = RES_LCSC[k] || ''; }
+    else if (part.lib === 'cer') { const k = capKey(part.val); o.mpn = (k || ascii(part.val)) + ' 0805'; o.lcsc = CAP_LCSC[k] || ''; if (k === '10uF') o.volts = 25; }
+    else if (part.lib === 'led5' || part.lib === 'led3') {
+      const c = (String(part.color || part.val || '').toLowerCase().match(/red|green|blue|yellow|white/) || ['red'])[0];
+      o.mpn = c.toUpperCase() + ' LED 0805'; o.lcsc = LED_LCSC[c] || ''; o.col = c;
+    }
+    return o;
+  }
+  function ascii(v) { return String(v || '').replace(/µ/g, 'u').replace(/Ω/g, '').replace(/[^ -~]/g, '').trim(); }
+  /** Is this part already the SMD one (its footprint has no holes)? */
+  function isSmd(part) { const f = fpOf(part); return !!(f && f.smt); }
+
   function fp(id) {
     if (FP[id]) return FP[id];
     let m = /^(F?)HDR1x(\d+)$/.exec(id || '');
@@ -442,7 +520,7 @@
     return touched;
   }
 
-  const api = { FP, LIB, MODULES, fp, fpOf, pinsOf, setVariant, bands, ohms, BAND_TE };
+  const api = { FP, LIB, MODULES, fp, fpOf, pinsOf, setVariant, bands, ohms, BAND_TE, SMD, smdOf, isSmd, resKey, capKey };
   root.PcbParts = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : globalThis);

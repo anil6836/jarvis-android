@@ -134,6 +134,8 @@ final class Pcb {
             "  diode for battery / bike / adapter inputs (not after a tp4056), a 100nF decoupling capacitor",
             "  at each IC, a resistor for every LED and a base resistor for every transistor.",
             "- A change to the board on the screen: answer the WHOLE new parts and nets (keep the refs that stay). A question only: {\"say\":\"<Telugu>\"}.",
+            "  In the board you get, \"smd\":true marks a small surface-mount part the factory solders (the studio keeps its footprint) and a module's",
+            "  \"pins\" are the pin names of its pads in his module's order: keep its nets on those pad numbers.",
             "- A photo of a hand-drawn circuit: read its parts and wires; values you cannot read: choose sensible ones and say so.");
 
     static final String HELP_SYSTEM = String.join("\n",

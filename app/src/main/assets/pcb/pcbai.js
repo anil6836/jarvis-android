@@ -82,7 +82,7 @@
    * {parts, nets, title, silk, say, dropped: [why], fixes: [what we put right]} or {err, refuse}. Parts are checked against the studio's
    * library (unknown ones are left out and said), pins against each footprint, every pin in one net, nets of one pin left out.
    */
-  function parse(ans) {
+  function parse(ans, old) {
     if (!ans || typeof ans !== 'object') return { err: 'AI జవాబులో బోర్డ్ లేదు.' };
     const bad = unsafe(ans);
     if (bad) return { err: bad, refuse: true };
@@ -127,6 +127,9 @@
         if (!pt.val || /^led$/i.test(pt.val) || LED_COLORS[pt.val.toLowerCase()]) pt.val = LED_COLORS[pt.color];
       }
       if (q.note) pt.note = String(q.note).replace(/[\u0000-\u001f]/g, ' ').slice(0, 300);
+      // a change: what the AI does not see stays (a module's pin order he chose with 🔁, before its pin names are read; a 🏭 SMD footprint)
+      const o = old && old.get(ref);
+      if (o && o.lib === lib) { if (o.var) pt.var = o.var; if (P.isSmd(o)) pt.fp = o.fp; }
       parts.push(pt);
       byRef.set(ref, pt);
     });
@@ -256,10 +259,10 @@
    */
   function merge(base, ans, opt) {
     opt = opt || {};
-    const r = parse(ans);
+    const old = new Map(base.parts.map((p) => [p.ref, p]));
+    const r = parse(ans, old);
     if (r.err) return r;
     const D = JSON.parse(JSON.stringify(base));
-    const old = new Map(base.parts.map((p) => [p.ref, p]));
     const fixed = new Set(), changed = [];
     D.parts = r.parts.map((q) => {
       const o = old.get(q.ref);
@@ -300,6 +303,8 @@
         if (p.color) o.color = p.color;
         if (p.lib === 'hdr' || p.lib === 'fhdr' || p.lib === 'elec') o.fp = (P.fpOf(p) || {}).id;
         if (p.pins) o.pins = p.pins;
+        else if (p.var) o.pins = P.pinsOf(p); // (his module's own pin order: the pad numbers mean these names)
+        if (P.isSmd(p)) o.smd = true;
         return o;
       }),
       nets: D.nets.map((n) => (n.a ? { n: n.n, p: n.p, a: n.a } : { n: n.n, p: n.p }))

@@ -113,7 +113,7 @@
       fp.kids.push(N('property', q('Datasheet'), q(''), N('at', '0', '0', n(a)), N('layer', q('F.Fab')), N('hide', 'yes'), N('uuid', q(uid())), font(1.27)));
       fp.kids.push(N('property', q('Description'), q(pt.note || ''), N('at', '0', '0', n(a)), N('layer', q('F.Fab')), N('hide', 'yes'), N('uuid', q(uid())), font(1.27)));
       if (sym && sym[pt.ref]) { fp.kids.push(N('path', q('/' + sym[pt.ref]))); fp.kids.push(N('sheetname', q('Root'))); fp.kids.push(N('sheetfile', q(sheet))); }
-      fp.kids.push(N('attr', 'through_hole'));
+      fp.kids.push(N('attr', f.smt ? 'smd' : 'through_hole'));
       (f.silk || []).forEach((s) => { for (let k = 2; k < s.p.length; k += 2) fp.kids.push(N('fp_line', N('start', n(s.p[k - 2]), n(s.p[k - 1])), N('end', n(s.p[k]), n(s.p[k + 1])), stroke(0.12), N('layer', q('F.SilkS')), N('uuid', q(uid())))); });
       if (f.court) fp.kids.push(N('fp_rect', N('start', n(f.court[0]), n(f.court[1])), N('end', n(f.court[2]), n(f.court[3])), stroke(0.05), N('fill', 'none'), N('layer', q('F.CrtYd')), N('uuid', q(uid()))));
       words.filter((w) => w.kind === 'pin' && w.ref === pt.ref).forEach((w) => {
@@ -123,6 +123,11 @@
       });
       f.pads.forEach((p) => {
         const shape = p.s === 'r' ? 'rect' : p.s === 'o' ? 'oval' : 'circle', net = pinNet.get(pt.ref + '.' + p.n);
+        if (!p.d) { // (Build C: an SMD pad, top copper with its paste and mask openings)
+          fp.kids.push(N('pad', q(p.n), 'smd', shape, N('at', n(p.x), n(p.y), a ? n(a) : null), N('size', n(p.w), n(p.h)),
+            N('layers', q('F.Cu'), q('F.Paste'), q('F.Mask')), net ? N('net', String(netNo.get(net)), q(net)) : null, N('uuid', q(uid()))));
+          return;
+        }
         fp.kids.push(N('pad', q(p.n), 'thru_hole', shape, N('at', n(p.x), n(p.y), a ? n(a) : null), N('size', n(p.w), n(p.h)), N('drill', n(p.d)),
           N('layers', q('*.Cu'), q('*.Mask')), N('remove_unused_layers', 'no'), net ? N('net', String(netNo.get(net)), q(net)) : null, N('uuid', q(uid()))));
       });
