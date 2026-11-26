@@ -246,6 +246,8 @@
       cr.appendChild(btn('🔧 టంకం', 'small', () => startGuide()));
       cr.appendChild(btn('📦 డబ్బా', 'small', startBox));
       cr.appendChild(btn('📏 అసలు సైజు', 'small', openReal));
+      cr.appendChild(btn('🔌 వైర్లు', 'small', () => wireSheet(false)));
+      cr.appendChild(btn('✅ కొనే లిస్ట్', 'small', buyGo));
       cur.appendChild(cr);
       h.appendChild(cur);
     }
@@ -449,6 +451,7 @@
       });
     }));
     t.appendChild(tool('✏️ మార్పు', '', () => editSheet('')));
+    t.appendChild(tool('🔌 వైర్లు', '', () => wireSheet(false)));
     t.appendChild(tool('↩️', '', back1));
     t.appendChild(tool('🕑', '', verSheet));
     t.appendChild(tool('🔍', '', () => { pv.fit = true; drawPcb(); }));
@@ -971,6 +974,7 @@
     t.appendChild(tool(sv.vals ? '🏷️ విలువలు ✓' : '🏷️ విలువలు', sv.vals ? 'on' : '', () => { sv.vals = !sv.vals; schTools(); drawSch(); }));
     t.appendChild(tool('✏️ మార్పు', '', () => editSheet('')));
     t.appendChild(tool('⚡ నడిపించు', '', () => showTab('sim')));
+    t.appendChild(tool('🔌 వైర్లు', '', () => wireSheet(false)));
     t.appendChild(tool('🔍', '', () => { sv.fit = true; drawSch(); }));
     t.appendChild(tool('🧩 PCB చూడు', '', () => showTab('pcb')));
     t.appendChild(tool('🕑', '', verSheet));
@@ -1148,6 +1152,51 @@
       const r = el('div', 'row');
       r.appendChild(btn('🧩 PCB లో చూపించు', '', () => { pv.sel = pt.ref; showTab('pcb'); }));
       if (lib.mod && window.PcbBuy) r.appendChild(btn('🛒 ' + shopName(), '', () => post({ t: 'shopsearch', shop, q: window.PcbBuy.query(pt) })));
+      r.appendChild(btn('మూసేయి', '', closeSheet));
+      s.appendChild(r);
+    });
+  }
+
+  // ================================================================ 🔌 the wire table (26 Nov, "6. వైర్ టేబుల్"): ₹0, our own code
+
+  function swatch(c) {
+    const MKc = window.PcbMake.COLS[c] || ['', '#888'], sw = el('span');
+    sw.style.cssText = 'display:inline-block;width:22px;height:10px;border-radius:5px;margin-right:8px;vertical-align:middle;border:1px solid #8a93a6;background:' + MKc[1];
+    return sw;
+  }
+  function wireSheet(all) {
+    if (!D) return;
+    const MK = window.PcbMake, w = MK.wireTable(D);
+    sheet((s) => {
+      s.appendChild(el('h2', null, '🔌 వైర్ పట్టీ: ఏ పిన్ నుంచి ఏ పిన్‌కి'));
+      s.appendChild(el('div', 'muted', 'బోర్డ్ నుంచి బయటికి వెళ్ళే ప్రతి వైరు, దాని రంగు. ఎరుపు = +, నలుపు = GND ఎప్పుడూ ఇలాగే ఉంచండి; మిగతా రంగులు సలహా మాత్రమే (ఒక్కో దారికి ఒక రంగు ఉంటే తప్పులు రావు).'));
+      if (!w.off.length) s.appendChild(el('div', 'step', 'ఈ బోర్డ్‌కి బయటి వైర్లు లేవు: భాగాలన్నీ బోర్డ్ మీదే. కింద 🧪 కలుపుల పట్టీ బ్రెడ్‌బోర్డ్ మీద ముందే చూడటానికి.'));
+      w.off.forEach((g) => {
+        const c = el('div', 'card');
+        c.appendChild(el('div', null, '▶️ ' + g.ref + ' · ' + g.te));
+        c.appendChild(el('div', 'muted', '🔧 ' + g.how));
+        g.rows.forEach((r) => {
+          const row = el('div', 'step');
+          row.appendChild(swatch(r.col));
+          row.appendChild(document.createTextNode(g.ref + ' ' + r.name + ' → ' + r.to + ' · ' + MK.COLS[r.col][0] + (r.thick ? ' · 💪 మందమైన వైరు (1 A పైన)' : '')));
+          c.appendChild(row);
+        });
+        s.appendChild(c);
+      });
+      s.appendChild(el('h3', null, '🧪 అన్ని కలుపులు (PCB ఆర్డర్ ముందే బ్రెడ్‌బోర్డ్ మీద చూడాలంటే)'));
+      if (!all) {
+        s.appendChild(btn('🧪 ' + w.nets.length + ' కలుపులు చూపించు', '', () => wireSheet(true)));
+      } else {
+        s.appendChild(el('div', 'muted', 'ప్రతి లైన్ ఒక దారి: ↔ తో ఉన్నవన్నీ ఒకే వైరుతో (లేదా బ్రెడ్‌బోర్డ్ ఒకే వరుసలో) కలవాలి. కరెంట్ తీసేసి కలపండి.'));
+        w.nets.forEach((n) => {
+          const row = el('div', 'step');
+          row.appendChild(swatch(n.col));
+          row.appendChild(document.createTextNode(n.n + ': ' + n.ends.map((e) => e.ref + ' ' + e.name).join(' ↔ ')));
+          s.appendChild(row);
+        });
+      }
+      const r = el('div', 'row');
+      r.appendChild(btn('📋 పట్టీ పంపు', '', () => post({ t: 'sharetext', text: MK.wireText(D) })));
       r.appendChild(btn('మూసేయి', '', closeSheet));
       s.appendChild(r);
     });
@@ -1537,13 +1586,30 @@
       sr.appendChild(b);
     });
     h.appendChild(sr);
-    const rows = [];
-    const g = new Map();
-    D.parts.forEach((pt) => { const k = pt.lib + '|' + pt.val + '|' + (pt.color || ''); if (!g.has(k)) g.set(k, { pt, refs: [] }); g.get(k).refs.push(pt.ref); });
-    g.forEach((v) => rows.push({ te: ((P.LIB[v.pt.lib] || {}).te || v.pt.lib) + (v.pt.val ? ' · ' + v.pt.val : ''), refs: v.refs.join(', '), n: v.refs.length, q: B.query(v.pt), pages: B.pages(B.key(v.pt)), tip: sizeTip(v.pt) }));
-    ((pr && pr.extra) || []).forEach((x) => rows.push({ te: x.te + (x.val ? ' · ' + x.val : ''), refs: x.why || '', n: x.n || 1, q: x.q, pages: B.pages(x.k) }));
+    const rows = buyRows();
+    // ✅ (26 Nov, "8. కొనే చెక్‌లిస్ట్"): he ticks what he has; kept with this board
+    const got = () => rows.filter((r) => D.buy && D.buy[r.key]).length;
+    const prog = el('div', 'card');
+    const pt0 = el('div');
+    const bar = el('div'); bar.style.cssText = 'height:8px;border-radius:4px;background:var(--line);margin-top:6px;overflow:hidden';
+    const fill = el('div'); fill.style.cssText = 'height:100%;background:#43a047;width:0';
+    bar.appendChild(fill);
+    const showProg = () => { const n = got(); pt0.textContent = (n === rows.length ? '🎉 అన్నీ దొరికాయి: ' : '✅ కొనే చెక్‌లిస్ట్: ') + n + ' / ' + rows.length + (n === rows.length ? '. ఇక 🔧 టంకం!' : ' దొరికాయి (కొన్నది / ఇంట్లో ఉన్నది ⬜ నొక్కి ✅ చేయండి)'); fill.style.width = Math.round(100 * n / Math.max(1, rows.length)) + '%'; };
+    prog.appendChild(pt0); prog.appendChild(bar);
+    h.appendChild(prog);
+    showProg();
     rows.forEach((r) => {
       const it = el('div', 'item');
+      const tick = btn(D.buy && D.buy[r.key] ? '✅' : '⬜', 'small', () => {
+        D.buy = Object.assign({}, D.buy || {});
+        if (D.buy[r.key]) delete D.buy[r.key]; else D.buy[r.key] = 1;
+        tick.textContent = D.buy[r.key] ? '✅' : '⬜';
+        it.style.opacity = D.buy[r.key] ? '0.55' : '';
+        showProg(); saveSoon();
+      });
+      tick.style.flex = 'none';
+      it.appendChild(tick);
+      if (D.buy && D.buy[r.key]) it.style.opacity = '0.55';
       const x = el('div', 'x');
       x.appendChild(el('div', null, r.te + '  × ' + r.n));
       if (r.refs) x.appendChild(el('div', 'f', r.refs));
@@ -1555,7 +1621,7 @@
         x.appendChild(lk);
       }
       it.appendChild(x);
-      it.appendChild(btn('🛒', 'small', () => post({ t: 'shopsearch', shop, q: r.q })));
+      if (!r.noShop) it.appendChild(btn('🛒', 'small', () => post({ t: 'shopsearch', shop, q: r.q })));
       h.appendChild(it);
     });
     const kc = el('div', 'card');
@@ -1571,13 +1637,54 @@
     const r4 = el('div', 'row');
     r4.appendChild(btn('📋 జాబితా పంపు (దుకాణానికి / మీకు)', '', () => {
       const lines = ['🔌 ' + D.name + ': కొనాల్సిన భాగాలు'];
-      rows.forEach((r) => lines.push('• ' + r.q + ' × ' + r.n + (r.refs ? ' (' + r.refs + ')' : '')));
+      rows.filter((r) => !r.noShop).forEach((r) => lines.push('• ' + r.q + ' × ' + r.n + (r.refs ? ' (' + r.refs + ')' : '')));
+      lines.push('(Jarvis PCB స్టూడియో)');
+      post({ t: 'sharetext', text: lines.join('\n') });
+    }));
+    r4.appendChild(btn('📋 ఇంకా కొనాల్సినవి మాత్రమే', '', () => {
+      const left = rows.filter((r) => !(D.buy && D.buy[r.key]));
+      if (!left.length) { toast('🎉 అన్నీ దొరికాయి: కొనాల్సింది ఏమీ లేదు'); return; }
+      const lines = ['🔌 ' + D.name + ': ఇంకా కొనాల్సినవి (' + left.length + ')'];
+      left.forEach((r) => lines.push('• ' + (r.q || r.te) + ' × ' + r.n + (r.refs ? ' (' + r.refs + ')' : '')));
       lines.push('(Jarvis PCB స్టూడియో)');
       post({ t: 'sharetext', text: lines.join('\n') });
     }));
     h.appendChild(r4);
     h.appendChild(el('div', 'muted', '💡 రెసిస్టర్లు, LED లు సాధారణంగా 10 / 50 / 100 ప్యాక్‌లలో వస్తాయి. కొనే ముందు పేజీలో విలువ, సైజు ఒకసారి చూడండి. ' + (pr ? '(' + pr.cost + ') ' : '') +
       'కొనడం, పేమెంట్ మీరే; Jarvis కార్ట్‌లో పెట్టదు, కొనదు.'));
+  }
+  /** Open 🏭 at the checklist. */
+  function buyGo() {
+    showTab('fab');
+    setTimeout(() => { const f = $('fab'), h3 = Array.from(f.querySelectorAll('h3')).find((x) => /కొనాల్సిన భాగాలు/.test(x.textContent)); if (h3) f.scrollTop = h3.offsetTop - 8; }, 60);
+  }
+  /**
+   * Every line to buy for this board: its parts (same kind and value together), the ready board's extras, and for any other board
+   * the extras it needs (header strips, jumper wires, IC socket) and the PCB itself. key: stable, for the ✅ ticks.
+   */
+  function buyRows() {
+    const B = window.PcbBuy, pr = D.proj && J.PROJECTS.find((q) => q.id === D.proj), rows = [];
+    const g = new Map();
+    D.parts.forEach((pt) => { const k = pt.lib + '|' + pt.val + '|' + (pt.color || ''); if (!g.has(k)) g.set(k, { pt, refs: [], k }); g.get(k).refs.push(pt.ref); });
+    g.forEach((v) => rows.push({ key: 'p:' + v.k, te: ((P.LIB[v.pt.lib] || {}).te || v.pt.lib) + (v.pt.val ? ' · ' + v.pt.val : ''), refs: v.refs.join(', '), n: v.refs.length, q: B.query(v.pt), pages: B.pages(B.key(v.pt)), tip: sizeTip(v.pt) }));
+    if (pr) ((pr.extra || [])).forEach((x) => rows.push({ key: 'x:' + x.te, te: x.te + (x.val ? ' · ' + x.val : ''), refs: x.why || '', n: x.n || 1, q: x.q, pages: B.pages(x.k) }));
+    else {
+      // what the parts need that is not a part on the board
+      let fem = 0, male = 0, ff = 0;
+      const fRefs = [], mRefs = [];
+      D.parts.forEach((pt) => {
+        const L = P.LIB[pt.lib] || {}, n = Object.keys(P.pinsOf(pt)).length;
+        if (pt.lib === 'esp32') { fem += 30; fRefs.push(pt.ref); }
+        else if (pt.lib === 'fhdr' || (L.mod && L.kind === 'plug')) { fem += n; fRefs.push(pt.ref); }
+        else if (/^(hdr|buck|pam8403|tp4056)$/.test(pt.lib) || (L.mod && L.kind === 'wire')) { male += n; mRefs.push(pt.ref); ff += n; }
+      });
+      if (fem) rows.push({ key: 'x:fhdr', te: 'ఫిమేల్ బెర్గ్ స్ట్రిప్ (40 పిన్)', refs: fRefs.join(', ') + ': ' + fem + ' పిన్నులు కట్ చేయండి', n: Math.ceil(fem / 40), q: 'female berg strip 2.54mm 40 pin', pages: B.pages('fhdr') });
+      if (male) rows.push({ key: 'x:hdr', te: 'మేల్ బెర్గ్ స్ట్రిప్ (40 పిన్)', refs: mRefs.join(', ') + ': ' + male + ' పిన్నులు కట్ చేయండి', n: Math.ceil(male / 40), q: 'male berg strip 2.54mm', pages: B.pages('hdr') });
+      if (ff) rows.push({ key: 'x:ff', te: 'జంపర్ వైర్లు ఫిమేల్–ఫిమేల్ (40 ప్యాక్)', refs: ff + ' వైర్లు కావాలి (🔌 వైర్ పట్టీ)', n: Math.ceil(ff / 40), q: 'female to female jumper wires 40 pcs', pages: [] });
+      if (D.parts.some((pt) => pt.lib === 'ne555')) rows.push({ key: 'x:socket8', te: 'IC సాకెట్ 8 పిన్', refs: 'NE555 కింద', n: D.parts.filter((pt) => pt.lib === 'ne555').length, q: '8 pin IC socket', pages: B.pages('socket8') });
+    }
+    rows.push({ key: 'x:pcb', te: '🏭 PCB బోర్డ్ (ఫ్యాక్టరీ నుంచి, సాధారణంగా 5 ముక్కలు)', refs: D.board.w + ' × ' + D.board.h + ' mm · 🏭 ఫైల్స్ పైన', n: 1, q: '', pages: [], noShop: true });
+    return rows;
   }
   /** The size the board expects (electrolytic capacitors come in many sizes). */
   function sizeTip(pt) {
@@ -2962,7 +3069,7 @@
     then();
   }
 
-  window.__pcb = { open, get D() { return D; }, get check() { return check; }, showTab, reroute, changed, onJarvis, texture, partSheet: (ref) => partSheet(D && D.parts.find((q) => q.ref === ref)), modList, modInfo, pv, sv,
+  window.__pcb = { open, get D() { return D; }, get check() { return check; }, showTab, reroute, changed, onJarvis, texture, partSheet: (ref) => partSheet(D && D.parts.find((q) => q.ref === ref)), modList, modInfo, wireSheet, buyGo, pv, sv,
     ai, idea, editSheet, heard, lay: () => schLayout(), sim, simv, simBuild, simReport, simControls, simSupply, simPart, verSheet, verSnap, verDiff, kicadFiles: () => KI.files(D, schLayout()),
     sg, bx, rs, xrS, lv, startGuide, stopGuide, guideGo, guideWords, startBox, stopBox, boxTaller, boxZip, openReal, closeReal, drawReal, startAr, stopAr, xrEnter, xrLeave, xrSaid,
     learnTab, learnGo, get learnSt() { return learnSt; }, set scr(v) { scr = v; }, get v3d() { return v3d; } };

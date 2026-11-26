@@ -552,7 +552,109 @@
     return te.join('\n') + '\n';
   }
 
-  const api = { tall, solderSteps, spoken, valSaid, boxPlan, solids, stl, boxReadme, BOX, ORDER };
+  // ================================================================ 🔌 the wire table (26 Nov, "6. వైర్ టేబుల్"): ₹0, our own code
+
+  // the usual colours: power red, ground black, 3.3 V orange, I2C blue / yellow, serial green / white, the rest one each
+  const COLS = { red: ['ఎరుపు', '#e53935'], black: ['నలుపు', '#212121'], orange: ['నారింజ', '#fb8c00'], blue: ['నీలం', '#1e88e5'], yellow: ['పసుపు', '#fdd835'],
+    green: ['ఆకుపచ్చ', '#43a047'], white: ['తెలుపు', '#f5f5f5'], purple: ['ఊదా', '#8e24aa'], grey: ['బూడిద', '#9e9e9e'], brown: ['గోధుమ', '#6d4c41'] };
+  const SPARE = ['yellow', 'green', 'blue', 'white', 'purple', 'grey', 'brown'];
+  /** A colour for every net: the same net is the same colour everywhere. */
+  function netColours(D) {
+    const out = {}, used = new Set();
+    const fixed = (n) => {
+      const u = String(n).toUpperCase();
+      if (C.isGnd(n) || /^(GND|0V|AGND|BAT-|.*-)$/.test(u)) return 'black';
+      if (/3V3|3\.3V/.test(u)) return 'orange';
+      if (C.isPower(n) || /^(VBUS|VIN|VBAT|BAT\+|\+)/.test(u)) return 'red';
+      if (/SDA/.test(u)) return 'blue';
+      if (/SCL/.test(u)) return 'yellow';
+      if (/(^|[^R])TX/.test(u)) return 'green';
+      if (/RX/.test(u)) return 'white';
+      return null;
+    };
+    // (a net named N7 that reaches a "+5V" or "VCC" pin is still the power: its pins' names count too)
+    const pinNames = (n) => n.p.map((q) => { const [ref, k] = q.split('.'), pt = D.parts.find((x) => x.ref === ref); return pt && P.LIB[pt.lib] ? String(P.pinsOf(pt)[k] || '') : ''; });
+    const byPins = (n) => { const nm = pinNames(n); if (nm.some((x) => C.isGnd(x))) return 'black'; if (nm.some((x) => /3V3/i.test(x))) return 'orange';
+      if (nm.some((x) => /^(\+?\d+(\.\d+)?V|VCC|VIN|VBUS|VBAT|OUT\+|B\+|IN\+)$/i.test(x))) return 'red'; return null; };
+    D.nets.forEach((n) => { const c = fixed(n.n) || byPins(n); if (c) { out[n.n] = c; if (c !== 'red' && c !== 'black' && c !== 'orange') used.add(c); } });
+    let i = 0;
+    D.nets.forEach((n) => {
+      if (out[n.n]) return;
+      const free = SPARE.filter((c) => !used.has(c));
+      const c = free.length ? free[0] : SPARE[i++ % SPARE.length];
+      out[n.n] = c; used.add(c);
+    });
+    return out;
+  }
+  /** How the wire is joined at the far end, for the kinds of things that sit off the board. */
+  const WIRE_HOW = {
+    term2: 'వైరు చివర 5–6 mm తొక్క తీసి స్క్రూ కింద బిగించండి',
+    buck: 'జంపర్ వైర్ (ఫిమేల్–ఫిమేల్) లేదా వైరు టంకం',
+    pam8403: 'జంపర్ వైర్ (ఫిమేల్–ఫిమేల్), లేదా మాడ్యూల్ ప్యాడ్‌కి వైరు టంకం',
+    tp4056: 'మాడ్యూల్ ప్యాడ్‌కి వైరు టంకం (B+ B− కి మందమైన వైరు)',
+    hdr: 'జంపర్ వైర్ (ఫిమేల్–ఫిమేల్, మాడ్యూల్‌కి పిన్నులు ఉంటే)',
+    kcxbt003: 'సన్నని వైరు: మాడ్యూల్ అంచు ప్యాడ్‌కి టంకం, ఇంకో చివర ఫిమేల్ జంపర్',
+    servo: 'సర్వో ప్లగ్ నేరుగా: గోధుమ వైరు GND వైపు',
+    soilcap: 'సెన్సార్‌తో వచ్చే 3 వైర్ల కేబుల్',
+    ws2812: 'పట్టీ / రింగ్ వైర్లు: DIN వైపు (బాణం మొదలయ్యే చోటు) నుంచే',
+    relay: 'జంపర్ వైర్ (ఫిమేల్–ఫిమేల్)', pir: 'జంపర్ వైర్ (ఫిమేల్–ఫిమేల్)', lcd1602: 'జంపర్ వైర్ (ఫిమేల్–ఫిమేల్)', rc522: 'జంపర్ వైర్ (ఫిమేల్–ఫిమేల్)',
+    dfplayer: 'జంపర్ వైర్ (ఫిమేల్–ఫిమేల్) లేదా మాడ్యూల్ పిన్నులకి టంకం'
+  };
+  const OFF_BOARD = /^(term2|hdr|buck|pam8403|tp4056)$/;
+  /** "+12V" on a screw terminal → where its wire goes, from the net and the part's note. */
+  function farEnd(pt, name, net) {
+    const L = P.LIB[pt.lib] || {};
+    if (L.mod) return (L.mod.te || L.te) + ' మీది ' + name;
+    if (pt.lib === 'buck') return 'బక్ మాడ్యూల్ ' + name;
+    if (pt.lib === 'pam8403') return 'PAM8403 ' + name;
+    if (pt.lib === 'tp4056') return 'TP4056 ' + name;
+    const n = String(net || name || '');
+    const what = String(pt.note || pt.val || '');
+    if (C.isGnd(n)) return (what ? what.split(/[:.(]/)[0].trim().slice(0, 40) + ' · ' : '') + '− (నలుపు వైరు)';
+    if (C.isPower(n)) return (what ? what.split(/[:.(]/)[0].trim().slice(0, 40) + ' · ' : '') + '+ (ఎరుపు వైరు)';
+    return (pt.val ? pt.val + ' · ' : '') + name;
+  }
+  /**
+   * { off: [{ref, te, how, rows: [{pin, name, net, to, col, thick}]}], nets: [{n, col, a, ends: [{ref, pin, name, te}]}] }
+   * off: every wire that leaves the board (a header, screw terminal, a wired module); nets: every join, for a breadboard try first.
+   */
+  function wireTable(D) {
+    const col = netColours(D), netOf = new Map();
+    D.nets.forEach((n) => n.p.forEach((p) => netOf.set(p, n)));
+    const off = [];
+    D.parts.forEach((pt) => {
+      const L = P.LIB[pt.lib] || {};
+      if (!OFF_BOARD.test(pt.lib) && !(L.mod && L.kind === 'wire')) return;
+      const names = P.pinsOf(pt), rows = [];
+      Object.keys(names).forEach((k) => {
+        const n = netOf.get(pt.ref + '.' + k);
+        if (!n) return;
+        // (a thick wire where real current flows: a module's own needs, else the net's amps)
+        const amps = L.mod ? L.mod.ma / 1000 : (n.a || 0);
+        rows.push({ pin: k, name: names[k], net: n.n, to: farEnd(pt, names[k], n.n), col: col[n.n], thick: amps >= 1 && (C.isPower(n.n) || C.isGnd(n.n) || C.isPower(names[k]) || C.isGnd(names[k]) || /[+-]$/.test(names[k])) });
+      });
+      if (rows.length) off.push({ ref: pt.ref, te: L.te || pt.lib, how: WIRE_HOW[pt.lib] || 'జంపర్ వైర్', rows });
+    });
+    const nets = D.nets.filter((n) => n.p.length >= 2).map((n) => ({ n: n.n, col: col[n.n], a: n.a || 0,
+      ends: n.p.map((p) => { const [ref, k] = p.split('.'), pt = D.parts.find((q) => q.ref === ref) || { ref, lib: '' }, nm = P.LIB[pt.lib] ? P.pinsOf(pt)[k] : k;
+        return { ref, pin: k, name: nm || k, te: (P.LIB[pt.lib] || {}).te || pt.lib }; })
+        .filter((e, i, all) => all.findIndex((o) => o.ref === e.ref && o.name === e.name) === i) })); // (a USB socket's two shield legs: one end)
+    return { off, nets, COLS };
+  }
+  /** The wire table as plain text (to share). */
+  function wireText(D) {
+    const w = wireTable(D), L = ['🔌 ' + (D.name || 'బోర్డ్') + ': వైర్ పట్టీ'];
+    w.off.forEach((g) => {
+      L.push('', '▶ ' + g.ref + ' · ' + g.te + ' (' + g.how + ')');
+      g.rows.forEach((r) => L.push('  ' + g.ref + ' ' + r.name + ' → ' + r.to + '  [' + COLS[r.col][0] + (r.thick ? ', మందమైన వైరు' : '') + ']'));
+    });
+    L.push('', '🧪 అన్ని కలుపులు (బ్రెడ్‌బోర్డ్ మీద ముందే చూడాలంటే):');
+    w.nets.forEach((n) => L.push('  ' + n.n + ' [' + COLS[n.col][0] + ']: ' + n.ends.map((e) => e.ref + ' ' + e.name).join(' ↔ ')));
+    L.push('', '(Jarvis PCB స్టూడియో)');
+    return L.join('\n');
+  }
+
+  const api = { tall, solderSteps, spoken, valSaid, boxPlan, solids, stl, boxReadme, BOX, ORDER, wireTable, wireText, netColours, COLS };
   root.PcbMake = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : globalThis);
