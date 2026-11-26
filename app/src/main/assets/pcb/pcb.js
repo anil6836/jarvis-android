@@ -142,6 +142,7 @@
       case 'aiprog': if (ai.job) { ai.job.n = m.n | 0; bar(); } break;
       case 'aidone': aiDone(m); break;
       case 'photoready':
+        if (m.for === 'scan') { if (m.side === 'bottom') scanSt.bottom = String(m.thumb || ''); else scanSt.top = String(m.thumb || ''); scanSheet(); break; }
         if ((m.for === 'pins' || m.for === 'solder') && ph && ph.for === m.for) { ph.thumb = String(m.thumb || ''); ph.ans = null; if (m.for === 'pins') pinSheet(); else solderSheet(); break; }
         idea.photo = String(m.thumb || ''); if (tab !== 'home') showTab('home'); else home(); toIdea(); break;
       case 'dictst': dict.on = !!m.on; dictLook(); break;
@@ -239,6 +240,7 @@
     intro.appendChild(el('div', 'muted', 'స్కీమాటిక్ → PCB → చెక్ → ఫ్యాక్టరీ ఫైల్స్ (Gerber .zip). ఆ zip మీరే ఫ్యాక్టరీ సైట్‌లో అప్‌లోడ్ చేసి, మీరే డబ్బులు కడితే అసలు బోర్డ్‌లు ఇంటికి వస్తాయి. బ్యాటరీ / USB / అడాప్టర్ (తక్కువ వోల్టేజ్ DC) బోర్డ్‌లు మాత్రమే; 230V కరెంట్ బోర్డ్‌లు ఇక్కడ చేయను.'));
     h.appendChild(intro);
     ideaCard(h);
+    scanCard(h);
     if (D) {
       const cur = el('div', 'card tap');
       cur.appendChild(el('div', null, '▶️ ఇప్పుడు తెరిచి ఉంది: ' + D.name));
@@ -254,6 +256,7 @@
       cr.appendChild(btn('✅ కొనే లిస్ట్', 'small', buyGo));
       cr.appendChild(btn('🧪 పనిచేయట్లేదా?', 'small', () => faultStart(true)));
       cr.appendChild(btn('📷 టంకం చెక్ (AI)', 'small', solderStart));
+      cr.appendChild(btn('👨‍🔧 రివ్యూ (AI)', 'small', () => { showTab('drc'); setTimeout(() => { const c = $('reviewcard'); if (c) $('drc').scrollTop = Math.max(0, c.offsetTop - 8); }, 60); }));
       cur.appendChild(cr);
       h.appendChild(cur);
     }
@@ -1262,6 +1265,141 @@
     });
   }
 
+  // ================================================================ 👨‍🔧 a senior engineer's review (27 Nov, list 4): his studio AI, cost first, on tap
+
+  /** What the reviewer gets: the board, the parts with their pin names, the joins, the phone's checks and ⚡ results. */
+  function forReview() {
+    let simItems = [];
+    try { const S = SIM.setup(D, { src: sim.src, ctl: sim.ctl }); if (!S.err) { const R = SIM.dc(S); simItems = SIM.report(S, R, null).items.filter((i) => i.sev !== 'ok').slice(0, 20).map((i) => i.sev + ': ' + i.te); } } catch (e) { /* (the review goes without ⚡) */ }
+    return JSON.stringify({
+      board: { w: D.board.w, h: D.board.h, copper_oz: D.board.cu || 1, layers: 2 },
+      parts: D.parts.map((p) => { const L = P.LIB[p.lib] || {}, nm = P.pinsOf(p) || {}; return { ref: p.ref, kind: L.te ? p.lib + ' (' + L.te + ')' : p.lib, val: p.val || '', note: p.note || '', pins: nm }; }),
+      nets: D.nets.map((n) => ({ n: n.n, p: n.p, a: n.a || undefined })),
+      phone_checks: (check ? check.list : []).filter((f) => f.sev !== 'info').slice(0, 20).map((f) => f.sev + ': ' + f.te),
+      phone_sim: simItems
+    });
+  }
+  function reviewCard(h) {
+    if (!D) return;
+    const c = el('div', 'card idea');
+    c.id = 'reviewcard';
+    c.appendChild(el('div', 't', '👨‍🔧 AI సీనియర్ ఇంజనీర్ రివ్యూ'));
+    const rv = ai.review && ai.review.id === D.id ? ai.review : null;
+    if (rv) {
+      c.appendChild(el('div', 'step', '⭐ ' + rv.score + ' / 10 · ' + rv.items.length + ' సూచనలు · ' + rv.cost));
+      c.appendChild(btn('📋 చివరి రివ్యూ చూడు', 'small', () => reviewShow(rv)));
+    }
+    c.appendChild(el('div', 'muted', 'ఆర్డర్ ముందు అనుభవం ఉన్న ఇంజనీర్ లాగా మీ AI మొత్తం బోర్డ్ చూస్తుంది: తప్పు పిన్లు, 5V → 3.3V, కెపాసిటర్లు, పుల్-అప్‌లు, వేడి, రక్షణ… భాగాలు, కలుపులు, ఫోన్ చెక్‌లు, ⚡ ఫలితాలు వెళ్తాయి (ఫోటోలు, మీ పేరు కాదు).'));
+    const q = el('div');
+    c.appendChild(q);
+    const r = el('div', 'row');
+    const design = forReview();
+    const go = btn('👨‍🔧 రివ్యూ చేయి', 'main', () => {
+      if (ai.job || ai.wait) { toast('ఒక AI పని ఇంకా నడుస్తోంది'); return; }
+      ai.pending = { kind: 'review', id: D.id };
+      post({ t: 'aiask', kind: 'review', words: '', design: forReview(), voice: false });
+    });
+    r.appendChild(go);
+    c.appendChild(r);
+    h.appendChild(c);
+    quote('review', '', design.length, (m) => {
+      quoteLine(q, m, () => post({ t: 'pickmodel', kind: 'review', words: '', chars: design.length }));
+      go.disabled = !m.ok || !!ai.job || !!ai.wait;
+      go.textContent = m.ok && m.money ? '👨‍🔧 రివ్యూ చేయి · ' + m.money : '👨‍🔧 రివ్యూ చేయి';
+    });
+  }
+  function reviewDone(m, a) {
+    const items = (Array.isArray(a.items) ? a.items : []).filter((x) => x && typeof x === 'object').slice(0, 12).map((x) => ({
+      sev: ['err', 'warn', 'tip'].indexOf(x.sev) >= 0 ? x.sev : 'tip', ref: String(x.ref || '').toUpperCase().replace(/[^A-Z0-9,]/g, '').slice(0, 16),
+      te: String(x.te || '').slice(0, 240), fix: String(x.fix || '').slice(0, 240), ask: String(x.ask || '').replace(/[\u0000-\u001f]/g, ' ').slice(0, 200) }));
+    const score = Math.max(0, Math.min(10, Math.round(+a.score || 0)));
+    const rv = { id: D ? D.id : null, score, say: String(a.say || '').slice(0, 500), items, cost: '🤖 ' + (m.model || 'AI') + ' · 💰 ' + m.cost };
+    ai.review = rv;
+    reviewShow(rv);
+    if (tab === 'drc') drcList();
+  }
+  function reviewShow(rv) {
+    sheet((s) => {
+      s.appendChild(el('h2', null, '👨‍🔧 రివ్యూ: ⭐ ' + rv.score + ' / 10'));
+      const bar = el('div'); bar.style.cssText = 'height:8px;border-radius:4px;background:var(--line);margin:2px 0 8px;overflow:hidden';
+      const f = el('div'); f.style.cssText = 'height:100%;width:' + rv.score * 10 + '%;background:' + (rv.score >= 8 ? '#43a047' : rv.score >= 5 ? '#fb8c00' : '#e53935');
+      bar.appendChild(f); s.appendChild(bar);
+      if (rv.say) s.appendChild(el('div', 'step', '🤖 ' + rv.say));
+      if (!rv.items.length) s.appendChild(el('div', 'step okc', '✅ పెద్ద తప్పులు ఏవీ కనిపించలేదు.'));
+      const icon = { err: '❌', warn: '⚠️', tip: '💡' };
+      rv.items.forEach((x) => {
+        const d = el('div', 'step' + (x.sev === 'err' ? ' warnc' : ''));
+        d.appendChild(el('div', null, icon[x.sev] + ' ' + (x.ref ? x.ref + ': ' : '') + x.te));
+        if (x.fix) d.appendChild(el('div', 'muted', '🔧 ' + x.fix));
+        const rr = el('div', 'row');
+        if (x.ref && D && D.parts.some((q) => q.ref === x.ref.split(',')[0])) rr.appendChild(btn('🧩 చూపించు', 'small', () => { pv.sel = x.ref.split(',')[0]; closeSheet(); showTab('pcb'); }));
+        if (x.ask || x.fix) rr.appendChild(btn('✏️ మార్పులో చెప్పు', 'small', () => editSheet(x.ask || x.fix)));
+        d.appendChild(rr);
+        s.appendChild(d);
+      });
+      s.appendChild(el('div', 'muted', '💡 AI కూడా తప్పు చేయొచ్చు: మార్పు చేసే ముందు ఒక్కోటి 📐 స్కీమాటిక్‌లో చూడండి. ' + rv.cost));
+      const r = el('div', 'row');
+      r.appendChild(btn('📋 పంపు', '', () => post({ t: 'sharetext', text: ['👨‍🔧 ' + (D ? D.name : '') + ' రివ్యూ: ' + rv.score + '/10', rv.say].concat(rv.items.map((x) => icon[x.sev] + ' ' + (x.ref ? x.ref + ': ' : '') + x.te + (x.fix ? ' → ' + x.fix : ''))).concat(['(Jarvis PCB స్టూడియో)']).join('\n') })));
+      r.appendChild(btn('మూసేయి', '', closeSheet));
+      s.appendChild(r);
+    });
+  }
+
+  // ================================================================ 📷 an old board → its circuit (27 Nov, list 8): his studio AI reads the photos
+
+  const scanSt = { top: null, bottom: null, words: '' };
+  function scanCard(h) {
+    const c = el('div', 'card tap');
+    c.appendChild(el('div', null, '📷 పాత బోర్డ్ ఫోటో → స్కీమాటిక్ (AI)'));
+    c.appendChild(el('div', 'muted', 'ఇంట్లో ఉన్న పాత / పాడైన చిన్న బోర్డ్ (బ్యాటరీ / అడాప్టర్ వాటిది) ఫోటో తీస్తే, దాని భాగాలు, కలుపులు చదివి స్టూడియోలో కొత్త బోర్డ్‌గా గీస్తుంది: రిపేర్‌కి, నేర్చుకోవడానికి, మళ్ళీ చేయించడానికి.'));
+    c.addEventListener('click', scanSheet);
+    h.appendChild(c);
+  }
+  function scanSheet() {
+    sheet((s) => {
+      s.appendChild(el('h2', null, '📷 పాత బోర్డ్ → స్కీమాటిక్'));
+      s.appendChild(el('div', 'muted', 'దగ్గరగా, మంచి వెలుతురులో, బోర్డ్ మొత్తం కనిపించేలా. భాగాల మీది అక్షరాలు (R1, 10k, 7805…) చదివేలా. రెండు వైపులూ ఉంటే బాగా అర్థమవుతుంది. ఫోటోలు మీరు నొక్కాక ఒక్క బొమ్మగా కలిపి మీ AI కి ఒక్కసారే వెళ్తాయి; ఎక్కడా దాచను.'));
+      s.appendChild(el('div', 'step warnc', '⚠️ 230 V ఇంటి కరెంట్ బోర్డ్‌లు (ట్రాన్స్‌ఫార్మర్, పెద్ద 400V కెపాసిటర్లు ఉన్నవి) చేయను. బోర్డ్ కరెంట్‌కి కలపకుండానే ఫోటో తీయండి.'));
+      [['top', '1️⃣ పై వైపు (భాగాలు ఉన్న వైపు)'], ['bottom', '2️⃣ కింది వైపు (దారులు, టంకాలు): ఐచ్ఛికం']].forEach(([side, te]) => {
+        s.appendChild(el('h3', null, te));
+        if (scanSt[side]) {
+          const im = el('img'); im.src = scanSt[side]; im.alt = ''; im.style.cssText = 'width:100%;max-height:200px;object-fit:contain;border-radius:10px;background:#000';
+          s.appendChild(im);
+        }
+        const r = el('div', 'row');
+        r.appendChild(btn(scanSt[side] ? '📷 మళ్ళీ తీయి' : '📷 కెమెరా', scanSt[side] ? 'small' : 'small main', () => { closeSheet(); post({ t: 'photo', from: 'cam', for: 'scan', side }); }));
+        r.appendChild(btn('🖼️ గ్యాలరీ', 'small', () => { closeSheet(); post({ t: 'photo', from: 'gal', for: 'scan', side }); }));
+        if (scanSt[side]) r.appendChild(btn('✕', 'small', () => { scanSt[side] = null; post({ t: 'photodrop', side }); scanSheet(); }));
+        s.appendChild(r);
+      });
+      const ta = el('textarea');
+      ta.rows = 2; ta.maxLength = 300; ta.value = scanSt.words; ta.placeholder = '(ఐచ్ఛికం) ఇది ఏ బోర్డ్? ఉదా: పాత 12V LED లైట్ డ్రైవర్';
+      ta.addEventListener('input', () => { scanSt.words = ta.value; });
+      s.appendChild(ta);
+      const q = el('div');
+      s.appendChild(q);
+      const r2 = el('div', 'row');
+      const go = btn('🔎 చదివి బోర్డ్ చేయి', 'main', () => {
+        if (!scanSt.top && !scanSt.bottom) { toast('ముందు ఫోటో తీయండి'); return; }
+        const no = scanSt.words.trim() ? A.refuseWords(scanSt.words) : null;
+        if (no) { resultSheet('🚫 చేయలేదు', [no]); return; }
+        if (ai.job || ai.wait) { toast('ఒక AI పని ఇంకా నడుస్తోంది'); return; }
+        ai.pending = { kind: 'scan', words: scanSt.words.trim(), voice: false };
+        closeSheet();
+        post({ t: 'aiask', kind: 'scan', words: scanSt.words.trim(), voice: false });
+      });
+      go.disabled = !scanSt.top && !scanSt.bottom;
+      r2.appendChild(go);
+      r2.appendChild(btn('మూసేయి', '', closeSheet));
+      s.appendChild(r2);
+      quote('scan', scanSt.words, 0, (m) => {
+        quoteLine(q, m, () => post({ t: 'pickmodel', kind: 'scan', words: scanSt.words, chars: 0 }));
+        go.disabled = !m.ok || !!ai.job || !!ai.wait || (!scanSt.top && !scanSt.bottom);
+        go.textContent = m.ok && m.money ? '🔎 చదివి బోర్డ్ చేయి · ' + m.money : '🔎 చదివి బోర్డ్ చేయి';
+      });
+    });
+  }
+
   // ================================================================ 🔬 advanced ⚡ (27 Nov, "🧠 బోర్డ్‌కి మెదడు" list 3): sound, part heat, copper heat; ₹0
 
   const adv = { id: null, tab: 'heat', inp: null, outs: null };
@@ -2039,6 +2177,7 @@
     }
     h.appendChild(top);
     helpCard(h);
+    reviewCard(h);
     const fabRow = el('div', 'row');
     fabRow.appendChild(el('div', 'k muted', 'ఏ ఫ్యాక్టరీ నియమాలతో:'));
     Object.keys(C.FABS).forEach((k) => fabRow.appendChild(btn(C.FABS[k].name, D.fab === k ? 'on small' : 'small', () => { D.fab = k; changed(); drcList(); })));
@@ -2463,13 +2602,15 @@
 
   // ================================================================ 💡 🗣️ 🤖 the studio's AI (build 2): Jarvis asks it, this page only shows and builds
 
-  const ai = { wait: null, job: null, pending: null, help: null };
+  const ai = { wait: null, job: null, pending: null, help: null, review: null };
   const idea = { text: '', photo: null };
   const dict = { on: false, to: 'idea' };
   const quoteCb = {};
   let quoteT = 0, barT = 0;
-  const KIND_TE = { new: 'కొత్త బోర్డ్', photo: 'ఫోటో నుంచి బోర్డ్', edit: 'బోర్డ్‌లో మార్పు', help: 'చెక్ కి సహాయం' };
-  const DOING = { new: 'బోర్డ్ గీస్తోంది…', photo: 'ఫోటో చూసి గీస్తోంది…', edit: 'మార్పు చేస్తోంది…', help: 'తప్పులు చూస్తోంది…' };
+  const KIND_TE = { new: 'కొత్త బోర్డ్', photo: 'ఫోటో నుంచి బోర్డ్', edit: 'బోర్డ్‌లో మార్పు', help: 'చెక్ కి సహాయం',
+    pins: 'మాడ్యూల్ పిన్ చెక్', solder: 'టంకం చెక్', review: 'ఇంజనీర్ రివ్యూ', scan: 'పాత బోర్డ్ ఫోటో' };
+  const DOING = { new: 'బోర్డ్ గీస్తోంది…', photo: 'ఫోటో చూసి గీస్తోంది…', edit: 'మార్పు చేస్తోంది…', help: 'తప్పులు చూస్తోంది…',
+    pins: 'పిన్ పేర్లు చదువుతోంది…', solder: 'టంకాలు చూస్తోంది…', review: 'బోర్డ్ రివ్యూ చేస్తోంది…', scan: 'పాత బోర్డ్ చదువుతోంది…' };
 
   $('mic').addEventListener('click', () => post({ t: 'mic' }));
 
@@ -2809,6 +2950,7 @@
     const a = m.ans || {};
     if (kind === 'help') return helpDone(m, a, said);
     if (kind === 'pins') return pinsDone(m, a);
+    if (kind === 'review') return reviewDone(m, a);
     if (kind === 'solder') return solderDone(m, a);
     const cost = '🤖 ' + (m.model || 'AI') + ' · 💰 ఖర్చు ' + m.cost;
     if (!Array.isArray(a.parts)) {
@@ -2824,12 +2966,13 @@
       if (r.err) { resultSheet(r.refuse ? '🚫 బోర్డ్ చేయలేదు' : '✗ బోర్డ్ కాలేదు', [r.err, cost]); said(r.err + ' ఖర్చు ' + m.cost + '.'); return; }
       $('toast').style.display = 'none';
       open(r.D);
-      idea.text = ''; idea.photo = null;
+      if (kind === 'scan') { scanSt.top = null; scanSt.bottom = null; scanSt.words = ''; }
+      else { idea.text = ''; idea.photo = null; }
       showTab('pcb');
       const info = r.info, warn = info.dropped.map((d) => '⚠️ వదిలేశాను: ' + d).concat(info.fixes.slice(0, 6).map((f) => '⚠️ ' + f));
       if (m.cut) warn.unshift('⚠️ AI జవాబు హద్దు దగ్గర మధ్యలో ఆగిపోయింది: వచ్చినంత వరకు బోర్డ్ చేశాను, కొన్ని భాగాలు లేకపోవచ్చు.');
       const head = D.parts.length + ' భాగాలు · ' + D.board.w + ' × ' + D.board.h + ' mm · ' + (r.miss ? '⚡ ' + r.miss + ' పిన్నులు కలపలేకపోయాను' : '🔗 అన్నీ కలిశాయి') + ' · ' + (check.errors ? '❌ ' + check.errors + ' తప్పులు (✅ చెక్ → 🤖 AI సహాయం)' : '✅ చెక్ అయింది');
-      resultSheet('✅ బోర్డ్ రెడీ: ' + D.name, [head, info.say ? '🤖 ' + info.say : ''].concat(warn, moduleLines(), [cost,
+      resultSheet((kind === 'scan' ? '📷 పాత బోర్డ్ నుంచి: ' : '✅ బోర్డ్ రెడీ: ') + D.name, [head, kind === 'scan' ? '📷 ఫోటో నుంచి చదివిన సర్క్యూట్ (సుమారు): ప్రతి విలువ, ప్రతి కలుపు నిజమైన బోర్డ్‌తో ఒకసారి సరిచూడండి (మల్టీమీటర్ బీప్‌తో).' : '', info.say ? '🤖 ' + info.say : ''].concat(warn, moduleLines(), [cost,
         '👉 ఆర్డర్ ముందు: 📐 స్కీమాటిక్‌లో కలుపులు ఒకసారి చూడండి (AI కూడా తప్పు చేయొచ్చు), 🏭 ఫ్యాక్టరీ లో "కొలిచి చూడాల్సినవి" చూడండి.']),
       [btn('📐 స్కీమాటిక్', '', () => showTab('sch')), btn('🧊 3D', '', () => showTab('d3'))]);
       said('బోర్డ్ రెడీ Sir: ' + D.parts.length + ' భాగాలు, ' + (r.miss ? r.miss + ' పిన్నులు కలపలేకపోయాను' : 'అన్నీ కలిశాయి') + '. ఖర్చు ' + m.cost + '.');
@@ -3750,7 +3893,7 @@
     then();
   }
 
-  window.__pcb = { open, get D() { return D; }, get check() { return check; }, showTab, reroute, changed, onJarvis, texture, partSheet: (ref) => partSheet(D && D.parts.find((q) => q.ref === ref)), modList, modInfo, wireSheet, buyGo, faultStart, get ft() { return ft; }, graphSheet, gr, advSheet, adv, fr, frStart, frMove, frEnd, frDelete, pinStart, solderStart, get ph() { return ph; }, pinsDone, solderDone, pv, sv,
+  window.__pcb = { open, get D() { return D; }, get check() { return check; }, showTab, reroute, changed, onJarvis, texture, partSheet: (ref) => partSheet(D && D.parts.find((q) => q.ref === ref)), modList, modInfo, wireSheet, buyGo, faultStart, get ft() { return ft; }, graphSheet, gr, advSheet, adv, fr, frStart, frMove, frEnd, frDelete, reviewDone, scanSheet, scanSt, forReview, pinStart, solderStart, get ph() { return ph; }, pinsDone, solderDone, pv, sv,
     ai, idea, editSheet, heard, lay: () => schLayout(), sim, simv, simBuild, simReport, simControls, simSupply, simPart, verSheet, verSnap, verDiff, kicadFiles: () => KI.files(D, schLayout()),
     sg, bx, rs, xrS, lv, startGuide, stopGuide, guideGo, guideWords, startBox, stopBox, boxTaller, boxZip, openReal, closeReal, drawReal, startAr, stopAr, xrEnter, xrLeave, xrSaid,
     learnTab, learnGo, get learnSt() { return learnSt; }, set scr(v) { scr = v; }, get v3d() { return v3d; } };

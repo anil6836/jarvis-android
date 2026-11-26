@@ -15,11 +15,13 @@ import org.json.JSONObject;
 final class Pcb {
     private Pcb() {}
 
-    static final int MAX_OUT = 9000, HELP_OUT = 1200, PINS_OUT = 700, SOLDER_OUT = 1600;
+    static final int MAX_OUT = 9000, HELP_OUT = 1200, PINS_OUT = 700, SOLDER_OUT = 1600, REVIEW_OUT = 2600;
     static final String NEW = "new", EDIT = "edit", PHOTO = "photo", HELP = "help";
     /** (26 Nov) 📷 a module's photo → its pin names in order; 📷 a soldered board's photo → joints that look wrong. */
     static final String PINS = "pins", SOLDER = "solder";
-    static boolean photoKind(String k) { return PHOTO.equals(k) || PINS.equals(k) || SOLDER.equals(k); }
+    /** (27 Nov) 👨‍🔧 a senior engineer's look at the open board; 📷 photos of an old board → its circuit as a new board. */
+    static final String REVIEW = "review", SCAN = "scan";
+    static boolean photoKind(String k) { return PHOTO.equals(k) || PINS.equals(k) || SOLDER.equals(k) || SCAN.equals(k); }
 
     static Workshop.Engine engine(Prefs p) throws Workshop.Problem {
         if (Workshop.modelFor(p, Workshop.PCB).isEmpty())
@@ -166,6 +168,36 @@ final class Pcb {
             "- If the photo shows mains (230 V) wiring, a weapon, a shock device or anything to harm, answer {\"refuse\":\"<one Telugu line>\"}.",
             "Only report what you can see; never guess hidden joints.");
 
+    static final String REVIEW_SYSTEM = String.join("\n",
+            "You are a senior electronics engineer reviewing a small low-voltage DC (at most 24 V) hobby PCB that Anil (India) designed in his phone's",
+            "PCB studio, before he orders it. You get the board (size, copper), every part (ref, kind, value, its pin names), every net (pins, amps),",
+            "the phone's own checks and its simulation results. Find REAL problems only, the most serious first: wrong pins against the real part's",
+            "pinout, a 5 V signal into a 3.3 V pin, missing decoupling (100 nF at each IC / module supply), missing pull-ups / pull-downs (I2C, a MOSFET",
+            "gate, buttons), wrong resistor values, polarity, regulator heat and drop-out, supply current, reverse-polarity and fuse protection on",
+            "power inputs, track widths for the current, battery safety, floating inputs, ESP32 strapping pins (GPIO 0, 2, 12, 15) loaded at boot,",
+            "input-only pins (34-39) used as outputs, ADC2 pins used with Wi-Fi, connectors that are hard to reach. Answer JSON only:",
+            "{\"score\":8,\"say\":\"<2-3 simple Telugu lines: overall verdict>\",\"items\":[{\"sev\":\"err|warn|tip\",\"ref\":\"U1\",",
+            " \"te\":\"<one simple Telugu line: what is wrong and why it matters>\",\"fix\":\"<one Telugu line: what to change>\",",
+            " \"ask\":\"<optional: the change in short English for the studio's change tool, e.g. add a 100nF capacitor from +5V to GND near U2>\"}]}",
+            "- score 0-10 (10 = ready to order). At most 12 items; never invent a problem; if all is good, say so with an empty list.",
+            "- Never suggest mains (230 V) circuits; if the board is for mains, weapons, shock devices or harm, answer {\"refuse\":\"<one Telugu line>\"}.");
+
+    /** 📷 an old board: the same answer as a new board (the studio library), from the photo(s) of a real board. */
+    static final String SCAN_EXTRA = String.join("\n",
+            "",
+            "THIS TIME: Anil shows photo(s) of an existing small low-voltage board (left: the parts side; right, if there: the solder side seen from",
+            "below, so mirrored). Read its parts (markings, colour bands, values printed on them, chip numbers) and follow its copper tracks, and",
+            "answer the same JSON as for a new board: its parts from the studio library and the nets you can see. Use the printed reference names",
+            "(R1, C2, U1...) when you can read them. A part not in the library: put it on an hdr / fhdr with its real pin names and say so.",
+            "In \"say\" tell plainly which values or joins you guessed or could not see. If the board is mains-powered (a transformer, a 230 V",
+            "fuse holder, X / Y capacitors, 400 V capacitors, a mains plug), or a weapon / shock device, answer {\"refuse\":\"<one Telugu line>\"}.");
+
+    static String reviewMessage(String design) { return "Review this board before he orders it:\n" + (design == null ? "{}" : design); }
+    static String scanMessage(String words) {
+        String w = words == null ? "" : words.trim();
+        return "Make a board of the circuit on this real board." + (w.isEmpty() ? "" : "\nAnil says: " + w);
+    }
+
     static String pinsMessage(String design) { return "The module on his board and the pin names his board expects:\n" + (design == null ? "{}" : design) + "\nRead the pins in this photo."; }
     static String solderMessage(String design) { return "His board (for reference):\n" + (design == null ? "{}" : design) + "\nCheck the solder joints in this photo."; }
 
@@ -202,6 +234,8 @@ final class Pcb {
     static double most(String model, String kind, String words, int designChars) {
         if (HELP.equals(kind)) return Workshop.rupees(model, Math.round(HELP_SYSTEM.length() / 3.2) + Math.round(designChars / 3.0), 0, HELP_OUT);
         if (PINS.equals(kind) || SOLDER.equals(kind)) return photoCheckRupees(model, kind, designChars)[1];
+        if (REVIEW.equals(kind)) return reviewRupees(model, designChars)[1];
+        if (SCAN.equals(kind)) return Workshop.rupees(model, Math.round((SYSTEM.length() + SCAN_EXTRA.length()) / 3.2) + 2550, 0, MAX_OUT);
         int len = words == null ? 0 : words.trim().length();
         long in = Math.round(SYSTEM.length() / 3.2) + 150 + Math.round(len / 1.5) + Math.round(designChars / 3.0) + (PHOTO.equals(kind) ? 1600 : 0);
         return Workshop.rupees(model, in, 0, MAX_OUT);
@@ -213,8 +247,18 @@ final class Pcb {
         return new double[]{Workshop.rupees(model, in, 0, pins ? 120 : 300), Workshop.rupees(model, in, 0, pins ? PINS_OUT : SOLDER_OUT)};
     }
 
+    static double[] reviewRupees(String model, int designChars) {
+        long in = Math.round(REVIEW_SYSTEM.length() / 3.2) + Math.round(designChars / 3.0);
+        return new double[]{Workshop.rupees(model, in, 0, 500), Workshop.rupees(model, in, 0, REVIEW_OUT)};
+    }
+
     static double[] quote(String model, String kind, String words, int designChars) {
         if (HELP.equals(kind)) return helpRupees(model, designChars);
+        if (REVIEW.equals(kind)) return reviewRupees(model, designChars);
+        if (SCAN.equals(kind)) {
+            long in = Math.round((SYSTEM.length() + SCAN_EXTRA.length()) / 3.2) + 150 + 2400;
+            return new double[]{Workshop.rupees(model, in, 0, 1200), Workshop.rupees(model, in, 0, 5000)};
+        }
         if (PINS.equals(kind) || SOLDER.equals(kind)) return photoCheckRupees(model, kind, designChars);
         return rupees(model, words, EDIT.equals(kind) ? designChars : 0, PHOTO.equals(kind));
     }
@@ -244,10 +288,11 @@ final class Pcb {
         r.cut = cut;
         String ref = o.optString("refuse", "").trim();
         if (!ref.isEmpty()) { r.refuse = Workshop.cap(ref, 240); return r; }
-        JSONArray parts = o.optJSONArray("parts"), moves = o.optJSONArray("moves"), pins = o.optJSONArray("pins"), joints = o.optJSONArray("joints");
+        JSONArray parts = o.optJSONArray("parts"), moves = o.optJSONArray("moves"), pins = o.optJSONArray("pins"), joints = o.optJSONArray("joints"),
+                items = o.optJSONArray("items");
         boolean said = !o.optString("say", "").trim().isEmpty();
         if ((parts == null || parts.length() == 0) && (moves == null || moves.length() == 0) && (pins == null || pins.length() == 0)
-                && (joints == null || joints.length() == 0) && !said) return null;
+                && (joints == null || joints.length() == 0) && (items == null || items.length() == 0) && !said) return null;
         r.json = o;
         return r;
     }
