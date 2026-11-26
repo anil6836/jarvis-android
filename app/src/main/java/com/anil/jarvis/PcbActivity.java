@@ -62,11 +62,11 @@ public class PcbActivity extends Activity {
     static final String EXTRA_TAB = "pcb_tab", EXTRA_PROJECT = "pcb_project";
     /** (from Jarvis's brain) a new board of these words (waits ✋ 3 seconds here); his words about the open board. */
     static final String EXTRA_WHAT = "pcb_what", EXTRA_HEARD = "pcb_heard", EXTRA_CHANGE = "pcb_change";
-    private static final int REQ_CAM = 81, REQ_GAL = 82, REQ_CAM_PERM = 83, REQ_AR = 84;
+    private static final int REQ_CAM = 81, REQ_GAL = 82, REQ_CAM_PERM = 83, REQ_AR = 84, REQ_CAMWEB = 85;
     private static final String HOST = "appassets.androidplatform.net";
     private static final String PATH = "/assets/pcb/";
     private static final String PAGE = "https://" + HOST + PATH + "pcb.html";
-    private static final Set<String> FILES = new HashSet<>(Arrays.asList("pcb.html", "pcb.js", "pcbparts.js", "pcbcore.js", "pcbfab.js", "pcbprojects.js", "pcbbuy.js", "pcbai.js", "pcb3d.js", "pcbsim.js", "pcbkicad.js", "pcbmake.js", "pcbclass.js"));
+    private static final Set<String> FILES = new HashSet<>(Arrays.asList("pcb.html", "pcb.js", "pcbparts.js", "pcbcore.js", "pcbfab.js", "pcbprojects.js", "pcbbuy.js", "pcbai.js", "pcb3d.js", "pcbsim.js", "pcbkicad.js", "pcbmake.js", "pcbclass.js", "pcbcam.js"));
     /** 🧊 The 3D view uses the workshop's bundled three.js (one copy in the app), served here under the studio's own path. */
     private static final Set<String> SHARED = new HashSet<>(Arrays.asList("three.module.min.js", "OrbitControls.js"));
     /** The factories' own sites (opened in his browser only when he taps 🌐; nothing is sent to them by Jarvis). */
@@ -213,7 +213,19 @@ public class PcbActivity extends Activity {
             }
         });
         w.setWebChromeClient(new WebChromeClient() {
-            @Override public void onPermissionRequest(PermissionRequest r) { r.deny(); }
+            // (Build C) 📷 the soldering guide on his real board: the page's own camera view, only while he has it open (camWanted, set by
+            // his tap), only the back camera's picture (never the mic), only for the studio's own page. The picture stays in the page:
+            // the page has no network, and nothing is saved.
+            @Override public void onPermissionRequest(PermissionRequest r) {
+                String[] res = r.getResources();
+                boolean onlyVideo = res != null && res.length == 1 && PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(res[0]);
+                Uri o = r.getOrigin();
+                boolean ours = o != null && "https".equals(o.getScheme()) && HOST.equals(o.getHost());
+                if (camWanted && front && !destroyed && onlyVideo && ours
+                        && checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED)
+                    r.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+                else r.deny();
+            }
             @Override public void onGeolocationPermissionsShowPrompt(String o, GeolocationPermissions.Callback cb) { cb.invoke(o, false, false); }
             @Override public boolean onJsAlert(WebView v, String u, String m, JsResult r) { r.cancel(); return true; }
             @Override public boolean onJsConfirm(WebView v, String u, String m, JsResult r) { r.cancel(); return true; }
@@ -323,6 +335,7 @@ public class PcbActivity extends Activity {
                 break;
             }
             case "zip": saveZip(m.optString("name"), m.optString("data")); break;
+            case "csv": saveCsv(m.optString("name"), m.optString("text")); break; // (🏭 the factory's assembly lists: plain text, saved beside the zip)
             case "share": shareZip(); break;
             case "site": openSite(m.optString("fab")); break;
             case "shopsearch": shopSearch(m.optString("shop"), m.optString("q")); break;
@@ -339,6 +352,7 @@ public class PcbActivity extends Activity {
                 break;
             }
             case "xr": if (m.optBoolean("on")) xrStart(); else xrStop(null); break;
+            case "cam": if (m.optBoolean("on")) camOn(); else camOff(false); break;
             case "xrtap": if (realF != null) realF.tap(m.optDouble("x", -1), m.optDouble("y", -1)); break;
             // ---- 🤖 the studio's AI: the cost first, then only on his tap (or ✋ 3 seconds when it was asked by voice)
             case "aiquote": quote(m.optString("kind"), m.optString("words"), m.optInt("chars")); break;
@@ -404,6 +418,21 @@ public class PcbActivity extends Activity {
                 ui.post(() -> say("సేవ్ కాలేదు: " + e.getMessage()));
             }
         }, "jarvis-pcb-zip").start();
+    }
+
+    /** 🏭 (Build C) the assembly parts list / placement list: plain ASCII CSV only, saved in Downloads/Jarvis/pcb like the zip. */
+    private void saveCsv(String name, String text) {
+        final String n = name == null ? "" : name.replaceAll("[^A-Za-z0-9._-]", "");
+        if (!n.endsWith(".csv") || n.length() < 5 || n.length() > 80 || text == null || text.isEmpty() || text.length() > 200_000
+                || !text.matches("[\\x20-\\x7e\\r\\n]*")) { say("అసెంబ్లీ ఫైల్ తయారు కాలేదు."); return; }
+        new Thread(() -> {
+            try {
+                Coder.Made made = Coder.save(this, "Jarvis/pcb", n, "text/csv", text.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+                ui.post(() -> { if (!destroyed) { try { send(json("saved").put("where", made.where)); } catch (Exception ignored) {} } });
+            } catch (Exception e) {
+                ui.post(() -> say("సేవ్ కాలేదు: " + e.getMessage()));
+            }
+        }, "jarvis-pcb-csv").start();
     }
 
     private void shareZip() {
@@ -666,6 +695,11 @@ public class PcbActivity extends Activity {
             else { realWanted = false; xrTell(false, "📷 కెమెరా అనుమతి లేకుండా AR చూపించలేను Sir. 📏 అసలు సైజు (స్క్రీన్ మీద 1:1) పనిచేస్తుంది."); }
             return;
         }
+        if (req == REQ_CAMWEB) {
+            if (res.length > 0 && res[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) camOn();
+            else { camPending = false; camTell(false, "📷 కెమెరా అనుమతి లేకుండా బోర్డ్ మీద చూపించలేను Sir. 🧊 3D లో టంకం గైడ్ పనిచేస్తుంది."); }
+            return;
+        }
         if (req != REQ_CAM_PERM) return;
         if (res.length > 0 && res[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) openCam();
         else say("📷 కెమెరా అనుమతి లేకుండా ఫోటో తీయలేను Sir. 🖼️ గ్యాలరీ నుంచి ఎంచుకోవచ్చు.");
@@ -758,6 +792,7 @@ public class PcbActivity extends Activity {
             String bad = checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED ? realF.resume() : "కెమెరా అనుమతి లేదు";
             if (bad != null) xrStop("📷 " + bad + " Sir.");
         } else if (realWanted) xrStart(); // (back from the permission / Google's AR page)
+        if (camPending) camOn(); // (📷 back from Android's camera question)
         WakeService.workshopWake = wakeR; // (🎙️ "Jarvis" here: the studio hears him, no panel over it)
     }
 
@@ -769,6 +804,7 @@ public class PcbActivity extends Activity {
         if (ear != null) ear.away();
         if (waiting != null) cancelWait(false); // (he left: nothing is spent on what was heard)
         if (realF != null) realF.pause(); // (📷 the camera is let go while the studio is behind)
+        if (camWanted) camOff(true); // (📷 the board camera too: the page stops it; he opens it again himself)
     }
 
     @Override public void onBackPressed() {
@@ -823,6 +859,37 @@ public class PcbActivity extends Activity {
             out.put("d", od);
             p.sp.edit().putString("pcb_learn", out.toString()).apply();
         } catch (Exception ignored) {}
+    }
+
+    // ================================================================ Build C: 📷 the soldering guide on his real board (the page's camera)
+
+    private boolean camWanted, camPending;
+
+    /** His tap opened the board camera: the permission first (Android asks him), then the page may start the back camera. */
+    private void camOn() {
+        if (destroyed) return;
+        if (!front) { camPending = true; return; } // (back from Android's question: it goes on in onResume)
+        camPending = false;
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            camPending = true;
+            requestPermissions(new String[]{android.Manifest.permission.CAMERA}, REQ_CAMWEB);
+            return;
+        }
+        camWanted = true;
+        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); // (soldering: the screen stays on while he looks)
+        camTell(true, null);
+    }
+
+    /** Closed by him (✕), or the studio went behind (away: the page is told to stop its camera). */
+    private void camOff(boolean away) {
+        camWanted = false;
+        if (!away) camPending = false;
+        if (realF == null) getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if (away) { try { send(json("camoff")); } catch (Exception ignored) {} }
+    }
+
+    private void camTell(boolean ok, String why) {
+        try { JSONObject m = json("cam").put("ready", ok); if (why != null) m.put("why", why); send(m); } catch (Exception ignored) {}
     }
 
     private RealFloor realF;

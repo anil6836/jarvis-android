@@ -133,6 +133,8 @@
       case 'design': if (m.d && m.d.parts) { open(m.d, 'load'); const f = afterOpen; afterOpen = null; if (f) f(); else showTab('pcb'); } break;
       case 'saved': saved = { where: String(m.where || ''), kind: zipKind }; if (tab === 'fab') fab(); if (bx.on && tab === 'd3') boxCard(); toast('💾 సేవ్ అయింది: ' + saved.where, 4000); break;
       case 'say': toast(String(m.s || ''), 4000); break;
+      case 'cam': if (camv) camv.ready(m); break; // (📷 Android's camera permission: yes / no)
+      case 'camoff': if (camv && camv.on()) { camv.close(); toast('📷 స్టూడియో వెనక్కి వెళ్ళింది: కెమెరా ఆపాను. మళ్ళీ కావాలంటే 📷 నొక్కండి.', 4000); } break;
       case 'tab': if (m.tab === 'idea') { showTab('home'); toIdea(); } else if (TABS.indexOf(m.tab) >= 0) showTab(m.tab); break;
       // ---- 🤖 the studio's AI (asked by Jarvis; this page never sees a key or the network)
       case 'aiquote': { const cb = quoteCb[m.kind]; if (cb) cb(m); break; }
@@ -167,6 +169,7 @@
       case 'back': {
         let used = true;
         if (ai.wait) post({ t: 'aicancel' });
+        else if (camv && camv.on()) camv.close();
         else if (xrS.on || xrS.wait) stopAr();
         else if (rs.on) closeReal();
         else if ($('sheet').classList.contains('on')) closeSheet();
@@ -1241,7 +1244,9 @@
       }
       if (lib.what) s.appendChild(el('div', 'step', '🔎 ' + lib.what));
       if (pt.note) s.appendChild(el('div', 'step', '📌 ఈ బోర్డ్‌లో: ' + pt.note));
-      if (lib.how) s.appendChild(el('div', 'step', '🔧 ' + lib.how));
+      const sm = P.isSmd(pt) ? P.smdOf(pt) : null;
+      if (sm) s.appendChild(el('div', 'step okc', '🏭 SMD భాగం: ' + sm.te + (sm.mpn ? ' · ' + sm.mpn : '') + (sm.lcsc ? ' · LCSC ' + sm.lcsc : '') + '. ఫ్యాక్టరీ టంకం చేస్తుంది. ' + (sm.how || '')));
+      else if (lib.how) s.appendChild(el('div', 'step', '🔧 ' + lib.how));
       if (lib.mod) s.appendChild(el('div', 'step', modLine(lib)));
       if (f && f.verify) s.appendChild(el('div', 'step warnc', '📏 కొనే ముందు / ఆర్డర్ ముందు: ' + f.verify + '.'));
       s.appendChild(el('h3', null, 'పిన్నులు'));
@@ -2249,6 +2254,7 @@
     }
     if (sg.on) {
       t.appendChild(tool('✕ గైడ్ ఆపు', '', stopGuide));
+      t.appendChild(tool('📷 నిజమైన బోర్డ్ మీద', 'main', camOpen));
       t.appendChild(tool(sg.bottom ? '⬆️ పై వైపు' : '⬇️ టంకం వైపు', sg.bottom ? 'on' : '', () => { sg.bottom = !sg.bottom; guideShow(true); }));
       t.appendChild(tool('🔍 మొత్తం', '', () => v3d.view('side')));
       t.appendChild(tool('📋 అన్ని అడుగులు', '', guideList));
@@ -2287,6 +2293,215 @@
   }
 
   // ================================================================ 🏭 the factory
+
+  // ================================================================ 🏭 Build C (26 Nov): small parts as SMD, soldered by the factory (PCBA)
+
+  /** Why a part stays a through-hole one (his iron). */
+  function stayWhy(pt) {
+    switch (pt.lib) {
+      case 'r7805': return 'వేడెక్కే 7805: కాళ్ళదే (హీట్‌సింక్ పెట్టొచ్చు)';
+      case 'nmos': return 'పెద్ద కరెంట్ MOSFET: కాళ్ళదే';
+      case 'elec': return 'ఎలక్ట్రోలైటిక్ కెపాసిటర్: కాళ్ళదే';
+      case 'irled': return 'IR LED: TV వైపు చూడాలి, కాళ్ళదే';
+      case 'ptc': return 'PTC ఫ్యూజ్: కాళ్ళదే';
+      default: return 'కనెక్టర్ / సాకెట్ / స్విచ్ / మాడ్యూల్: బలం కోసం కాళ్ళదే';
+    }
+  }
+  /** Each resistor's watts on ⚡ (an ⅛ W SMD one must stay cool). */
+  function resWatts() {
+    const out = new Map();
+    try {
+      const S = SIM.setup(D, { src: sim.src, ctl: sim.ctl });
+      if (S.err) return out;
+      const cy = SIM.has555(S) ? SIM.cycle(SIM.setup(D, { src: sim.src, ctl: sim.ctl })) : null, R = SIM.dc(S);
+      D.parts.filter((q) => q.lib === 'res').forEach((q) => {
+        const w = cy && cy.most && cy.most.p[q.ref] && typeof cy.most.p[q.ref].w === 'number' ? cy.most.p[q.ref].w : Math.abs((R.p[q.ref] || {}).w || 0);
+        out.set(q.ref, w);
+      });
+    } catch (e) { /* (no ⚡: every resistor may go) */ }
+    return out;
+  }
+  /** What can become SMD now, what stays, and what already is. */
+  function smdPlan() {
+    const go = [], stay = [], done = [], W = resWatts();
+    D.parts.forEach((pt) => {
+      if (P.isSmd(pt)) { done.push(pt); return; }
+      const sm = P.smdOf(pt);
+      if (!sm) { stay.push({ pt, why: stayWhy(pt) }); return; }
+      const w = W.get(pt.ref) || 0;
+      if (pt.lib === 'res' && w > 0.075) { stay.push({ pt, why: 'ఇది ' + SIM.fmtW(w) + ' వేడి తీసుకుంటుంది: ⅛ W SMD కి ఎక్కువ, కాళ్ళదే' }); return; }
+      go.push({ pt, sm });
+    });
+    return { go, stay, done };
+  }
+  function pcbaCard(h) {
+    const pl = smdPlan(), c = el('div', 'card');
+    h.appendChild(el('h3', null, '🏭 ఫ్యాక్టరీలోనే టంకం (SMD, ఐచ్ఛికం)'));
+    if (!pl.done.length && !pl.go.length) {
+      c.appendChild(el('div', 'muted', 'ఈ బోర్డ్‌లో SMD గా మార్చగలిగే చిన్న భాగాలు లేవు (కనెక్టర్లు, మాడ్యూల్స్, పెద్ద భాగాలు మాత్రమే). అన్నీ మీరే టంకం చేయాలి.'));
+      h.appendChild(c);
+      return;
+    }
+    if (!pl.done.length) {
+      c.appendChild(el('div', null, '🏭 చిన్న భాగాలని ఫ్యాక్టరీనే పెట్టి టంకం చేయాలా?'));
+      c.appendChild(el('div', 'muted', 'రెసిస్టర్లు, కెపాసిటర్లు, LED లు, డయోడ్లు, ట్రాన్సిస్టర్, 555, 3.3V రెగ్యులేటర్: కాళ్ళు లేని చిన్న SMD భాగాలుగా మారతాయి. ఫ్యాక్టరీ వాటిని పెట్టి టంకం చేసి పంపుతుంది (PCBA). కనెక్టర్లు, సాకెట్లు, మాడ్యూల్స్, పెద్ద భాగాలు మీరే టంకం చేస్తారు. బోర్డ్ చిన్నది అవుతుంది, టంకం పని తగ్గుతుంది; ఖర్చు కొంచెం ఎక్కువ.'));
+      c.appendChild(el('div', 'step', '🔁 ' + pl.go.length + ' భాగాలు SMD కావచ్చు · ' + pl.stay.length + ' కాళ్ళవే ఉంటాయి'));
+      const r = el('div', 'row');
+      r.appendChild(btn('🏭 SMD గా మార్చి చూడు (₹0)', 'main', smdSheet));
+      c.appendChild(r);
+      h.appendChild(c);
+      return;
+    }
+    const sp = F.pcbaSplit(D);
+    c.appendChild(el('div', 'okc', '🏭 ఫ్యాక్టరీ పెట్టేవి: ' + sp.smd.length + ' SMD భాగాలు · మీరు టంకం చేసేవి: ' + sp.th.length));
+    c.appendChild(el('div', 'muted', '"📦 అసెంబ్లీ ఫైల్స్" మూడు ఫైల్స్ సేవ్ చేస్తుంది: బోర్డ్ (Gerber zip), భాగాల జాబితా (BOM), భాగాల స్థానాలు (CPL). JLCPCB సైట్‌లో "PCB Assembly" ఆన్ చేసి అవి మీరే అప్‌లోడ్ చేస్తారు; ధర, పేమెంట్ అక్కడే, మీరే.'));
+    if (sp.noNum.length) c.appendChild(el('div', 'step warnc', '🔢 ' + sp.noNum.join(', ') + ': LCSC నంబర్ నా దగ్గర లేదు. JLCPCB BOM పేజీలో విలువ చూసి మీరే భాగం ఎంచుకోవాలి.'));
+    if (pl.go.length) c.appendChild(el('div', 'step', '🔁 ఇంకా ' + pl.go.length + ' భాగాలు SMD కావచ్చు (కొత్తగా వచ్చినవి).'));
+    const r = el('div', 'row');
+    r.appendChild(btn('📦 అసెంబ్లీ ఫైల్స్ సేవ్ చేయి', 'main', () => pcbaSave()));
+    r.appendChild(btn('📋 భాగాలు', 'small', pcbaList));
+    r.appendChild(btn('👣 JLCPCB లో ఎలా', 'small', pcbaHow));
+    if (pl.go.length) r.appendChild(btn('🔁 మిగిలినవీ SMD', 'small', smdSheet));
+    r.appendChild(btn('↩️ కాళ్ళ భాగాలకి తిరిగి', 'small', smdBackSheet));
+    c.appendChild(r);
+    if (saved && saved.kind === 'pcba') {
+      c.appendChild(el('div', 'okc', '💾 సేవ్ అయింది: ' + String(saved.where).replace(/[^/]*$/, '') + ' (zip + 2 csv)'));
+      const r2 = el('div', 'row');
+      r2.appendChild(btn('🌐 JLCPCB సైట్ తెరువు', 'main', () => post({ t: 'site', fab: 'jlc' })));
+      r2.appendChild(btn('📤 zip పంపు', '', () => post({ t: 'share' })));
+      c.appendChild(r2);
+      c.appendChild(el('div', 'muted', 'మీరు నొక్కితేనే. లాగిన్, అప్‌లోడ్, పేమెంట్ మీరే.'));
+    }
+    h.appendChild(c);
+  }
+  function smdSheet() {
+    const pl = smdPlan();
+    sheet((s) => {
+      s.appendChild(el('h2', null, '🏭 SMD గా మార్చాలా? (' + pl.go.length + ' భాగాలు)'));
+      s.appendChild(el('div', 'muted', 'కలుపులు (ఏ పిన్ ఎక్కడికి) అలాగే ఉంటాయి; భాగాలు చిన్నవి అవుతాయి, దారులు మళ్ళీ వేస్తాను. ముందున్న బోర్డ్ 🕑 వెర్షన్‌గా దాచి ఉంచుతాను: ↩️ / 🕑 తో వెనక్కి రావచ్చు. ₹0, ఫోన్‌లోనే.'));
+      s.appendChild(el('h3', null, '🏭 ఫ్యాక్టరీ పెట్టేవి'));
+      pl.go.forEach((g) => s.appendChild(el('div', 'step', g.pt.ref + (g.pt.val && g.pt.lib !== 'ne555' && g.pt.lib !== 'r3v3' ? ' ' + g.pt.val : '') + ' → ' + g.sm.te + (g.sm.lcsc ? ' · LCSC ' + g.sm.lcsc : ' · LCSC నంబర్ లేదు (JLCPCB లో ఎంచుకోవాలి)') + (g.sm.volts ? ' · ' + g.sm.volts + ' V' : ''))));
+      if (pl.stay.length) {
+        s.appendChild(el('h3', null, '🔧 మీరే టంకం చేసేవి (కాళ్ళవే)'));
+        pl.stay.forEach((g) => s.appendChild(el('div', 'step muted', g.pt.ref + ': ' + g.why)));
+      }
+      s.appendChild(el('div', 'step warnc', '💰 JLCPCB లో "Basic" భాగాలకి అదనపు ఫీజు లేదు; "Extended" భాగాలకి (ఉదా: NE555DR, నీలం LED) ఒక్కో రకానికి కొంచెం ఎక్కువ. అసెంబ్లీకి సెటప్ ఛార్జీ కూడా ఉంటుంది. ధర వాళ్ళ సైట్‌లోనే చూపిస్తుంది; ఆర్డర్, పేమెంట్ మీరే.'));
+      const r = el('div', 'row');
+      r.appendChild(btn('✅ మార్చు (స్థానాలు అలాగే)', 'main', () => smdApply(pl.go, false)));
+      r.appendChild(btn('📐 మార్చి బోర్డ్ చిన్నది చేయి', '', () => smdApply(pl.go, true)));
+      r.appendChild(btn('వద్దు', '', closeSheet));
+      s.appendChild(r);
+      s.appendChild(el('div', 'muted', '📐: భాగాలన్నీ Jarvis మళ్ళీ దగ్గరగా అమర్చి బోర్డ్ చిన్నది చేస్తుంది (ఇప్పటి అమరిక పోతుంది, 🕑 లో ఉంటుంది).'));
+    });
+  }
+  /** The swap itself: a 🕑 version first, then the SMD footprints, then the tracks (or a smaller board). */
+  function smdApply(list, shrink) {
+    if (!list.length) { closeSheet(); return; }
+    const before = { w: D.board.w, h: D.board.h };
+    verSnap('🏭 SMD కి ముందు');
+    snap();
+    list.forEach((g) => { const q = D.parts.find((x) => x.ref === g.pt.ref); if (q) { q.fp = g.sm.fp; delete q.pl; } });
+    let miss = 0, moved = false;
+    const relay = () => {
+      const title = (D.labels.find((l) => !l.ref) || {}).t || '';
+      return A.layout(JSON.parse(JSON.stringify(D)), title);
+    };
+    miss = reroute(true).failed.reduce((t, f) => t + f.pins.length, 0);
+    if (shrink || miss) { // (📐, or the old places leave pins unjoined: Jarvis places them again closer; a bigger board is never chosen for 📐)
+      const best = relay(), area = D.board.w * D.board.h;
+      if (best && (best.miss < miss || (shrink && best.miss === miss && best.d.board.w * best.d.board.h < area - 1))) {
+        ['board', 'parts', 'labels', 'tracks', 'vias'].forEach((k) => { D[k] = best.d[k]; });
+        moved = true; miss = best.miss;
+      }
+    }
+    changed();
+    closeSheet();
+    if (tab === 'fab') fab(); // (the card behind shows the new state)
+    resultSheet('🏭 ' + list.length + ' భాగాలు SMD అయ్యాయి', [
+      'బోర్డ్: ' + before.w + ' × ' + before.h + ' mm' + (moved ? ' → ' + D.board.w + ' × ' + D.board.h + ' mm' : ''),
+      moved && !shrink ? '🔀 పాత స్థానాల్లో కొన్ని పిన్నులు కలవలేదు: అందుకే భాగాలు మళ్ళీ దగ్గరగా అమర్చాను (పాతది 🕑 లో ఉంది).' : '',
+      shrink && !moved ? '📐 భాగాలు మళ్ళీ అమర్చినా ఇంతకంటే చిన్నది కాలేదు (కనెక్టర్లు / మాడ్యూల్స్ పెద్దవి): స్థానాలు అలాగే ఉంచాను.' : '',
+      miss ? '⚠️ ' + miss + ' పిన్నులు ఇంకా కలవలేదు: 🧩 PCB లో భాగాలు కొంచెం జరిపి ⚡ రూట్, లేదా ✍️ చేతితో దారి.' : '✅ అన్ని కలుపులూ దారులతో కలిశాయి.',
+      check.errors ? '❌ ✅ చెక్ లో ' + check.errors + ' తప్పులు: చూసి సరిచేయండి.' : '✅ చెక్: తప్పులు లేవు.',
+      '⚡ నడిపించు లో ఒకసారి చూడండి (SMD రెసిస్టర్ ⅛ W, 10 µF SMD 25 V).',
+      '🏭 ఫ్యాక్టరీ ట్యాబ్‌లో "📦 అసెంబ్లీ ఫైల్స్" తో ఆర్డర్ ఫైల్స్.'
+    ].filter(Boolean), [btn('🧩 PCB చూపించు', 'main', () => { closeSheet(); showTab('pcb'); })]);
+  }
+  function smdBackSheet() {
+    sheet((s) => {
+      const n = D.parts.filter((q) => P.isSmd(q)).length;
+      s.appendChild(el('h2', null, '↩️ ' + n + ' SMD భాగాలు మళ్ళీ కాళ్ళ భాగాలుగా?'));
+      s.appendChild(el('div', 'muted', 'అన్నీ మీరే టంకం చేసేలా. కాళ్ళ భాగాలు పెద్దవి: చోటు సరిపోకపోతే భాగాలు మళ్ళీ అమర్చి బోర్డ్ సైజు మారుస్తాను. ముందున్నది 🕑 లో ఉంటుంది.'));
+      const r = el('div', 'row');
+      r.appendChild(btn('అవును, తిరిగి మార్చు', 'main', () => {
+        verSnap('🏭 SMD నుంచి తిరిగి ముందు');
+        snap();
+        D.parts.forEach((q) => { if (P.isSmd(q)) { delete q.fp; delete q.pl; } });
+        M = C.model(D);
+        const bad = C.drc(D, D.fab, [null, null], M).list.some((f) => f.code === 'overlap' || f.code === 'outside');
+        if (bad) {
+          const title = (D.labels.find((l) => !l.ref) || {}).t || '';
+          const best = A.layout(JSON.parse(JSON.stringify(D)), title);
+          if (best) ['board', 'parts', 'labels', 'tracks', 'vias'].forEach((k) => { D[k] = best.d[k]; });
+          else reroute(true);
+        } else reroute(true);
+        changed();
+        closeSheet();
+        toast('↩️ అన్నీ మళ్ళీ కాళ్ళ భాగాలు' + (bad ? '; చోటు కోసం భాగాలు మళ్ళీ అమర్చాను.' : '.'), 4000);
+        if (tab === 'fab') fab();
+      }));
+      r.appendChild(btn('వద్దు', '', closeSheet));
+      s.appendChild(r);
+    });
+  }
+  function pcbaList() {
+    const sp = F.pcbaSplit(D);
+    sheet((s) => {
+      s.appendChild(el('h2', null, '📋 ఫ్యాక్టరీ పెట్టే భాగాలు (' + sp.smd.length + ')'));
+      const tb = el('table'), hr = el('tr');
+      ['భాగం', 'ఏమిటి', 'LCSC'].forEach((t) => hr.appendChild(el('th', null, t))); tb.appendChild(hr);
+      sp.smd.forEach((q) => { const sm = P.smdOf(q) || {}; const tr = el('tr'); [q.ref, sm.mpn || q.val || '', sm.lcsc || '—'].forEach((t) => tr.appendChild(el('td', null, t))); tb.appendChild(tr); });
+      s.appendChild(tb);
+      s.appendChild(el('h3', null, '🔧 మీరు టంకం చేసేవి (' + sp.th.length + ')'));
+      s.appendChild(el('div', 'muted', sp.th.map((q) => q.ref + (q.val ? ' ' + q.val : '')).join(' · ') || '—'));
+      s.appendChild(el('div', 'muted', 'LCSC నంబర్లు 26 Nov 2026 న jlcpcb.com లో చూసినవి. స్టాక్, ధర మారతాయి: ఆర్డర్ ముందు వాళ్ళ BOM పేజీలో ప్రతి భాగం ఫోటో, విలువ చూసుకోండి.'));
+    });
+  }
+  function pcbaHow() {
+    sheet((s) => {
+      s.appendChild(el('h2', null, '👣 JLCPCB లో అసెంబ్లీ ఆర్డర్ (మీరే)'));
+      ['1. 🏭 ఇక్కడ "📦 అసెంబ్లీ ఫైల్స్ సేవ్ చేయి": Downloads/Jarvis/pcb లో 3 ఫైల్స్ (…-gerber-….zip, …-BOM-JLCPCB.csv, …-CPL-JLCPCB.csv).',
+        '2. 🌐 JLCPCB సైట్ (మీ బ్రౌజర్): Gerber zip అప్‌లోడ్ చేయండి. బోర్డ్ ఎంపికలు మామూలుగానే.',
+        '3. కిందికి జరిపి "PCB Assembly" ఆన్ చేయండి. Side: Top. (Economic చాలు.)',
+        '4. "Next" తర్వాత BOM ఫైల్, CPL ఫైల్ అప్‌లోడ్ చేయండి.',
+        '5. BOM పేజీలో ప్రతి భాగం ఫోటో, విలువ చూడండి. LCSC నంబర్ లేనివి మీరే వెతికి ఎంచుకోండి. మీరు టంకం చేసే కాళ్ళ భాగాలు అక్కడ ఉండవు: అది సరే.',
+        '6. Placement (బొమ్మ) పేజీలో ప్రతి భాగం పిన్ 1 చుక్క / గీత బోర్డ్ మీది గుర్తుతో సరిపోతుందా చూడండి (LED, డయోడ్, 555, ట్రాన్సిస్టర్, రెగ్యులేటర్). తిరగబడి ఉంటే అక్కడే Rotate.',
+        '7. ధర చూసి మీరే ఆర్డర్ / పేమెంట్. Jarvis లాగిన్ అవ్వదు, ఆర్డర్ చేయదు, డబ్బులు కట్టదు.',
+        '🇮🇳 Lion Circuits / PCB Power: అదే 3 ఫైల్స్ పంపి అసెంబ్లీ ధర అడగొచ్చు.'].forEach((t) => s.appendChild(el('div', 'step', t)));
+    });
+  }
+  function pcbaSave() {
+    const sp = F.pcbaSplit(D);
+    if (!sp.smd.length) return;
+    const go = () => {
+      const base = F.slug(D), day = new Date().toISOString().slice(0, 10);
+      const files = F.files(D, fills).concat([{ name: 'README-ASSEMBLY.txt', text: F.pcbaReadme(D, base) }]);
+      zipKind = 'pcba';
+      post({ t: 'csv', name: base + '-BOM-JLCPCB.csv', text: F.jlcBom(D) });
+      post({ t: 'csv', name: base + '-CPL-JLCPCB.csv', text: F.jlcCpl(D) });
+      post({ t: 'zip', name: base + '-gerber-' + day + '.zip', data: F.b64(F.zip(files)), title: D.name, kind: 'gerber' });
+      toast('📦 అసెంబ్లీ ఫైల్స్ (3) సేవ్ చేస్తున్నాను…');
+    };
+    if (!check.errors) { go(); return; }
+    sheet((s) => {
+      s.appendChild(el('h2', null, '❌ ఇంకా ' + check.errors + ' తప్పులు ఉన్నాయి'));
+      s.appendChild(el('div', 'muted', 'ఇలాగే ఆర్డర్ చేస్తే బోర్డ్ పనిచేయకపోవచ్చు. ముందు ✅ చెక్ లో సరిచేయడం మంచిది.'));
+      const q = el('div', 'row');
+      q.appendChild(btn('✅ చెక్ చూపించు', 'main', () => { closeSheet(); showTab('drc'); }));
+      q.appendChild(btn('అయినా సేవ్ చేయి', 'warn', () => { closeSheet(); go(); }));
+      s.appendChild(q);
+    });
+  }
 
   function fab() {
     const h = clear($('fab'));
@@ -2361,12 +2576,14 @@
       c.appendChild(el('div', 'muted', 'రెండూ మీరు నొక్కితేనే. సైట్ మీ బ్రౌజర్‌లో తెరుచుకుంటుంది; లాగిన్, అప్‌లోడ్, పేమెంట్ మీరే.'));
       h.appendChild(c);
     }
+    pcbaCard(h);
     kicadCard(h);
     const mk = el('div', 'card');
     mk.appendChild(el('div', null, '🛠️ బోర్డ్‌లు ఇంటికి వచ్చాక'));
     mk.appendChild(el('div', 'muted', '🔧 టంకం గైడ్ (అడుగు అడుగుగా, 🔊 తెలుగులో) · 📦 3D ప్రింట్ డబ్బా (STL) · 📏 భాగాలు కొన్నాక అసలు సైజులో పోల్చి చూడండి.'));
     const mr = el('div', 'row');
     mr.appendChild(btn('🔧 టంకం గైడ్', 'small', () => startGuide()));
+    mr.appendChild(btn('📷 బోర్డ్ మీద గైడ్', 'small', camOpen));
     mr.appendChild(btn('📦 డబ్బా', 'small', startBox));
     mr.appendChild(btn('📏 అసలు సైజు', 'small', openReal));
     mk.appendChild(mr);
@@ -3460,6 +3677,45 @@
 
   // ---------------------------------------------------------------- 🔧 the soldering guide (3D: the part to solder glows; 🔊 Telugu)
 
+  // ================================================================ 📷 Build C: the soldering guide drawn on his real board (pcbcam.js)
+
+  let camv = null;
+  function camView() {
+    if (camv || !window.PcbCam) return camv;
+    camv = window.PcbCam.camApi({
+      clear, el, btn, toast, post,
+      design: () => D, model: () => M,
+      step: () => (sg.on && sg.steps ? sg.steps[sg.i] : null),
+      go: (d) => guideGo(d),
+      speak: () => { const st = sg.on && sg.steps ? sg.steps[sg.i] : null; return speakBtn(st ? st.say : ''); },
+      done: () => {
+        const out = D.parts.filter((q) => P.isSmd(q)).map((q) => q.ref);
+        if (sg.on && sg.steps) sg.steps.slice(0, sg.i).forEach((s) => { if (s.k === 'part') s.refs.forEach((r) => out.push(r)); });
+        return out;
+      },
+      court: (pt) => C.courtOf(pt, pt.x, pt.y, pt.rot || 0),
+      polar: (pt) => !!(P.LIB[pt.lib] || {}).polar,
+      mark: (pt) => {
+        const L = P.LIB[pt.lib] || {};
+        if (!L.polar) return '';
+        const n1 = String(P.pinsOf(pt)['1'] || '1');
+        return '■ = ' + (n1 === 'K' ? 'K (−)' : n1 === '+' ? '+' : /^\d+$/.test(n1) ? 'పిన్ 1' : n1);
+      }
+    });
+    $('camcv').addEventListener('pointerup', (e) => camv.tap(e));
+    return camv;
+  }
+  /** 📷 His tap: the guide on (where he stopped), then the camera view over everything. */
+  function camOpen() {
+    if (!D) return '';
+    const v = camView();
+    if (!v) return '';
+    if (!sg.on) startGuide();
+    if (xrS.on || xrS.wait) stopAr();
+    if (rs.on) closeReal();
+    v.open();
+    return '📷 బోర్డ్ మీద టంకం గైడ్: బోర్డ్ మీద ఒకసారి నొక్కండి.';
+  }
   function startGuide(at) {
     if (!D) return '';
     if (xrS.on) stopAr();
@@ -3483,7 +3739,7 @@
   function guideShow(move) {
     if (!sg.on || !sg.steps) return;
     const st = sg.steps[sg.i];
-    const done = [];
+    const done = D.parts.filter((q) => P.isSmd(q)).map((q) => q.ref); // (🏭 the factory's SMD parts are on the board from the start)
     sg.steps.slice(0, sg.i).forEach((s) => { if (s.k === 'part') s.refs.forEach((r) => done.push(r)); });
     const g = clear($('guide'));
     g.classList.add('on');
@@ -3511,7 +3767,7 @@
     g.scrollTop = 0;
     tools3d();
     fit3d();
-    if (v3d && move !== null) v3d.guide({ done, cur: st.k === 'part' || st.k === 'chips' ? st.refs : [], all: st.show === 'all', none: st.show === 'none', bottom: sg.bottom }, !!move);
+    if (v3d && move !== null) v3d.guide({ done, cur: st.k === 'part' || st.k === 'chips' || st.k === 'smd' ? st.refs : [], all: st.show === 'all', none: st.show === 'none', bottom: sg.bottom }, !!move);
   }
   /** The 3D picture uses the space above the card (so the part to solder is never under it). */
   function fit3d() {
@@ -3896,5 +4152,6 @@
   window.__pcb = { open, get D() { return D; }, get check() { return check; }, showTab, reroute, changed, onJarvis, texture, partSheet: (ref) => partSheet(D && D.parts.find((q) => q.ref === ref)), modList, modInfo, wireSheet, buyGo, faultStart, get ft() { return ft; }, graphSheet, gr, advSheet, adv, fr, frStart, frMove, frEnd, frDelete, reviewDone, scanSheet, scanSt, forReview, pinStart, solderStart, get ph() { return ph; }, pinsDone, solderDone, pv, sv,
     ai, idea, editSheet, heard, lay: () => schLayout(), sim, simv, simBuild, simReport, simControls, simSupply, simPart, verSheet, verSnap, verDiff, kicadFiles: () => KI.files(D, schLayout()),
     sg, bx, rs, xrS, lv, startGuide, stopGuide, guideGo, guideWords, startBox, stopBox, boxTaller, boxZip, openReal, closeReal, drawReal, startAr, stopAr, xrEnter, xrLeave, xrSaid,
-    learnTab, learnGo, get learnSt() { return learnSt; }, set scr(v) { scr = v; }, get v3d() { return v3d; } };
+    learnTab, learnGo, get learnSt() { return learnSt; }, set scr(v) { scr = v; }, get v3d() { return v3d; },
+    smdPlan, smdSheet, smdApply, smdBackSheet, pcbaList, pcbaHow, pcbaSave, camOpen, get camv() { return camv; } };
 })();
