@@ -693,10 +693,10 @@ public class PcbActivity extends Activity {
             final String thumb = "data:image/jpeg;base64," + android.util.Base64.encodeToString(small.toByteArray(), android.util.Base64.NO_WRAP);
             ui.post(() -> {
                 if (destroyed) return;
-                String side = null;
-                if (Pcb.SCAN.equals(photoFor)) { side = scanSide; if ("bottom".equals(side)) scanBottom = b64; else scanTop = b64; }
+                String sd = null;
+                if (Pcb.SCAN.equals(photoFor)) { sd = scanSide; if ("bottom".equals(sd)) scanBottom = b64; else scanTop = b64; }
                 else photo = b64;
-                try { send(json("photoready").put("thumb", thumb).put("kb", out.size() / 1024).put("for", photoFor).put("side", side == null ? "" : side)); } catch (Exception ignored) {}
+                try { send(json("photoready").put("thumb", thumb).put("kb", out.size() / 1024).put("for", photoFor).put("side", sd == null ? "" : sd)); } catch (Exception ignored) {}
             });
         }, "jarvis-pcb-photo").start();
     }
