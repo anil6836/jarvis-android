@@ -696,6 +696,7 @@ public class PcbActivity extends Activity {
             return;
         }
         if (req == REQ_CAMWEB) {
+            camAsking = false;
             if (res.length > 0 && res[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) camOn();
             else { camPending = false; camTell(false, "📷 కెమెరా అనుమతి లేకుండా బోర్డ్ మీద చూపించలేను Sir. 🧊 3D లో టంకం గైడ్ పనిచేస్తుంది."); }
             return;
@@ -863,7 +864,7 @@ public class PcbActivity extends Activity {
 
     // ================================================================ Build C: 📷 the soldering guide on his real board (the page's camera)
 
-    private boolean camWanted, camPending;
+    private boolean camWanted, camPending, camAsking;
 
     /** His tap opened the board camera: the permission first (Android asks him), then the page may start the back camera. */
     private void camOn() {
@@ -871,7 +872,8 @@ public class PcbActivity extends Activity {
         if (!front) { camPending = true; return; } // (back from Android's question: it goes on in onResume)
         camPending = false;
         if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            camPending = true;
+            if (camAsking) { camPending = true; return; } // (Android's question is still open: asked once only)
+            camPending = true; camAsking = true;
             requestPermissions(new String[]{android.Manifest.permission.CAMERA}, REQ_CAMWEB);
             return;
         }
