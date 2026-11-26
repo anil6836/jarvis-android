@@ -1164,6 +1164,136 @@
     });
   }
 
+  // ================================================================ 🔬 advanced ⚡ (27 Nov, "🧠 బోర్డ్‌కి మెదడు" list 3): sound, part heat, copper heat; ₹0
+
+  const adv = { id: null, tab: 'heat', inp: null, outs: null };
+  function advRun() {
+    const S = SIM.setup(D, { src: sim.src, ctl: sim.ctl });
+    if (S.err) return { err: S.err };
+    const R = SIM.dc(S), cy = SIM.has555(S) ? SIM.cycle(SIM.setup(D, { src: sim.src, ctl: sim.ctl })) : null;
+    return { S, R, cy };
+  }
+  function advSheet(tabName) {
+    if (!D) return;
+    if (adv.id !== D.id) { adv.id = D.id; adv.inp = null; adv.outs = null; }
+    if (tabName) adv.tab = tabName;
+    let run = null;
+    try { run = advRun(); } catch (e) { run = { err: String((e && e.message) || e).slice(0, 80) }; }
+    sheet((s) => {
+      s.appendChild(el('h2', null, '🔬 లోతుగా చూడు'));
+      const sg = el('div', 'seg');
+      [['heat', '🌡️ భాగాల వేడి'], ['copper', '🔥 దారుల వేడి'], ['sound', '🎵 శబ్దం (ఫ్రీక్వెన్సీ)']].forEach(([k, t]) => sg.appendChild(btn(t, adv.tab === k ? 'on small' : 'small', () => advSheet(k))));
+      s.appendChild(sg);
+      if (run.err) { s.appendChild(el('div', 'step warnc', '⚡ ' + run.err)); s.appendChild(btn('మూసేయి', '', closeSheet)); return; }
+      if (adv.tab === 'heat') advHeat(s, run);
+      else if (adv.tab === 'copper') advCopper(s, run);
+      else advSound(s, run);
+      s.appendChild(el('div', 'muted', 'ఇది మా లెక్క (ఒక మోడల్): గది 35 °C అనుకుని, డేటాషీట్ల సుమారు అంకెలతో. నిజమైన బోర్డ్ కొంచెం తేడా ఉండొచ్చు. ₹0, AI లేదు.'));
+      const r = el('div', 'row');
+      r.appendChild(btn('మూసేయి', '', closeSheet));
+      s.appendChild(r);
+    });
+  }
+  function heatBar(t, max) {
+    const b = el('div'); b.style.cssText = 'height:8px;border-radius:4px;background:var(--line);margin:4px 0 2px;overflow:hidden';
+    const f = el('div'), k = Math.max(0, Math.min(1, (t - 25) / (Math.max(max, 100) - 25)));
+    f.style.cssText = 'height:100%;width:' + Math.round(k * 100) + '%;background:' + (t > max ? '#e53935' : t > 60 ? '#fb8c00' : '#43a047');
+    b.appendChild(f);
+    return b;
+  }
+  function advHeat(s, run) {
+    const h = SIM.heat(run.S, run.R, run.cy);
+    s.appendChild(el('div', 'muted', 'ప్రతి భాగం ఎన్ని వాట్లు వేడిగా మారుస్తుందో, దాని వల్ల ఎంత వేడెక్కుతుందో (సుమారు). 60 °C పైన చేత్తో పట్టుకోలేం.'));
+    if (!h.parts.length) { s.appendChild(el('div', 'step okc', '✅ ఏ భాగం గట్టిగా వేడెక్కదు (అన్నీ 2 mW లోపే).')); return; }
+    h.parts.forEach((p) => {
+      const d = el('div', 'step' + (p.sev === 'err' ? ' warnc' : ''));
+      d.appendChild(el('div', null, (p.sev === 'err' ? '❌ ' : p.sev === 'warn' ? '⚠️ ' : '✅ ') + p.ref + ' ' + p.te + ': ' + SIM.fmtW(p.w) + ' → సుమారు ' + Math.round(p.t) + ' °C'));
+      d.appendChild(heatBar(p.t, p.max));
+      let tip = '';
+      const lib = (D.parts.find((q) => q.ref === p.ref) || {}).lib;
+      if (p.sev !== 'ok' && /^(r7805|r3v3|nmos)$/.test(lib)) tip = '🧊 చిన్న హీట్‌సింక్ (TO-220, స్క్రూతో) పెడితే సుమారు ' + Math.round(h.air + p.w * 25) + ' °C' + (lib === 'r7805' && p.w > 1 ? '. ఇంకా తగ్గాలంటే 7805 బదులు బక్ మాడ్యూల్.' : '.');
+      else if (p.sev !== 'ok' && lib === 'res') tip = '½ W లేదా 1 W రెసిస్టర్ పెట్టండి (అదే విలువ), లేదా విలువ మార్చండి.';
+      else if (p.sev !== 'ok' && /^d/.test(lib)) tip = 'డయోడ్ చుట్టూ రాగి ఎక్కువ ఉంటే చల్లగా ఉంటుంది; పెద్ద కరెంట్ అయితే 1N5822.';
+      if (p.sev === 'err') tip = '❌ ' + p.max + ' °C దాటుతుంది: పాడవుతుంది. ' + tip;
+      if (tip) d.appendChild(el('div', 'muted', tip));
+      s.appendChild(d);
+    });
+  }
+  function advCopper(s, run) {
+    const h = SIM.heat(run.S, run.R, run.cy);
+    s.appendChild(el('div', 'muted', 'ప్రతి దారిలో వెళ్ళే కరెంట్, దాని వెడల్పు (' + h.oz + ' oz రాగి), దాని వల్ల రాగి ఎంత వేడెక్కుతుందో (IPC-2221 లెక్క). 10 °C లోపు ✅.'));
+    if (!h.nets.length) { s.appendChild(el('div', 'step okc', '✅ ఏ దారిలోనూ 20 mA కంటే ఎక్కువ కరెంట్ వెళ్ళదు.')); return; }
+    h.nets.forEach((n) => {
+      const d = el('div', 'step' + (n.sev === 'err' ? ' warnc' : ''));
+      const mark = n.sev === 'err' ? '❌ ' : n.sev === 'warn' ? '⚠️ ' : n.sev === 'info' ? 'ℹ️ ' : '✅ ';
+      d.appendChild(el('div', null, mark + n.n + ': ' + SIM.fmtA(n.a) + (n.w ? ' · దారి ' + n.w + ' mm · +' + (Math.round(n.dt * 10) / 10) + ' °C' : ' · దారులు ఇంకా వేయలేదు (🧩 ⚡ రూట్)') + (n.pour ? ' · GND నింపు ఉంది (ఇంకా చల్లగా)' : '')));
+      if (n.sev === 'err' || n.sev === 'warn') d.appendChild(el('div', 'muted', '👉 ఈ దారి వెడల్పు పెంచమని ✏️ మార్పులో చెప్పండి ("' + n.n + ' దారి 1.5 mm చేయి"), లేదా 🧮 లెక్కలు → ట్రాక్ వెడల్పు.'));
+      s.appendChild(d);
+    });
+  }
+  function advSound(s, run) {
+    const ins = SIM.acInputs(D, run.S);
+    if (!ins.length) { s.appendChild(el('div', 'step', '🎵 ఈ బోర్డ్‌కి శబ్దం వచ్చే వైరు (AUX సాకెట్, మైక్, L / R / IN అని పేరున్న పిన్) లేదు. ఇది ఆడియో బోర్డ్‌లకి: శబ్దం ఏ ఫ్రీక్వెన్సీలలో తగ్గుతుందో చూపిస్తుంది.')); return; }
+    if (!adv.inp || !ins.some((i) => i.net === adv.inp)) adv.inp = ins[0].net;
+    const cand = D.nets.filter((n) => n.n !== adv.inp && !C.isGnd(n.n) && !C.isPower(n.n) && run.R.v[n.n] != null).map((n) => n.n);
+    if (!adv.outs) {
+      // first: where the sound goes on (an amp's input, an AUX out, a module's L / R), else the wires right next to the input
+      const want = [];
+      D.parts.forEach((pt) => { const nm = P.pinsOf(pt) || {}; Object.keys(nm).forEach((k) => { if (/^(L|R|T|IN|DAC_L|DAC_R|LIN|RIN|DIN)$/i.test(nm[k])) { const n = D.nets.find((q) => q.p.indexOf(pt.ref + '.' + k) >= 0); if (n && cand.indexOf(n.n) >= 0 && want.indexOf(n.n) < 0) want.push(n.n); } }); });
+      adv.outs = (want.length ? want : cand).slice(0, 2);
+    }
+    s.appendChild(el('div', 'muted', 'శబ్దం ఎక్కడి నుంచి వస్తుంది:'));
+    const si = el('div', 'seg');
+    ins.forEach((i) => si.appendChild(btn(i.te, i.net === adv.inp ? 'on small' : 'small', () => { adv.inp = i.net; adv.outs = null; advSheet(); })));
+    s.appendChild(si);
+    s.appendChild(el('div', 'muted', 'ఎక్కడ చూడాలి (3 వరకు):'));
+    const so = el('div', 'seg');
+    cand.forEach((n) => { const on = adv.outs.indexOf(n) >= 0; so.appendChild(btn((on ? '✓ ' : '') + n, on ? 'on small' : 'small', () => { adv.outs = on ? adv.outs.filter((q) => q !== n) : adv.outs.concat([n]).slice(-3); advSheet(); })); });
+    s.appendChild(so);
+    if (!adv.outs.length) return;
+    const r = SIM.ac(run.S, run.R, adv.inp, adv.outs, 61);
+    if (r.err) { s.appendChild(el('div', 'step warnc', r.err)); return; }
+    const cv = el('canvas');
+    cv.style.cssText = 'width:100%;height:220px;display:block;margin:8px 0;border-radius:10px;background:#0b1018;touch-action:none';
+    s.appendChild(cv);
+    const read = el('div', 'step');
+    s.appendChild(read);
+    adv.outs.forEach((n, j) => {
+      const c = r.cut[j], d = el('div', 'step');
+      const sw = el('span'); sw.style.cssText = 'display:inline-block;width:18px;height:3px;margin-right:6px;vertical-align:middle;background:' + GCOL[j % GCOL.length]; d.appendChild(sw);
+      if (!c || c.top < -100) { d.appendChild(document.createTextNode(n + ': ఇక్కడికి శబ్దం రాదు.')); s.appendChild(d); return; }
+      const lvl = c.top > -1 ? 'పూర్తిగా' : c.top > -6.5 ? 'కొంచెం తగ్గి (' + Math.round(c.top) + ' dB)' : 'బాగా తగ్గి (' + Math.round(c.top) + ' dB' + (c.top < -6 ? ', సగం కంటే తక్కువ' : '') + ')';
+      const lo = c.lo && c.lo > 20 ? Math.round(c.lo) + ' Hz కంటే కింది శబ్దాలు (బేస్, దడ దడ) తగ్గుతాయి' : '';
+      const hi = c.hi && c.hi < 20000 ? (c.hi >= 1000 ? (Math.round(c.hi / 100) / 10) + ' kHz' : Math.round(c.hi) + ' Hz') + ' పైన శబ్దాలు (సన్నని, హై) తగ్గుతాయి' : '';
+      d.appendChild(document.createTextNode(n + ': శబ్దం ' + lvl + ' వస్తుంది. ' + (lo || hi ? [lo, hi].filter(Boolean).join('; ') + '.' : '✅ వినిపించే 20 Hz – 20 kHz అంతా సమానంగా.')));
+      s.appendChild(d);
+    });
+    requestAnimationFrame(() => drawFreq(cv, read, r, adv.outs));
+  }
+  function drawFreq(cv, read, r, outs) {
+    const dpr = window.devicePixelRatio || 1, W = cv.clientWidth || 320, H = cv.clientHeight || 220;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    const g = cv.getContext('2d'), L = 34, Rm = 10, T = 10, Bm = 24, pw = W - L - Rm, ph = H - T - Bm;
+    const lx = (f) => L + (Math.log10(f) - 1) / 4 * pw, Y = (db) => T + (6 - Math.max(-40, Math.min(6, db))) / 46 * ph;
+    let at = -1;
+    function paint() {
+      g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+      g.fillStyle = 'rgba(143,163,184,0.10)'; g.fillRect(L, T, lx(20) - L, ph); g.fillRect(lx(20000), T, L + pw - lx(20000), ph);
+      g.strokeStyle = '#263241'; g.lineWidth = 1; g.font = '10px system-ui'; g.fillStyle = '#8fa3b8';
+      [6, 0, -10, -20, -30, -40].forEach((db) => { const y = Y(db); g.beginPath(); g.moveTo(L, y); g.lineTo(L + pw, y); g.stroke(); g.textAlign = 'right'; g.fillText(db + '', L - 4, y + 3); });
+      [10, 100, 1000, 10000, 100000].forEach((f) => { const x = lx(f); g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke(); g.textAlign = f === 100000 ? 'right' : 'center'; g.fillText(f >= 1000 ? f / 1000 + 'k Hz'.slice(0, f === 100000 ? 4 : 1) : f + '', f === 100000 ? x + 4 : x, H - 8); });
+      g.textAlign = 'left'; g.fillText('dB', 4, T + 8);
+      outs.forEach((n, j) => { g.strokeStyle = GCOL[j % GCOL.length]; g.lineWidth = 2; g.beginPath(); let pen = false;
+        r.ys[j].forEach((y, i) => { if (y == null) { pen = false; return; } const px = lx(r.fs[i]), py = Y(y); if (pen) g.lineTo(px, py); else { g.moveTo(px, py); pen = true; } }); g.stroke(); });
+      if (at >= 0) { g.strokeStyle = '#fff'; g.beginPath(); g.moveTo(lx(r.fs[at]), T); g.lineTo(lx(r.fs[at]), T + ph); g.stroke(); }
+    }
+    const show = (i) => { at = i; const f = r.fs[i]; read.textContent = '👉 ' + (f >= 1000 ? (Math.round(f / 100) / 10) + ' kHz' : Math.round(f) + ' Hz') + ': ' + outs.map((n, j) => n + ' ' + (r.ys[j][i] == null ? '—' : (Math.round(r.ys[j][i] * 10) / 10) + ' dB')).join(' · ') + (f < 20 || f > 20000 ? ' (మనకి వినపడదు)' : ''); paint(); };
+    const near = (e) => { const rc = cv.getBoundingClientRect(), lf = 1 + (e.clientX - rc.left - L) / pw * 4; let b = 0; r.fs.forEach((f, i) => { if (Math.abs(Math.log10(f) - lf) < Math.abs(Math.log10(r.fs[b]) - lf)) b = i; }); return b; };
+    cv.addEventListener('pointerdown', (e) => { try { cv.setPointerCapture(e.pointerId); } catch (x) { /* */ } show(near(e)); });
+    cv.addEventListener('pointermove', (e) => { if (e.buttons || e.pressure > 0) show(near(e)); });
+    show(30);
+  }
+
   // ================================================================ 📷 photo checks (26 Nov, "4." and "5."): his AI reads the photo, our code compares
   // The photo goes to his studio AI only when he taps (the cost shown first), once; nothing keeps it (only its small picture stays on
   // this screen until he leaves). The pin names it reads are compared with the board by our own code (₹0).
@@ -2795,6 +2925,7 @@
     if (sim.S && sim.S.controls.length) t.appendChild(tool('🎛️ స్విచ్‌లు (' + sim.S.controls.length + ')', 'main', simControls));
     t.appendChild(tool('📋 ఫలితం', '', simReport));
     t.appendChild(tool('📈 గ్రాఫ్', '', graphSheet));
+    t.appendChild(tool('🔬 లోతుగా', '', () => advSheet()));
     t.appendChild(tool('🧪 తప్పు వెతుకు', '', () => faultStart(true)));
     t.appendChild(tool('🔄 మళ్ళీ', '', () => { sim.run = true; simBuild(); simTools(); drawSim(); simGo(); toast('⚡ మొదటి నుంచి (స్విచ్ ఆన్ చేసినట్టు)'); }));
     t.appendChild(tool('🔍', '', () => { simv.fit = true; drawSim(); }));
@@ -3521,7 +3652,7 @@
     then();
   }
 
-  window.__pcb = { open, get D() { return D; }, get check() { return check; }, showTab, reroute, changed, onJarvis, texture, partSheet: (ref) => partSheet(D && D.parts.find((q) => q.ref === ref)), modList, modInfo, wireSheet, buyGo, faultStart, get ft() { return ft; }, graphSheet, gr, pinStart, solderStart, get ph() { return ph; }, pinsDone, solderDone, pv, sv,
+  window.__pcb = { open, get D() { return D; }, get check() { return check; }, showTab, reroute, changed, onJarvis, texture, partSheet: (ref) => partSheet(D && D.parts.find((q) => q.ref === ref)), modList, modInfo, wireSheet, buyGo, faultStart, get ft() { return ft; }, graphSheet, gr, advSheet, adv, pinStart, solderStart, get ph() { return ph; }, pinsDone, solderDone, pv, sv,
     ai, idea, editSheet, heard, lay: () => schLayout(), sim, simv, simBuild, simReport, simControls, simSupply, simPart, verSheet, verSnap, verDiff, kicadFiles: () => KI.files(D, schLayout()),
     sg, bx, rs, xrS, lv, startGuide, stopGuide, guideGo, guideWords, startBox, stopBox, boxTaller, boxZip, openReal, closeReal, drawReal, startAr, stopAr, xrEnter, xrLeave, xrSaid,
     learnTab, learnGo, get learnSt() { return learnSt; }, set scr(v) { scr = v; }, get v3d() { return v3d; } };

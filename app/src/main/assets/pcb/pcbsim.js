@@ -644,6 +644,7 @@
       }
       out.p[ref] = r;
     });
+    Object.defineProperty(out, 'V', { value: V, enumerable: false }); // (🔬 the heat sums need every element's current)
     return out;
   }
 
@@ -944,7 +945,153 @@
     return { xs, ys, bad, why };
   }
 
-  const api = { setup, dc, start, step, cycle, report, has555, farads, ratedV, ratedA, voltsOf, fmtV, fmtA, fmtW, MODS, axes, lines, sweep };
+  // ---------------------------------------------------------------- 🔬 advanced (27 Nov, "3."): sound through the board, copper and part heat
+
+  /** Wires a sound can come in on: an AUX / mic socket, a module's audio pins, a header pin named like a signal. */
+  function acInputs(D, S) {
+    const out = [], seen = new Set();
+    const add = (net, te) => { if (net && !seen.has(net) && !C.isGnd(net) && !C.isPower(net)) { seen.add(net); out.push({ net, te }); } };
+    const netOf = (ref, k) => (D.nets.find((n) => n.p.indexOf(ref + '.' + k) >= 0) || {}).n;
+    D.parts.forEach((pt) => {
+      const names = P.pinsOf(pt) || {};
+      if (pt.lib === 'jack35') { add(netOf(pt.ref, 'T'), pt.ref + ' AUX ఎడమ (L)'); add(netOf(pt.ref, 'R'), pt.ref + ' AUX కుడి (R)'); }
+      if (pt.lib === 'mic') add(netOf(pt.ref, '1'), pt.ref + ' మైక్');
+      Object.keys(names).forEach((k) => { if (/^(L|R|IN|AUX|AUDIO|MIC|SIG|DAC_L|DAC_R|LIN|RIN)$/i.test(String(names[k])) && pt.lib !== 'jack35' && pt.lib !== 'pam8403') add(netOf(pt.ref, k), pt.ref + ' ' + names[k]); });
+    });
+    return out;
+  }
+  /** Volts out / volts in, from 10 Hz to 100 kHz (the board's parts at their working point; supplies are AC ground). */
+  function ac(S, R, inNet, outNets, n) {
+    n = n || 61;
+    const N = S.n - 1, V = R.V, nodeOf = (net) => S.nodes.get(net);
+    const inK = nodeOf(inNet);
+    const fs = [], ys = outNets.map(() => []);
+    if (!(inK > 0)) return { fs, ys, err: 'ఆ వైరు దొరకలేదు' };
+    // a PAM8403's inputs take about 20 kΩ to its audio ground (in ⚡ it is only a load on its power)
+    const extra = [];
+    S.D.parts.forEach((pt) => { if (pt.lib !== 'pam8403') return; const nd = (k) => { const net = (S.D.nets.find((q) => q.p.indexOf(pt.ref + '.' + k) >= 0) || {}).n; return net ? nodeOf(net) : -1; };
+      const g = nd('4') >= 0 ? nd('4') : nd('2'); ['3', '5'].forEach((k) => { if (nd(k) >= 0 && g >= 0) extra.push([nd(k), g, 1 / 20000]); }); });
+    for (let i = 0; i < n; i++) {
+      const f = Math.pow(10, 1 + 4 * i / (n - 1)), w = 2 * Math.PI * f;
+      const Ar = [], Ai = [], br = new Array(N).fill(0), bi = new Array(N).fill(0);
+      for (let r = 0; r < N; r++) { Ar.push(new Array(N).fill(0)); Ai.push(new Array(N).fill(0)); Ar[r][r] = GLEAK; }
+      const G = (p, q, gr, gi) => { gi = gi || 0;
+        if (p > 0) { Ar[p - 1][p - 1] += gr; Ai[p - 1][p - 1] += gi; } if (q > 0) { Ar[q - 1][q - 1] += gr; Ai[q - 1][q - 1] += gi; }
+        if (p > 0 && q > 0) { Ar[p - 1][q - 1] -= gr; Ai[p - 1][q - 1] -= gi; Ar[q - 1][p - 1] -= gr; Ai[q - 1][p - 1] -= gi; } };
+      const GM = (p, q, cp, cq, gm) => { if (p > 0) { if (cp > 0) Ar[p - 1][cp - 1] += gm; if (cq > 0) Ar[p - 1][cq - 1] -= gm; } if (q > 0) { if (cp > 0) Ar[q - 1][cp - 1] -= gm; if (cq > 0) Ar[q - 1][cq - 1] += gm; } };
+      for (const e of S.el) {
+        switch (e.k) {
+          case 'R': case 'Load': G(e.a, e.b, 1 / e.r); break;
+          case 'V': G(e.a, e.b, 1 / e.r); break;
+          case 'Pull': G(e.a, e.from, 1 / e.r); break;
+          case 'Cap': G(e.a, e.b, 0, w * e.c); break;
+          case 'D': G(e.a, e.b, e.on ? 1 / e.rs : GLEAK); break;
+          case 'Fuse': G(e.a, e.b, e.trip ? 1 / 200 : 10); break;
+          case 'M': G(e.d, e.s, e.rds > 0 ? 1 / e.rds : GLEAK); break;
+          case 'Prot': G(e.a, e.b, e.cut ? GLEAK : 1 / 0.06); break;
+          case 'Q': if (e.m !== 'off') G(e.b, e.e, 1 / RBE); if (e.m === 'act') GM(e.c, e.e, e.b, e.e, BETA / RBE); else if (e.m === 'sat') G(e.c, e.e, 1 / RCE_SAT); break;
+          case 'T555': G(e.out, e.q ? e.vcc : e.g, 1 / 8); break;
+          case 'Reg': if (e.m === 'reg') G(e.o, e.g, 1 / 0.05); else if (e.m === 'drop') G(e.i, e.o, 1 / 0.3); break;
+          case 'Buck': if (e.m === 'reg') G(e.o, e.og, 1 / 0.05); else if (e.m === 'drop') G(e.i, e.o, 1 / 0.3); break;
+          default:
+        }
+      }
+      extra.forEach(([a, b, g]) => G(a, b, g));
+      // the sound comes in: 1 V on the input wire (a strong source through 1 mΩ)
+      Ar[inK - 1][inK - 1] += 1000; br[inK - 1] += 1000;
+      const x = cgauss(Ar, Ai, br, bi);
+      fs.push(f);
+      outNets.forEach((net, j) => { const k = nodeOf(net); if (!(k > 0)) { ys[j].push(null); return; } const re = x[0][k - 1], im = x[1][k - 1], vin = Math.hypot(x[0][inK - 1], x[1][inK - 1]) || 1; ys[j].push(20 * Math.log10(Math.max(1e-9, Math.hypot(re, im) / vin))); });
+    }
+    // where each line falls 3 dB below its best (the low notes / high notes it loses)
+    const cut = ys.map((y) => { const vals = y.filter((v) => v != null); if (!vals.length) return null; const top = Math.max.apply(null, vals);
+      const ok = y.map((v) => v != null && v >= top - 3); const i0 = ok.indexOf(true), i1 = ok.lastIndexOf(true);
+      return { top, lo: i0 > 0 ? fs[i0] : null, hi: i1 >= 0 && i1 < fs.length - 1 ? fs[i1] : null }; });
+    return { fs, ys, cut };
+  }
+  function cgauss(Ar, Ai, br, bi) {
+    const n = br.length;
+    for (let c = 0; c < n; c++) {
+      let p = c, m = Math.hypot(Ar[c][c], Ai[c][c]);
+      for (let r = c + 1; r < n; r++) { const v = Math.hypot(Ar[r][c], Ai[r][c]); if (v > m) { m = v; p = r; } }
+      if (m < 1e-18) { Ar[c][c] = 1e-12; p = c; }
+      if (p !== c) { [Ar[p], Ar[c]] = [Ar[c], Ar[p]]; [Ai[p], Ai[c]] = [Ai[c], Ai[p]]; [br[p], br[c]] = [br[c], br[p]]; [bi[p], bi[c]] = [bi[c], bi[p]]; }
+      const dr = Ar[c][c], di = Ai[c][c], dd = dr * dr + di * di;
+      for (let r = c + 1; r < n; r++) {
+        const ar = Ar[r][c], ai = Ai[r][c];
+        if (!ar && !ai) continue;
+        const fr = (ar * dr + ai * di) / dd, fi = (ai * dr - ar * di) / dd;
+        for (let k = c; k < n; k++) { const xr = Ar[c][k], xi = Ai[c][k]; Ar[r][k] -= fr * xr - fi * xi; Ai[r][k] -= fr * xi + fi * xr; }
+        br[r] -= fr * br[c] - fi * bi[c]; bi[r] -= fr * bi[c] + fi * br[c];
+      }
+    }
+    const xr = new Array(n).fill(0), xi = new Array(n).fill(0);
+    for (let r = n - 1; r >= 0; r--) {
+      let sr = br[r], si = bi[r];
+      for (let k = r + 1; k < n; k++) { sr -= Ar[r][k] * xr[k] - Ai[r][k] * xi[k]; si -= Ar[r][k] * xi[k] + Ai[r][k] * xr[k]; }
+      const dr = Ar[r][r], di = Ai[r][r], dd = dr * dr + di * di;
+      xr[r] = (sr * dr + si * di) / dd; xi[r] = (si * dr - sr * di) / dd;
+    }
+    return [xr, xi];
+  }
+
+  // °C per watt in still air on a small board (datasheets' junction-to-air, rounded): how hot a part gets for its watts
+  const THETA = { res: 230, r7805: 65, r3v3: 50, nmos: 62, d4007: 100, d5822: 45, bc547: 200, led: 300 };
+  const T_AIR = 35; // (a warm Indian room)
+  /** How hot each part and each copper wire gets. → { parts: [{ref, te, w, t, max, sev}], nets: [{n, a, w, dt, sev, pour}] } */
+  function heat(S, R, cy) {
+    const D = S.D, V = R.V, parts = [], nets = [];
+    if (!V) return { parts, nets };
+    const avgW = (ref) => (cy && cy.avg && cy.avg.p[ref] && typeof cy.avg.p[ref].w === 'number' ? cy.avg.p[ref].w : null);
+    Object.keys(S.parts).forEach((ref) => {
+      const info = S.parts[ref], r = R.p[ref] || {}, pt = D.parts.find((q) => q.ref === ref) || {};
+      let w = avgW(ref); if (w == null) w = typeof r.w === 'number' ? r.w : 0;
+      let th = null, max = 125, te = '';
+      if (info.kind === 'res') { th = THETA.res; max = 155; te = 'రెసిస్టర్ ' + (pt.val || ''); }
+      else if (info.kind === 'reg') { th = pt.lib === 'r3v3' ? THETA.r3v3 : THETA.r7805; te = pt.lib === 'r3v3' ? '3.3V రెగ్యులేటర్' : '7805'; }
+      else if (info.kind === 'nmos') { th = THETA.nmos; max = 175; te = 'MOSFET'; }
+      else if (info.kind === 'diode') { th = pt.lib === 'd5822' ? THETA.d5822 : THETA.d4007; te = 'డయోడ్ ' + (pt.val || ''); }
+      else if (info.kind === 'npn') { th = THETA.bc547; max = 150; te = 'BC547'; }
+      if (th == null || !(w > 0.002)) return;
+      const t = T_AIR + w * th;
+      parts.push({ ref, te, w, t, max, sev: t > max ? 'err' : t > 60 ? 'warn' : 'ok' });
+    });
+    // the current each wire carries: everything flowing into it (the busiest piece of copper carries at most this)
+    const into = new Map();
+    const flow = (a, b, i) => { if (!isFinite(i) || !i) return; const [p, q] = i > 0 ? [a, b] : [b, a], x = Math.abs(i); into.set(q, (into.get(q) || 0) + x); };
+    for (const e of S.el) {
+      switch (e.k) {
+        case 'R': case 'Load': flow(e.a, e.b, (V(e.a) - V(e.b)) / e.r); break;
+        case 'V': flow(e.b, e.a, (e.v - (V(e.a) - V(e.b))) / e.r); break;
+        case 'D': if (e.on) flow(e.a, e.b, (V(e.a) - V(e.b) - e.vf) / e.rs); break;
+        case 'Fuse': flow(e.a, e.b, (V(e.a) - V(e.b)) / (e.trip ? 200 : 0.1)); break;
+        case 'M': if (e.rds > 0) flow(e.d, e.s, (V(e.d) - V(e.s)) / e.rds); break;
+        case 'Prot': if (!e.cut) flow(e.a, e.b, (V(e.a) - V(e.b)) / 0.06); break;
+        case 'Q': { const ib = e.m === 'off' ? 0 : Math.max(0, (V(e.b) - V(e.e) - VBE) / RBE); flow(e.b, e.e, ib);
+          if (e.m === 'act') flow(e.c, e.e, BETA * ib); else if (e.m === 'sat') flow(e.c, e.e, (V(e.c) - V(e.e) - VCE_SAT) / RCE_SAT); break; }
+        case 'T555': if (e.q) flow(e.vcc, e.out, (V(e.vcc) - V(e.out) - 1.5) / 8); else flow(e.out, e.g, (V(e.out) - V(e.g) - 0.1) / 8); break;
+        case 'Reg': if (e.m === 'reg') { const io = Math.max(0, (e.vset - (V(e.o) - V(e.g))) / 0.05); flow(e.i, e.o, io); } else if (e.m === 'drop') flow(e.i, e.o, (V(e.i) - V(e.o) - e.drop) / 0.3); break;
+        case 'Buck': if (e.m === 'reg') { const io = Math.max(0, (V(e.og) + e.vset - V(e.o)) / 0.05); flow(e.og, e.o, io); flow(e.i, e.ig, e.iin); } else if (e.m === 'drop') flow(e.i, e.o, (V(e.i) - V(e.o) - 1.5) / 0.3); break;
+        default:
+      }
+    }
+    const oz = D.board && D.board.cu === 2 ? 2 : 1, tMil = 1.378 * oz;
+    S.nodes.forEach((k, name) => {
+      if (name[0] === '~') return;
+      const a = into.get(k) || 0;
+      if (a < 0.02) return;
+      const tr = (D.tracks || []).filter((t) => t.n === name), wmm = tr.length ? Math.min.apply(null, tr.map((t) => t.w)) : 0;
+      const pour = C.isGnd(name) && D.pour && (D.pour.B || D.pour.F);
+      if (!wmm) { if (a >= 0.02) nets.push({ n: name, a, w: 0, dt: 0, sev: 'info', pour }); return; }
+      const A = (wmm / 0.0254) * tMil, dt = Math.pow(a / (0.048 * Math.pow(A, 0.725)), 1 / 0.44);
+      nets.push({ n: name, a, w: wmm, dt, pour, sev: dt > 20 && !pour ? 'err' : dt > 10 && !pour ? 'warn' : 'ok' });
+    });
+    parts.sort((x, y) => y.t - x.t);
+    nets.sort((x, y) => (y.dt || 0) - (x.dt || 0) || y.a - x.a);
+    return { parts, nets, air: T_AIR, oz };
+  }
+
+  const api = { setup, dc, start, step, cycle, report, has555, farads, ratedV, ratedA, voltsOf, fmtV, fmtA, fmtW, MODS, axes, lines, sweep, acInputs, ac, heat };
   root.PcbSim = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : globalThis);
