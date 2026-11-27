@@ -113,9 +113,12 @@ final class Tools {
                 "Press Send on the message or email draft Jarvis just prepared (WhatsApp, Telegram, SMS, Gmail). Call ONLY after Anil has heard the message and clearly said to send it (పంపు, సెండ్ చెయ్, yes send).",
                 schema(new String[][]{})));
         DEFS.add(new Def("set_alarm",
-                "Set an alarm in the phone's clock app.",
-                schema(new String[][]{{"hour", "integer", "Hour 0-23 in local time"}, {"minute", "integer", "Minute 0-59"},
-                        {"label", "string", "Short label shown with the alarm"}}, "hour", "minute")));
+                "Alarms in the phone's clock app. action set (default): a new alarm at hour:minute. action off ('6 అలారం తీసేయి / ఆఫ్ చెయ్ / "
+                        + "క్యాన్సిల్'): switches that alarm off (it stays in the clock's list, grey, and won't ring); no hour = the next alarm; all = every alarm. "
+                        + "action list ('నా అలారాలు ఏమున్నాయి'): the clock's alarms, on / off. Jarvis's own song alarms are song_alarm's, not these.",
+                schema(new String[][]{{"action", "string", "set (default), off or list"}, {"hour", "integer", "Hour 0-23 in local time (set: needed; off: the alarm's hour)"},
+                        {"minute", "integer", "Minute 0-59"}, {"all", "boolean", "off: every alarm"},
+                        {"label", "string", "set: short label shown with the alarm"}})));
         DEFS.add(new Def("set_timer",
                 "Start a countdown timer in the phone's clock app.",
                 schema(new String[][]{{"seconds", "integer", "Length in seconds (1-86400)"}, {"label", "string", "Short label"}}, "seconds")));
@@ -1200,7 +1203,7 @@ final class Tools {
             case "whatsapp_message": return "WhatsApp లో మెసేజ్ టైప్ చేస్తున్నాను…";
             case "telegram_message": return "Telegram లో మెసేజ్ టైప్ చేస్తున్నాను…";
             case "send_draft": return "పంపుతున్నాను…";
-            case "set_alarm": return "అలారం పెడుతున్నాను…";
+            case "set_alarm": return "అలారం…";
             case "set_timer": return "టైమర్ పెడుతున్నాను…";
             case "get_weather": return "వాతావరణం చూస్తున్నాను…";
             case "open_app": case "open_maps": return "తెరుస్తున్నాను…";
@@ -1371,7 +1374,13 @@ final class Tools {
                 case "whatsapp_message": return whatsapp(a.optString("who"), a.optString("message"));
                 case "telegram_message": return telegram(a.optString("who"), a.optString("message"));
                 case "send_draft": return sendDraft();
-                case "set_alarm": return alarm(a.optInt("hour", -1), a.optInt("minute", -1), a.optString("label", "Jarvis"));
+                case "set_alarm": {
+                    String alarmAct = a.optString("action", "set").trim().toLowerCase(Locale.ROOT);
+                    if (alarmAct.equals("list")) return clockAlarms(-1, -1, false, true);
+                    if (alarmAct.matches("off|cancel|delete|remove|dismiss|stop|disable"))
+                        return clockAlarms(a.has("hour") ? a.optInt("hour", -1) : -1, a.optInt("minute", 0), a.optBoolean("all", false), false);
+                    return alarm(a.optInt("hour", -1), a.optInt("minute", -1), a.optString("label", "Jarvis"));
+                }
                 case "set_timer": return timer(a.optInt("seconds", 0), a.optString("label", "Jarvis"));
                 case "get_weather": return weather(a.optString("place", ""));
                 case "open_app": return openApp(a.optString("app"));
@@ -2718,6 +2727,82 @@ final class Tools {
             return err("no_clock_app", "No clock app accepts alarms on this phone.");
         }
         return ok().put("alarm", String.format(Locale.ENGLISH, "%02d:%02d", hour, minute)).toString();
+    }
+
+    /**
+     * ⏰ The clock app's alarms (Anil, 28 Nov 2026: "అలారం తీసేయమంటే తీసేయడం లేదు"): off = switch off the alarm at hour:minute
+     * (hour -1 = the next alarm; all = every one), list = read them. Android lets no app delete another app's alarm, so Jarvis
+     * opens the clock's alarm list and flips the switch itself (accessibility), then reads it back; without accessibility
+     * the clock app is asked to dismiss it (Android's own way), else the list is opened for him.
+     */
+    private String clockAlarms(int hour, int minute, boolean all, boolean list) throws Exception {
+        if (!list && !all && (hour < 0 || hour > 23)) { // no time: the alarm the phone says rings next
+            android.app.AlarmManager am = (android.app.AlarmManager) act().getSystemService(Context.ALARM_SERVICE);
+            android.app.AlarmManager.AlarmClockInfo next = am == null ? null : am.getNextAlarmClock();
+            if (next == null) return err("which", "No time given and the phone shows no coming alarm. Ask Anil which alarm (its time).");
+            String by = next.getShowIntent() == null ? "" : String.valueOf(next.getShowIntent().getCreatorPackage());
+            if (act().getPackageName().equals(by))
+                return err("jarvis_alarm", "The next alarm on the phone is one of Jarvis's own song alarms: cancel it with song_alarm (action cancel), not here.");
+            java.util.Calendar c = java.util.Calendar.getInstance();
+            c.setTimeInMillis(next.getTriggerTime());
+            hour = c.get(java.util.Calendar.HOUR_OF_DAY);
+            minute = c.get(java.util.Calendar.MINUTE);
+        }
+        if (minute < 0 || minute > 59) return err("bad_time", "Need minute 0-59.");
+        String when = all ? "all" : list ? "" : String.format(Locale.ENGLISH, "%02d:%02d", hour, minute);
+        Intent show = new Intent(AlarmClock.ACTION_SHOW_ALARMS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        ResolveInfo ri = act().getPackageManager().resolveActivity(show, PackageManager.MATCH_DEFAULT_ONLY);
+        String pkg = ri == null || ri.activityInfo == null ? "" : ri.activityInfo.packageName;
+        if ("android".equals(pkg)) pkg = ""; // (more than one clock app: whichever he picks)
+        if (!unlocked()) return err("locked", "The phone is locked and Anil did not unlock it.");
+
+        if (!JarvisAccessibility.enabled()) {
+            if (!list) { // Android's own way: the clock app dismisses it (it may show the alarm for him to confirm)
+                Intent d = new Intent(AlarmClock.ACTION_DISMISS_ALARM).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                if (all) d.putExtra(AlarmClock.EXTRA_ALARM_SEARCH_MODE, AlarmClock.ALARM_SEARCH_MODE_ALL);
+                else d.putExtra(AlarmClock.EXTRA_ALARM_SEARCH_MODE, AlarmClock.ALARM_SEARCH_MODE_TIME)
+                        .putExtra(AlarmClock.EXTRA_HOUR, hour).putExtra(AlarmClock.EXTRA_MINUTES, minute).putExtra(AlarmClock.EXTRA_IS_PM, hour >= 12);
+                if (d.resolveActivity(act().getPackageManager()) != null) {
+                    try {
+                        start(d);
+                        return ok().put("asked_clock_app", when).put("checked", false)
+                                .put("note", "Jarvis asked the clock app to switch off the " + when + " alarm but can't see whether it did (Jarvis's accessibility "
+                                        + "switch is off). Tell him honestly: if the clock app shows the alarm, he confirms there; with Jarvis's accessibility "
+                                        + "switch on (Settings), Jarvis switches it off itself and checks.").toString();
+                    } catch (Exception ignored) {}
+                }
+            }
+            try { start(show); } catch (Exception e) { return err("no_clock_app", "No clock app on this phone shows its alarms."); }
+            return ok().put("opened", "the clock app's alarm list").put("switched", false)
+                    .put("note", "Jarvis's accessibility switch is off, so Jarvis can't " + (list ? "read" : "flip") + " the clock's alarms. The list is open on screen"
+                            + (list ? "." : ": he switches the " + when + " alarm off there himself.") + " With the accessibility switch on, Jarvis does it.").toString();
+        }
+        try { start(show); } catch (Exception e) { return err("no_clock_app", "No clock app on this phone shows its alarms."); }
+        JSONObject r = JarvisAccessibility.clockAlarms(pkg, hour, minute, all, list, 7000);
+        Thread.sleep(300);
+        JarvisAccessibility.back();
+        Thread.sleep(500);
+        backToJarvis();
+        String state = r.optString("state");
+        String alarms = r.optString("alarms");
+        if ("no_alarms_seen".equals(state)) return err("no_alarms", "The clock app opened but showed no alarms (it may have none).");
+        if (!"done".equals(state)) return err("no_list", "Jarvis opened the clock app but could not read its alarm list. He can switch it off there himself.");
+        if (list) return ok().put("alarms", alarms.isEmpty() ? "none" : alarms).toString();
+        JSONArray off = r.optJSONArray("off"), already = r.optJSONArray("already"), failed = r.optJSONArray("failed"), unsure = r.optJSONArray("unsure");
+        int nOff = off == null ? 0 : off.length(), nAlready = already == null ? 0 : already.length();
+        if (failed != null && failed.length() > 0)
+            return err("not_switched", "Jarvis tapped the " + failed.join(", ").replace("\"", "") + " alarm's switch but it is still on. He can switch it off in the Clock app. Its alarms: " + alarms);
+        if (nOff == 0 && nAlready == 0) {
+            if (unsure != null && unsure.length() > 0)
+                return err("unsure", "The clock shows " + unsure.join(", ").replace("\"", "") + " without AM / PM, so Jarvis did not touch it. Its alarms: " + alarms
+                        + ". Ask him to switch it off in the Clock app himself.");
+            return err("not_found", all ? "No alarm is on in the clock app. Its alarms: " + alarms
+                    : "No alarm at " + when + " in the clock app. Its alarms: " + alarms + ". Tell him which ones there are.");
+        }
+        return ok().put("switched_off", off == null ? new JSONArray() : off).put("already_off", already == null ? new JSONArray() : already)
+                .put("alarms_now", alarms)
+                .put("note", "Switched OFF, not deleted: it stays in the clock's list (grey) and won't ring. Android lets no app delete another app's alarm; "
+                        + "to remove it from the list he long-presses it in the Clock app and taps Delete.").toString();
     }
 
     private String timer(int seconds, String label) throws Exception {
@@ -6936,6 +7021,10 @@ final class Tools {
 
     boolean online() { return Net.online(act()); }
 
+    /** "అలారం తీసేయి / ఆఫ్ చెయ్ / క్యాన్సిల్ / వద్దు" (a ringing alarm's "ఆపు" is not this). */
+    private static final String[] ALARM_OFF = {"తీసేయి", "తీసెయ్", "తీసేయ్", "తీసేయండి", "తీసివేయి", "తీసెయ్యి", "తియ్యి", "తీయి", "ఆఫ్", "క్యాన్సిల్",
+            "కేన్సిల్", "రద్దు", "డిలీట్", "తొలగించు", "వద్దు", "off", "cancel", "delete", "remove", "disable"};
+
     private static boolean any(String t, String... words) {
         for (String w : words) if (t.contains(w)) return true;
         return false;
@@ -7379,8 +7468,27 @@ final class Tools {
             }
             return n == 0 ? "రిమైండర్లు ఏమీ లేవు." : b.toString().trim();
         }
+        // ⏰ off / list first: "6 అలారం తీసేయి" must never set a new 6 o'clock alarm
+        if (any(t, "అలారం", "అలారమ్", "alarm") && any(t, ALARM_OFF) && !any(t, "సౌండ్", "volume", "వాల్యూమ్", "మోగలేదు", "పాట", "song")) {
+            boolean every = any(t, "అన్ని", "అన్నీ", "all ");
+            java.time.LocalDateTime at = every ? null : Offline.when(said, now, true);
+            JSONObject o = new JSONObject(clockAlarms(at == null ? -1 : at.getHour(), at == null ? 0 : at.getMinute(), every, false));
+            JSONArray done = o.optJSONArray("switched_off");
+            if (done != null && done.length() > 0) return done.join(", ").replace("\"", "") + " అలారం ఆఫ్ చేశాను. క్లాక్‌లో బూడిద రంగులో ఉంటుంది, మోగదు.";
+            if (o.optJSONArray("already_off") != null && o.optJSONArray("already_off").length() > 0) return "ఆ అలారం ఇప్పటికే ఆఫ్‌లో ఉంది.";
+            if (o.has("asked_clock_app")) return "క్లాక్ యాప్‌కి ఆ అలారం ఆపమని చెప్పాను. అది ఏదైనా చూపిస్తే మీరు ఒకసారి నిర్ధారించండి.";
+            if (o.has("opened")) return "క్లాక్ అలారాలు తెరిచాను: ఆ అలారం పక్కన స్విచ్ మీరే ఆఫ్ చేయండి.";
+            switch (o.optString("error")) {
+                case "which": return "ఏ టైమ్ అలారం తీసేయాలి?";
+                case "jarvis_alarm": return "తర్వాత మోగేది Jarvis పాట అలారం: \"పాట అలారం క్యాన్సిల్\" అనండి.";
+                case "not_found": return "ఆ టైమ్‌కి క్లాక్‌లో అలారం లేదు.";
+                case "unsure": case "not_switched": case "no_list": return "క్లాక్‌లో ఆ అలారం నేను ఆఫ్ చేయలేకపోయాను. క్లాక్ యాప్‌లో మీరే ఒకసారి స్విచ్ ఆఫ్ చేయండి.";
+                case "no_alarms": return "క్లాక్‌లో అలారాలు ఏమీ కనిపించలేదు.";
+                default: return problem(o);
+            }
+        }
         if (any(t, "అలారం", "alarm") && (any(t, "పెట్టు", "పెట్టండి", "సెట్", "set", "లేపు", "for", "at") || Offline.when(said, now, true) != null)
-                && !any(t, "సౌండ్", "volume", "వాల్యూమ్", "మోగలేదు", "ఆపు")) {
+                && !any(t, "సౌండ్", "volume", "వాల్యూమ్", "మోగలేదు", "ఆపు") && !any(t, ALARM_OFF)) {
             java.time.LocalDateTime at = Offline.when(said, now, true);
             if (at == null) return "ఏ టైమ్‌కి అలారం పెట్టాలి?";
             JSONObject o = new JSONObject(alarm(at.getHour(), at.getMinute(), "Jarvis"));

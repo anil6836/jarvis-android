@@ -459,6 +459,138 @@ public class JarvisAccessibility extends AccessibilityService {
         if (s != null) s.performGlobalAction(GLOBAL_ACTION_BACK);
     }
 
+    // ------------------------------------------------------------------ ⏰ the clock app's alarm list
+    // (Anil, 28 Nov 2026: "అలారం పెట్టమంటే పెడుతుంది కానీ అలారం తీసేయమంటే తీసేయడం లేదు")
+
+    /** One alarm on the clock app's list: its words, its time ({hour, minute, sure}) and its on / off switch. */
+    private static final class AlarmRow {
+        final String words; final int[] time; final AccessibilityNodeInfo sw;
+        AlarmRow(String words, int[] time, AccessibilityNodeInfo sw) { this.words = words; this.time = time; this.sw = sw; }
+    }
+
+    /**
+     * The clock app's alarm list (just opened on screen, from pkg; "" = whichever clock app): switches off the alarms at
+     * hour:minute (all = every alarm that is on; list = touch nothing), scrolling down the list, and reads each switch back.
+     * Never flips a switch it can't tie to exactly one time on its own row, and never an unsure "6:00" (6 or 18).
+     * {state: done / no_list / no_accessibility, off: [times], already: [times], failed: [times], unsure: [times], alarms: "06:00 ఆన్ (words) · …"}
+     */
+    static org.json.JSONObject clockAlarms(String pkg, int hour, int minute, boolean all, boolean list, long timeoutMs) {
+        org.json.JSONObject out = new org.json.JSONObject();
+        org.json.JSONArray off = new org.json.JSONArray(), already = new org.json.JSONArray(), failed = new org.json.JSONArray(), unsure = new org.json.JSONArray();
+        StringBuilder seenText = new StringBuilder();
+        try {
+            JarvisAccessibility s = instance;
+            if (s == null) return out.put("state", "no_accessibility");
+            // 1) wait for the list (the clock app in front with at least one alarm row)
+            AccessibilityNodeInfo root = null;
+            List<AlarmRow> rows = new java.util.ArrayList<>();
+            boolean clockSeen = false;
+            long end = SystemClock.uptimeMillis() + timeoutMs;
+            while (SystemClock.uptimeMillis() < end) {
+                SystemClock.sleep(400);
+                root = s.getRootInActiveWindow();
+                if (root == null) continue;
+                String rp = String.valueOf(root.getPackageName());
+                if (s.getPackageName().contentEquals(rp) || !pkg.isEmpty() && !pkg.equals(rp)) continue;
+                clockSeen = true;
+                rows = alarmRows(root);
+                if (!rows.isEmpty()) break;
+            }
+            if (rows.isEmpty()) return out.put("state", clockSeen ? "no_alarms_seen" : "no_list");
+            // 2) row by row, page by page
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            for (int page = 0; page < 12 && root != null; page++) {
+                boolean fresh = false;
+                for (AlarmRow r : rows) {
+                    // (the same row after its switch moved, or seen again after a scroll: its words without on / off)
+                    String key = AlarmText.show(r.time) + "|" + r.words.replaceAll("(?i)(?<![a-z])(on|off|enabled|disabled|switch|toggle)(?![a-z])|ఆన్|ఆఫ్", "").replaceAll("\\s+", " ").trim();
+                    if (!seen.add(key)) continue;
+                    fresh = true;
+                    boolean on = r.sw.isChecked();
+                    String t = AlarmText.show(r.time);
+                    boolean hit = all ? on : !list && AlarmText.matches(r.time, hour, minute);
+                    if (hit && r.time[2] == 0 && !all) { unsure.put(t); hit = false; } // (6:00 with no AM / PM: never a guess)
+                    if (hit) {
+                        if (!on) already.put(t);
+                        else {
+                            AccessibilityNodeInfo c = clickable(r.sw);
+                            boolean ok = c != null && c.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                            SystemClock.sleep(700);
+                            r.sw.refresh();
+                            if (ok && !r.sw.isChecked()) { off.put(t); on = false; } else failed.put(t);
+                        }
+                    }
+                    if (seenText.length() > 0) seenText.append(" · ");
+                    String w = r.words.length() > 70 ? r.words.substring(0, 70) + "…" : r.words;
+                    seenText.append(t).append(on ? " ఆన్" : " ఆఫ్").append(" (").append(w).append(")");
+                }
+                if (!fresh && page > 0) break; // (the list did not move: its end)
+                AccessibilityNodeInfo sc = scroller(root, 0);
+                if (sc == null || !sc.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) break;
+                SystemClock.sleep(700);
+                root = s.getRootInActiveWindow();
+                rows = root == null ? new java.util.ArrayList<>() : alarmRows(root);
+            }
+            return out.put("state", "done").put("off", off).put("already", already).put("failed", failed).put("unsure", unsure).put("alarms", seenText.toString());
+        } catch (Exception e) {
+            try { return out.put("state", "no_list").put("alarms", seenText.toString()); } catch (Exception e2) { return out; }
+        }
+    }
+
+    /** The alarm rows on screen: around each switch, the smallest part that shows a time and holds no other switch. */
+    private static List<AlarmRow> alarmRows(AccessibilityNodeInfo root) {
+        List<AccessibilityNodeInfo> sws = new java.util.ArrayList<>();
+        collectCheckable(root, sws, 0);
+        List<AlarmRow> out = new java.util.ArrayList<>();
+        for (AccessibilityNodeInfo sw : sws) {
+            AccessibilityNodeInfo row = sw;
+            for (int up = 0; up < 6 && row != null; up++) {
+                List<String> words = new java.util.ArrayList<>();
+                wordsOf(row, words, 0);
+                int[] t = AlarmText.parse(words);
+                if (t != null) {
+                    if (countCheckable(row, 0) == 1) out.add(new AlarmRow(String.join(" ", words).replaceAll("\\s+", " ").trim(), t, sw));
+                    break; // (a time first seen with other switches around it is the whole list, not a row: skipped)
+                }
+                row = row.getParent();
+            }
+        }
+        return out;
+    }
+
+    private static void collectCheckable(AccessibilityNodeInfo n, List<AccessibilityNodeInfo> out, int depth) {
+        if (n == null || depth > 40) return;
+        if (n.isCheckable() && n.isVisibleToUser()) out.add(n);
+        for (int i = 0; i < n.getChildCount(); i++) collectCheckable(n.getChild(i), out, depth + 1);
+    }
+
+    private static int countCheckable(AccessibilityNodeInfo n, int depth) {
+        if (n == null || depth > 40) return 0;
+        int c = n.isCheckable() ? 1 : 0;
+        for (int i = 0; i < n.getChildCount(); i++) c += countCheckable(n.getChild(i), depth + 1);
+        return c;
+    }
+
+    /** The texts and spoken names in this part of the screen (a row's time, AM / PM, days, label). */
+    private static void wordsOf(AccessibilityNodeInfo n, List<String> out, int depth) {
+        if (n == null || depth > 14 || out.size() > 40) return;
+        CharSequence t = n.getText(), d = n.getContentDescription();
+        if (t != null && t.toString().trim().length() > 0) out.add(t.toString().trim());
+        if (d != null && d.toString().trim().length() > 0 && (t == null || !d.toString().trim().equals(t.toString().trim()))) out.add(d.toString().trim());
+        for (int i = 0; i < n.getChildCount(); i++) wordsOf(n.getChild(i), out, depth + 1);
+    }
+
+    /** The list that scrolls (the biggest scrollable part). */
+    private static AccessibilityNodeInfo scroller(AccessibilityNodeInfo n, int depth) {
+        if (n == null || depth > 30) return null;
+        if (n.isScrollable() && n.isVisibleToUser()) return n;
+        for (int i = 0; i < n.getChildCount(); i++) {
+            AccessibilityNodeInfo r = scroller(n.getChild(i), depth + 1);
+            if (r != null) return r;
+        }
+        return null;
+    }
+
     /**
      * Makes sure the message is in the app's message box: if the app did not fill it in from the
      * link, types it there. Returns "typed", "already", "no_box" or "no_accessibility".
