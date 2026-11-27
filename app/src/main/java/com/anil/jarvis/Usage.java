@@ -25,7 +25,9 @@ final class Usage {
     private Usage() {}
 
     static final String GEMINI = Prefs.GEMINI, OPENAI = Prefs.OPENAI, ANTHROPIC = Prefs.ANTHROPIC;
-    static final String[] PROVIDERS = {GEMINI, OPENAI, ANTHROPIC};
+    /** 🔓 the free brain (Venice.ai), counted on its own line. */
+    static final String VENICE = Models.VENICE;
+    static final String[] PROVIDERS = {GEMINI, OPENAI, ANTHROPIC, VENICE};
     /** Rupees per dollar, roughly (Google bills the Gemini credit in rupees). (₹94.46 on 5 Nov 2026: 95 for the estimates.) */
     static final float INR = 95f;
     private static final double WEB_SEARCH = 0.01;      // $10 per 1,000 searches (OpenAI, Anthropic)
@@ -54,6 +56,8 @@ final class Usage {
             {"claude-opus", 5.00, 0.50, 25.00}, {"claude-sonnet-5-5", 2.00, 0.10, 10.00}, {"claude-sonnet-5", 2.00, 0.20, 10.00}, {"claude-sonnet", 3.00, 0.30, 15.00},
             // (Haiku 5.5: prompts up to 100K tokens; the library sends small ones. Anthropic's price page, 21 Nov 2026)
             {"claude-haiku-5-5", 0.10, 0.01, 0.50}, {"claude-haiku-4-5", 1.00, 0.10, 5.00}, {"claude-haiku", 1.00, 0.10, 5.00}, {"claude", 3.00, 0.30, 15.00},
+            // 🔓 Venice.ai (the free brain): DeepSeek V4.1 Flash and its uncensored versions (Venice's model list, 28 Nov 2026)
+            {"deepseek-v4-1-flash", 0.33, 0.33, 1.32}, {"e2ee-deepseek-v4-1-flash", 0.375, 0.375, 1.50},
     };
 
     /** The price lines that stand for a whole company or family (a guess for a model not listed by name). */
@@ -118,6 +122,10 @@ final class Usage {
                     if (o != null && "web_search_call".equals(o.optString("type"))) searches++;
                 }
                 add(OPENAI, res.optString("model"), u.optLong("input_tokens") - cached, cached, u.optLong("output_tokens"), searches * WEB_SEARCH);
+            } else if (url.contains("api.venice.ai/api/v1/chat/completions")) { // 🔓 the free brain
+                JSONObject u = res.optJSONObject("usage");
+                if (u == null) return;
+                add(VENICE, res.optString("model"), u.optLong("prompt_tokens"), 0, u.optLong("completion_tokens"), 0);
             } else if (url.contains("api.openai.com/v1/chat/completions")) {
                 JSONObject u = res.optJSONObject("usage");
                 if (u == null) return;
@@ -227,7 +235,7 @@ final class Usage {
 
     static String currency(String p) { return GEMINI.equals(p) ? "₹" : "$"; }
 
-    static String name(String p) { return GEMINI.equals(p) ? "Gemini" : ANTHROPIC.equals(p) ? "Claude (Anthropic)" : "OpenAI"; }
+    static String name(String p) { return GEMINI.equals(p) ? "Gemini" : ANTHROPIC.equals(p) ? "Claude (Anthropic)" : VENICE.equals(p) ? "🔓 Venice.ai (స్వేచ్ఛ మెదడు)" : "OpenAI"; }
 
     /** His balance in that company's currency (₹ for Gemini, $ for the others), or 0 when not set. */
     static float balance(String p) { SharedPreferences sp = sp(); return sp == null ? 0 : sp.getFloat("bal_" + p, 0); }
@@ -261,7 +269,8 @@ final class Usage {
         if (level <= warned) return;
         sp.edit().putInt("warned_" + p, level).apply();
         String amount = money(p, Math.max(0, left));
-        String where = GEMINI.equals(p) ? "AI Studio → Billing" : ANTHROPIC.equals(p) ? "console.anthropic.com → Billing" : "platform.openai.com → Billing";
+        String where = GEMINI.equals(p) ? "AI Studio → Billing" : ANTHROPIC.equals(p) ? "console.anthropic.com → Billing"
+                : VENICE.equals(p) ? "venice.ai → API" : "platform.openai.com → Billing";
         notify(app, 7300 + java.util.Arrays.asList(PROVIDERS).indexOf(p),
                 (level == 2 ? "⚠️ " : "💰 ") + name(p) + " balance సుమారు " + amount + " మాత్రమే మిగిలింది",
                 "Jarvis లెక్క ప్రకారం (సుమారు). అయిపోకముందే " + where + " లో credit జోడించండి, లేదా సెట్టింగ్స్‌లో వేరే మెదడు ఎంచుకోండి.");

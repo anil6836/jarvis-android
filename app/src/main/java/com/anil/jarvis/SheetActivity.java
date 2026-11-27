@@ -783,8 +783,11 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
         heard.setVisibility(View.VISIBLE);
     }
 
+    /** 🔓 The free brain's model and the answer it gave ("" = the normal brain): the badge goes only above that answer. */
+    private String badge = "", badgeText;
+
     private void showReply(String t, boolean error) {
-        reply.setText(t);
+        reply.setText(!error && badge != null && !badge.isEmpty() && t != null && t.equals(badgeText) ? "🔓 " + badge + "\n" + t : t);
         reply.setTextColor(error ? Ui.RED : Ui.TEXT);
         reply.setVisibility(View.VISIBLE);
     }
@@ -1389,9 +1392,12 @@ public class SheetActivity extends Activity implements Tools.Host, VoiceIO.Liste
                 error = "ఏదో తప్పు జరిగింది: " + e.getMessage();
             }
             final String a = answer, err = error;
+            final String from = error == null ? Brain.answeredBy() : ""; // 🔓 the free brain's model: shown above its words (never said)
             main.post(() -> {
                 if (gen != generation || isFinishing()) return;
                 busy = false;
+                badge = from;
+                badgeText = a;
                 boolean spoke = early[0] != null;
                 if (callHold || callResumable) { // a call rang meanwhile: the answer waits for ▶ (never said into / over a call)
                     if (spoke) voice.stopSpeaking();

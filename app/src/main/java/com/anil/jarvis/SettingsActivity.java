@@ -80,6 +80,8 @@ public class SettingsActivity extends Activity {
     private EditText earsModel, ttsModel;
     /** His Sarvam key, and the Gemini / Sarvam voice and ears boxes ("Jarvis గొంతు ఎవరిది", Saaras). */
     private EditText sarvamKey, geminiTtsModel, sarvamTtsModel, sarvamEarsModel;
+    /** 🔓 the free brain (Venice.ai): its own key and model. */
+    private EditText veniceKey, veniceModel;
     private RadioGroup voiceProv;
     private String geminiVoiceChoice, sarvamVoiceChoice;
     private TextView geminiVoiceLabel, sarvamVoiceLabel, geminiInfo, sarvamInfo;
@@ -429,6 +431,28 @@ public class SettingsActivity extends Activity {
         link("Gemini key ఇక్కడ తీసుకోండి", "https://aistudio.google.com/apikey");
         sarvamKey = field("Sarvam API key (Jarvis గొంతు / వినడం కోసం మాత్రమే, మెదడు కాదు)", prefs.sarvamKey(), true);
         link("Sarvam key ఇక్కడ తీసుకోండి (API Keys)", "https://dashboard.sarvam.ai");
+        // 🔓 the free brain (28 Nov 2026: "దానికి మాట్లాడానికి స్వేచ్ఛ ఉండాలి")
+        note("🔓 స్వేచ్ఛ మెదడు (Venice.ai, అన్‌సెన్సార్డ్ మోడల్): \"Jarvis, అన్‌సెన్సార్డ్ మెదడుకి మారు\" / \"స్వేచ్ఛ మెదడుకి మారు\" అంటే ఆన్, "
+                + "\"సాధారణ మెదడుకి మారు\" అంటే ఆఫ్, \"ఇప్పుడు ఏ మెదడు?\". మాట్లాడటం మాత్రమే: కాల్, మెసేజ్, అలారం, ఇంటి పరికరాలు లాంటి పనులు అడిగితే ఆ పని మామూలు మెదడే చేస్తుంది. "
+                + "మీ ప్రశ్న, ఈ సంభాషణ మాత్రమే Venice కి వెళ్తాయి (మీ మెమరీలు, SMS, డబ్బు లెక్కలు, లొకేషన్ వెళ్ళవు). జవాబు పైన 🔓 మోడల్ పేరు కనిపిస్తుంది. "
+                + "అరగంట మాట్లాడకపోయినా, యాప్ మళ్ళీ మొదలైనా మామూలు మెదడుకి వస్తాడు. ఫోన్‌లో మాత్రమే. "
+                + "\"రెండు మెదళ్ళనీ అడుగు: …\" అంటే ఒకే ప్రశ్నకి రెండు జవాబులు పక్కపక్కన. ఏ మెదడైనా \"దాచకుండా చెప్పు\" అంటే ఆ ఒక్క జవాబు కోపంగా, తిట్లతో.");
+        veniceKey = field("Venice.ai API key (🔓 స్వేచ్ఛ మెదడు కోసం మాత్రమే)", FreeBrain.key(this), true);
+        veniceModel = field("Venice మోడల్ (🔓 స్వేచ్ఛ మెదడు)", FreeBrain.model(this), false);
+        veniceModel.setHint("కింద 'అన్ని మోడల్స్ చూపించు' నొక్కి ఎంచుకోండి");
+        modelPicker(Models.VENICE, veniceKey, veniceModel, "venice_model");
+        TextView vCheck = Ui.text(this, "🔓 ఒక ప్రశ్నతో చెక్ చేయి", 14.5f, accent);
+        vCheck.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 4));
+        vCheck.setOnClickListener(v -> {
+            String k = veniceKey.getText().toString().replaceAll("[^\\x21-\\x7E]", ""), m = veniceModel.getText().toString().trim();
+            vCheck.setText("🔓 చెక్ చేస్తున్నాను…");
+            new Thread(() -> {
+                String r = FreeBrain.check(k, m);
+                runOnUiThread(() -> { vCheck.setText("🔓 ఒక ప్రశ్నతో చెక్ చేయి"); Toast.makeText(this, r, Toast.LENGTH_LONG).show(); });
+            }, "venice-check").start();
+        });
+        boxOf(veniceModel).addView(vCheck);
+        link("Venice key ఇక్కడ తీసుకోండి (API)", "https://venice.ai/settings/api");
         note("మోడల్ Jarvis తనంతట తాను ఎంచుకోడు: మీరు ఎంచుకున్నదే వాడతాడు. 'అన్ని మోడల్స్ చూపించు' మీ key తో ఆ కంపెనీ దగ్గర నుంచి "
                 + "ఇప్పుడున్న మోడల్స్ అన్నీ తెస్తుంది; ఒకటి నొక్కితే వెంటనే సేవ్ అవుతుంది. ఎప్పుడైనా మార్చుకోవచ్చు. పేరు మీరే టైప్ చేసినా సరే.");
         note("Gemini: ఉచిత ప్లాన్‌లో Flash, Flash-Lite మోడల్స్ మాత్రమే; Pro మోడల్స్‌కి billing కావాలి. ప్రతి మోడల్‌కి వేరే నిమిషం/రోజు లిమిట్ ఉంటుంది: "
@@ -2517,6 +2541,8 @@ public class SettingsActivity extends Activity {
         e.remove("gemini_auto_model"); // older versions picked a Gemini model by themselves
         e.putString("openai_key", openAiKey.getText().toString().trim());
         e.putString("sarvam_key", sarvamKey.getText().toString().trim());
+        e.putString("venice_key", veniceKey.getText().toString().trim());
+        e.putString("venice_model", veniceModel.getText().toString().trim());
         if (mapsKey != null) e.putString("maps_key", mapsKey.getText().toString().trim());
         e.putString("openai_model", openAiModel.getText().toString().trim());
         e.putString("code_model", codeModel.getText().toString().trim());

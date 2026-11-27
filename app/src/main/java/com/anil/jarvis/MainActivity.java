@@ -1286,15 +1286,20 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     private String hhmm(long t) { return new SimpleDateFormat("HH:mm", Locale.ENGLISH).format(new Date(t)); }
 
+    /** 🔓 The free brain's model for the next Jarvis bubble (the receipt of who really answered); null: the normal brain. */
+    private String badgeNext;
+
     private TextView addMessage(String role, String text, long t, Bitmap photo) {
         boolean user = "user".equals(role);
+        String badge = user || badgeNext == null ? "" : " · 🔓 " + badgeNext;
+        if (!user) badgeNext = null;
         LinearLayout wrap = new LinearLayout(this);
         wrap.setOrientation(LinearLayout.VERTICAL);
         wrap.setGravity(user ? Gravity.END : Gravity.START);
 
         LinearLayout meta = new LinearLayout(this);
         meta.setGravity(Gravity.CENTER_VERTICAL);
-        TextView who = Ui.mono(this, (user ? prefs.name().toUpperCase(Locale.ROOT) : "JARVIS") + " · " + hhmm(t), 11, user ? Ui.C_AMBER : Ui.C_CYAN);
+        TextView who = Ui.mono(this, (user ? prefs.name().toUpperCase(Locale.ROOT) : "JARVIS") + " · " + hhmm(t) + badge, 11, user ? Ui.C_AMBER : Ui.C_CYAN);
         meta.addView(who);
         wrap.addView(meta);
 
@@ -2865,7 +2870,8 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
                 error = "ఏదో తప్పు జరిగింది: " + e.getMessage();
             }
             final String r = reply, err = error;
-            main.post(() -> onReply(gen, r, err, early[0]));
+            final String from = error == null ? Brain.answeredBy() : ""; // 🔓 the free brain's model, shown on its bubble (never said)
+            main.post(() -> { if (gen == generation) badgeNext = from.isEmpty() ? null : from; onReply(gen, r, err, early[0]); });
         } finally { Http.CANCEL.remove(); } }); // (the worker thread is shared: the handle never outlives this question)
     }
 

@@ -44,6 +44,8 @@ final class Models {
     static final String SARVAM_TTS = "sarvam_tts", SARVAM_STT = "sarvam_stt";
     /** 🖼️ (A4) The picture-making models (the workshop's studio photo): OpenAI's gpt-image…, Gemini's …image… . */
     static final String OPENAI_IMAGE = "openai_image", GEMINI_IMAGE = "gemini_image";
+    /** 🔓 Venice.ai's text models (the free brain): uncensored ones first. */
+    static final String VENICE = "venice";
     static final String[][] SARVAM_EARS = {
             {"saaras:v4", "Saaras v4 · కొత్తది (సిఫార్సు)"},
             {"saaras:v3", "Saaras v3 · పాతది"}};
@@ -58,6 +60,7 @@ final class Models {
     }
 
     static String company(String provider) {
+        if (VENICE.equals(provider)) return "Venice.ai";
         return Prefs.GEMINI.equals(provider) || GEMINI_TTS.equals(provider) || GEMINI_IMAGE.equals(provider) ? "Google Gemini" : Prefs.ANTHROPIC.equals(provider) ? "Anthropic Claude"
                 : REALTIME.equals(provider) ? "OpenAI Live" : SARVAM_TTS.equals(provider) || SARVAM_STT.equals(provider) ? "Sarvam" : "OpenAI";
     }
@@ -73,6 +76,7 @@ final class Models {
         else if (SARVAM_TTS.equals(provider)) fixed(SARVAM_TTS, CloudVoice.SARVAM_MODELS, out);
         else if (SARVAM_STT.equals(provider)) fixed(SARVAM_STT, SARVAM_EARS, out);
         else if (Prefs.ANTHROPIC.equals(provider)) anthropic(key, out);
+        else if (VENICE.equals(provider)) venice(key, out);
         else openAi(key, out, provider);
         out.sort((a, b) -> a.rank != b.rank ? Double.compare(b.rank, a.rank) : a.id.compareTo(b.id));
         return out;
@@ -103,6 +107,21 @@ final class Models {
             if (!chat || has(low, "embed", "whisper", "tts", "dall-e", "moderation", "image", "audio", "realtime",
                     "transcribe", "search", "instruct", "computer-use", "sora", "babbage", "davinci")) continue;
             out.add(new Item(Prefs.OPENAI, id, "", o.optLong("created")));
+        }
+    }
+
+    /** Venice's text models for his key; the uncensored ones first (his choice is still his: nothing is picked for him). */
+    private static void venice(String key, List<Item> out) throws Exception {
+        JSONObject res = Http.get(FreeBrain.BASE + "/models?type=text", "Authorization", "Bearer " + key.replaceAll("[^\\x21-\\x7E]", ""));
+        JSONArray data = res.optJSONArray("data");
+        for (int i = 0; data != null && i < data.length(); i++) {
+            JSONObject o = data.getJSONObject(i);
+            String id = o.optString("id");
+            if (id.isEmpty()) continue;
+            JSONObject spec = o.optJSONObject("model_spec");
+            String name = spec == null ? "" : spec.optString("name");
+            boolean free = id.toLowerCase(Locale.ROOT).contains("uncensored") || name.toLowerCase(Locale.ROOT).contains("uncensored");
+            out.add(new Item(VENICE, id, free ? "🔓 " + name : name, (free ? 1_000_000 : 0) - i));
         }
     }
 

@@ -106,10 +106,41 @@ final class Brain {
     static final String EMPTY = "జవాబు ఖాళీగా వచ్చింది. మళ్ళీ అడగండి.";
     static final String EMPTY_AFTER_TOOL = "మీరు చెప్పిన పని చేయడానికి ప్రయత్నించాను, కానీ జవాబు ఖాళీగా వచ్చింది. జరిగిందో లేదో ఒకసారి చూసుకోండి.";
 
+    /** 🔓 Which brain gave the answer ask() just returned on this thread: the free brain's model, or "" (the normal brain). */
+    private static final ThreadLocal<String> FROM = new ThreadLocal<>();
+
+    static String answeredBy() { String f = FROM.get(); return f == null ? "" : f; }
+
     String ask(List<JSONObject> history, String text, String jpegB64, Status status) throws Exception {
-        // No internet: handle the simple everyday commands on the phone itself.
+        FROM.set("");
         tools.heard = text; // (🔁 E: the jobs he asks for, noticed by time of day)
+        // 🔓 the free brain: "అన్‌సెన్సార్డ్ మెదడుకి మారు" / "సాధారణ మెదడుకి మారు" / "ఇప్పుడు ఏ మెదడు?" (scripted, never a model's words)
+        int freeCmd = FreeWords.command(text);
+        if (freeCmd != FreeWords.NONE) return FreeBrain.command(prefs.app, freeCmd);
+        // No internet: handle the simple everyday commands on the phone itself.
         if (!tools.online()) return tools.offlineCommand(text);
+        // ⚖️ "రెండు మెదళ్ళనీ అడుగు: …": the same question to both brains, side by side
+        String both = FreeWords.compare(text);
+        if (both != null) {
+            String r = FreeBrain.compare(prefs, both, status);
+            askMarks = "⚖️";
+            askMarksAt = lastAskEnd = android.os.SystemClock.elapsedRealtime();
+            return r;
+        }
+        boolean furious = FreeWords.holdBack(text) && Workshop.here(prefs.app); // (never on the home tablet or the car box)
+        if (FreeBrain.on(prefs.app)) {
+            int selfie = text == null ? -1 : text.indexOf(SELFIE_NOTE); // (his face picture rides along: not a picture to read)
+            String words = selfie < 0 ? text : text.substring(0, selfie).trim();
+            boolean job = FreeWords.phoneJob(words, !SpeedGroups.matches(words).isEmpty(), jpegB64 != null && selfie < 0);
+            if (!job) { // it only talks: a phone job goes on to the normal brain below
+                String[] fr = FreeBrain.ask(prefs, normalize(history), words, furious, status);
+                FROM.set(fr[1]);
+                lastAskEnd = android.os.SystemClock.elapsedRealtime();
+                askMarks = fr[1].isEmpty() ? "🔓 ❌" : "🔓";
+                askMarksAt = lastAskEnd;
+                return fr[0];
+            }
+        }
         Offline.netBack(prefs.app); // (the next stretch without internet is told again; questions kept without it are answered)
         deep = prefs.sp.getBoolean("deep_always", false) || (text != null && DEEP_WORDS.matcher(text).find());
         toolsRun = 0;
@@ -154,6 +185,7 @@ final class Brain {
         // (the whole rule book, for when the AI reached for a job it wasn't sent: then it gets every job and every rule)
         st.full = keep ? parts[0] + fixed + SpeedGroups.RULE : parts[0] + parts[1] + fixed + SpeedGroups.RULE;
         String system = keep ? head + fixed + extra : head + parts[1] + fixed + extra;
+        if (furious) { system += FreeBrain.HOLD_BACK; st.full += FreeBrain.HOLD_BACK; } // (that one reply; the next is calm again)
         String asked = keep ? NOW_HEAD + parts[1] + WORDS_HEAD + text : text;
         List<String[]> turns = normalize(history);
         String reply;

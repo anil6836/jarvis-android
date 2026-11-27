@@ -361,6 +361,7 @@ final class CardAsk implements VoiceIO.Listener, Tools.Host, TopCard.Flow {
                     Tools.takeInterpreter(); // (a live interpreter can't start from the card: never later either)
                     final boolean waits = Tools.awaitingAnswer(); // a choice he must say (a station, a seat): listen for it
                     final String a = answer, err = error;
+                    final String from = error == null ? Brain.answeredBy() : ""; // 🔓 the free brain's model on the card (never said)
                     main.post(() -> {
                         if (gen != generation || stopped) return;
                         if (inflight == cut) inflight = null;
@@ -368,7 +369,7 @@ final class CardAsk implements VoiceIO.Listener, Tools.Host, TopCard.Flow {
                         store.addChat("assistant", a, false);
                         lastAnswer = a;
                         awaiting = waits;
-                        card.status("");
+                        card.status(from.isEmpty() ? "" : "🔓 " + from);
                         card.body(Otp.shown(a), 8);
                         answerButtons();
                         say(a, ANSWER);
