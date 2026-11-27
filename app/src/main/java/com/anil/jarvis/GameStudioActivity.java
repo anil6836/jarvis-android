@@ -69,6 +69,10 @@ import java.util.concurrent.CancellationException;
 public class GameStudioActivity extends Activity {
     static final String EXTRA_WHAT = "what", EXTRA_HEARD = "heard", EXTRA_SAID = "said", EXTRA_OPEN_LAST = "open_last",
             EXTRA_SHELF = "shelf", EXTRA_PLAY_AT = "play_at";
+    /** 🏍️ (28 Nov, G) a workshop model (its save time and name) as the next game's hero. */
+    static final String EXTRA_HERO_AT = "hero_at", EXTRA_HERO_TITLE = "hero_title";
+    /** 🗂️ (28 Nov, I) show this saved game (its save time) from the studio shelf, without starting it. */
+    static final String EXTRA_SHOW_AT = "show_at";
     /** The studio is in front: "Jarvis" opens no panel over it (its own ears hear him), and a game is not interrupted. */
     static volatile boolean front;
     private static volatile String openTitle; // (read through openTitle())
@@ -123,6 +127,9 @@ public class GameStudioActivity extends Activity {
     private final Map<String, TextView> rows = new LinkedHashMap<>();
     private String snapReq;
     private long snapAt;
+    /** 🏍️ the hero picture on the stage now (base64 PNG, "" = none), and the one he chose for the next new game. */
+    private String heroPng = "", pickTitle = "", pickPng = "";
+    private TextView heroChip;
     private boolean muted;
 
     // 🎙️ the studio's own ears (the workshop's), ✋ a paid job heard by voice waits 3 seconds
@@ -142,6 +149,8 @@ public class GameStudioActivity extends Activity {
     private static final class Game {
         long at;
         String title, what, model, how, say;
+        /** 🏍️ his workshop model's name when the game's player is its picture ("" = none). */
+        String hero = "";
         boolean landscape, estimated;
         double cost;
         int repairs, best, plays;
@@ -162,7 +171,8 @@ public class GameStudioActivity extends Activity {
                     .put("how", how == null ? "" : how).put("say", say == null ? "" : say).put("screen", landscape ? "landscape" : "portrait")
                     .put("parts", GameStudio.partsJson(parts)).put("cost", cost).put("estimated", estimated).put("repairs", repairs)
                     .put("seconds", seconds).put("best", best).put("plays", plays)
-                    .put("broken_id", brokenId == null ? "" : brokenId).put("broken_msg", brokenMsg == null ? "" : brokenMsg);
+                    .put("broken_id", brokenId == null ? "" : brokenId).put("broken_msg", brokenMsg == null ? "" : brokenMsg)
+                    .put("hero", hero == null ? "" : hero);
         }
 
         static Game of(JSONObject g) {
@@ -180,6 +190,7 @@ public class GameStudioActivity extends Activity {
             x.seconds = g.optLong("seconds", -1);
             x.best = g.optInt("best", 0);
             x.plays = g.optInt("plays", 0);
+            x.hero = g.optString("hero", "");
             x.parts.putAll(GameStudio.parts(g));
             String b = g.optString("broken_id", "");
             x.brokenId = b.isEmpty() || !x.parts.containsKey(b) ? null : b;
@@ -196,6 +207,8 @@ public class GameStudioActivity extends Activity {
         final Workshop.Engine engine;
         volatile boolean stopped;
         String title, how, say, refused, badId;
+        /** 🏍️ the hero: his model's name and its picture (base64 PNG); "" = none. */
+        String heroTitle = "", heroPng = "";
         /** All parts came and loaded; it passed the self-test; the stage froze while testing (an endless loop). */
         boolean landscape, complete, tested, froze;
         /** (🔧) the saved game being repaired. */
@@ -260,7 +273,21 @@ public class GameStudioActivity extends Activity {
             else start(w0, h0, s0);
             return;
         }
+        long heroAt = i.getLongExtra(EXTRA_HERO_AT, 0);
+        if (heroAt > 0) {
+            String ht = i.getStringExtra(EXTRA_HERO_TITLE);
+            i.removeExtra(EXTRA_HERO_AT);
+            i.removeExtra(EXTRA_HERO_TITLE);
+            pickHero(heroAt, ht == null ? "" : ht);
+            return;
+        }
         if (job != null) return;
+        long showAt = i.getLongExtra(EXTRA_SHOW_AT, 0);
+        if (showAt > 0) { // 🗂️ from the studio shelf
+            i.removeExtra(EXTRA_SHOW_AT);
+            JSONObject g = GameStudio.byAt(this, showAt);
+            if (g != null) { if (playing) exitPlay(); show(g); return; }
+        }
         long playAt = i.getLongExtra(EXTRA_PLAY_AT, 0);
         if (playAt > 0) {
             i.removeExtra(EXTRA_PLAY_AT);
@@ -375,6 +402,8 @@ public class GameStudioActivity extends Activity {
         LinearLayout ideaRow = new LinearLayout(this);
         ideaRow.setOrientation(LinearLayout.HORIZONTAL);
         ideaRow.setPadding(0, dp(6), 0, dp(2));
+        heroChip = pill("🛠️ 3D బొమ్మ హీరోగా", v -> heroMenu()); // 🏍️ (28 Nov, G) his workshop model as the player
+        ideaRow.addView(heroChip);
         for (String[] idea : IDEAS) {
             TextView t = pill(idea[0], v -> { input.setText(idea[1]); input.setSelection(input.getText().length()); input.requestFocus(); setStatus("✏️ కావాలంటే మార్చి, 🔨 తయారు చెయ్ నొక్కండి"); });
             ideaRow.addView(t);
@@ -487,6 +516,62 @@ public class GameStudioActivity extends Activity {
                 });
     }
 
+    // ================================================================ 🏍️ his workshop model as the hero (Anil, 28 Nov: "G చేయి")
+
+    /** The chip says which model will be the next game's hero (tap: choose another / none). */
+    private void heroLook() {
+        if (heroChip == null) return;
+        heroChip.setText(pickTitle.isEmpty() ? "🛠️ 3D బొమ్మ హీరోగా" : "🏍️ హీరో: " + Workshop.cap(pickTitle, 18) + "  ✕");
+    }
+
+    /** A saved workshop model's picture (made when it was last open in the workshop) as the next game's player. */
+    private void pickHero(long at, String title) {
+        java.io.File f = Workshop.sprite(this, at);
+        if (!f.isFile()) {
+            setStatus("🛠️ ఆ బొమ్మ బొమ్మ-చిత్రం ఇంకా లేదు Sir: వర్క్‌షాప్‌లో ఆ బొమ్మ ఒకసారి తెరిచి \"🎮 ఈ బొమ్మతో ఆట\" నొక్కండి.");
+            return;
+        }
+        String b64;
+        try { b64 = android.util.Base64.encodeToString(java.nio.file.Files.readAllBytes(f.toPath()), android.util.Base64.NO_WRAP); }
+        catch (Exception e) { setStatus("ఆ బొమ్మ చిత్రం చదవలేకపోయాను Sir."); return; }
+        if (playing) exitPlay();
+        if (game != null && job == null) command("new", false); // (a game was open: a fresh start for the new one)
+        pickTitle = title.isEmpty() ? "నా బొమ్మ" : Workshop.cap(title, 40);
+        pickPng = b64;
+        heroLook();
+        if (input != null && input.getText().toString().trim().isEmpty()) { input.setText(pickTitle + " తో "); input.setSelection(input.getText().length()); }
+        setStatus("🏍️ " + pickTitle + " హీరోగా కొత్త ఆట: ఏ ఆటో రాయండి (ఉదా: రేస్, దూకుడు, పట్టుకునే ఆట), 🔨 నొక్కండి · ఆట ఖర్చు మామూలే, బొమ్మ AI కి వెళ్ళదు.");
+    }
+
+    /** ✕ the chosen hero, or the list of his saved models that have a picture. */
+    private void heroMenu() {
+        if (!pickTitle.isEmpty()) { pickTitle = ""; pickPng = ""; heroLook(); setStatus("🏍️ హీరో తీసేశాను: మామూలు ఆట."); return; }
+        List<long[]> ats = new ArrayList<>();
+        List<String> names = new ArrayList<>();
+        for (java.io.File f : Workshop.files(this)) {
+            JSONObject b = Workshop.read(f);
+            if (b == null) continue;
+            long at = b.optLong("at");
+            if (!Workshop.sprite(this, at).isFile()) continue;
+            ats.add(new long[]{at});
+            names.add("🛠️ " + Workshop.cap(b.optString("title", "బొమ్మ"), 40));
+            if (names.size() >= 30) break;
+        }
+        if (names.isEmpty()) {
+            new android.app.AlertDialog.Builder(this).setTitle("🛠️ 3D బొమ్మ హీరోగా")
+                    .setMessage("ఇంకా బొమ్మ-చిత్రాలు లేవు Sir. వర్క్‌షాప్‌లో ఒక బొమ్మ తెరిచి \"🎮 ఈ బొమ్మతో ఆట\" నొక్కండి: ఆ బొమ్మే ఈ ఆటలో హీరో అవుతుంది.")
+                    .setPositiveButton("సరే", null).show();
+            return;
+        }
+        new android.app.AlertDialog.Builder(this).setTitle("🏍️ ఏ బొమ్మ హీరో?")
+                .setItems(names.toArray(new String[0]), (d, w) -> {
+                    JSONObject b = null;
+                    for (java.io.File f : Workshop.files(this)) { JSONObject x = Workshop.read(f); if (x != null && x.optLong("at") == ats.get(w)[0]) { b = x; break; } }
+                    pickHero(ats.get(w)[0], b == null ? "" : b.optString("title", ""));
+                })
+                .setNegativeButton("వద్దు", null).show();
+    }
+
     private void showChip() {
         String m = Workshop.modelFor(p, Workshop.GAMES);
         chip.setText(m.isEmpty() ? "AI ఎంచుకోలేదు" : WorkshopActivity.label(m));
@@ -588,6 +673,7 @@ public class GameStudioActivity extends Activity {
                 rows.clear();
                 list.removeAllViews();
                 titleView.setText("");
+                heroPng = "";
                 sendReset(false, 0, "", "");
                 refresh();
                 say0("ఏ కొత్త ఆట కావాలి Sir? కింద రాయండి, లేదా ఒక ఐడియా తాకండి.", byVoice);
@@ -782,7 +868,7 @@ public class GameStudioActivity extends Activity {
     private void sendReset(boolean landscape, int best, String how, String title) {
         try {
             send(json("reset").put("screen", landscape ? "landscape" : "portrait").put("aspect", GameStudio.aspect(this)).put("best", best)
-                    .put("how", how == null ? "" : how).put("title", title == null ? "" : title));
+                    .put("how", how == null ? "" : how).put("title", title == null ? "" : title).put("hero", heroPng == null ? "" : heroPng));
         } catch (Exception ignored) {}
     }
 
@@ -862,6 +948,12 @@ public class GameStudioActivity extends Activity {
         if (over != null) { setStatus(over); speak(over, false); return; }
         if (playing) exitPlay();
         Job j = new Job(what, heard, e);
+        j.heroTitle = pickTitle;
+        j.heroPng = pickPng;
+        heroPng = pickPng;
+        pickTitle = "";
+        pickPng = "";
+        heroLook();
         job = j;
         game = null;
         openTitle = "";
@@ -932,7 +1024,7 @@ public class GameStudioActivity extends Activity {
         });
         Workshop.Bill main = new Workshop.Bill();
         try {
-            Workshop.stream(j.engine, GameStudio.SYSTEM, GameStudio.buildMessage(j.what, j.heard), GameStudio.GAME_OUT, new Workshop.Sink() {
+            Workshop.stream(j.engine, GameStudio.SYSTEM, GameStudio.buildMessage(j.what, j.heard, j.heroTitle), GameStudio.GAME_OUT, new Workshop.Sink() {
                 @Override public void text(String s) { parser.feed(s); }
             }, main);
             parser.finish();
@@ -1128,6 +1220,10 @@ public class GameStudioActivity extends Activity {
                 g.landscape = j.landscape;
                 g.seconds = secs;
                 g.parts.clear();
+                g.hero = j.heroTitle == null ? "" : j.heroTitle;
+                if (!g.hero.isEmpty() && j.heroPng != null && !j.heroPng.isEmpty()) {
+                    try { GameStudio.saveHero(this, g.at, android.util.Base64.decode(j.heroPng, android.util.Base64.DEFAULT)); } catch (Exception ignored) {}
+                }
             }
             g.cost += j.rupees;
             g.estimated |= j.estimated;
@@ -1237,6 +1333,8 @@ public class GameStudioActivity extends Activity {
         Game g = game;
         Job j = new Job(g.what, g.what, e);
         j.fixing = g;
+        j.heroTitle = g.hero == null ? "" : g.hero;
+        j.heroPng = heroPng;
         j.title = g.title;
         j.how = g.how;
         j.landscape = g.landscape;
@@ -1394,6 +1492,7 @@ public class GameStudioActivity extends Activity {
         if (g == null || g.optJSONArray("parts") == null) return;
         if (playing) exitPlay();
         game = Game.of(g);
+        heroPng = game.hero.isEmpty() ? "" : GameStudio.heroB64(this, game.at);
         openTitle = game.title;
         onStage.clear();
         for (Map.Entry<String, String[]> e : game.parts.entrySet()) onStage.put(e.getKey(), e.getValue()[1]);

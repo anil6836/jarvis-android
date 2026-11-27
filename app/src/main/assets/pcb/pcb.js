@@ -42,6 +42,7 @@
   let M = null;                 // its pads and nets
   let fills = { B: null, F: null };
   let check = null;             // the checks' result
+  let drawer = { items: {} };   // 🧰 (28 Nov, E) his parts drawer: key → {te, n, q} (kept by Jarvis on the phone)
   let silkCache = null;
   let designs = [];             // his saved designs (summaries from Jarvis)
   let tab = 'home';
@@ -125,8 +126,10 @@
         designs = Array.isArray(m.list) ? m.list : [];
         if (m.scr && typeof m.scr === 'object') scr = { xdpi: +m.scr.xdpi || 0, k: +m.scr.k > 0.5 && +m.scr.k < 1.5 ? +m.scr.k : 1 };
         if (m.learn && typeof m.learn === 'object' && m.learn.d && typeof m.learn.d === 'object') learnSt = { d: m.learn.d };
+        if (m.drawer && m.drawer.items && typeof m.drawer.items === 'object') drawer = { items: m.drawer.items };
         if (m.cur && m.cur.parts) open(m.cur, 'load');
         if (m.tab === 'idea') { showTab('home'); toIdea(); }
+        else if (m.tab === 'drawer') { showTab('home'); drawerSheet(); }
         else showTab(typeof m.tab === 'string' && TABS.indexOf(m.tab) >= 0 ? m.tab : 'home');
         break;
       case 'designs': designs = Array.isArray(m.list) ? m.list : []; if (tab === 'home') myDesigns(); break;
@@ -135,7 +138,7 @@
       case 'say': toast(String(m.s || ''), 4000); break;
       case 'cam': if (camv) camv.ready(m); break; // (📷 Android's camera permission: yes / no)
       case 'camoff': if (camv && camv.on()) { camv.close(); toast('📷 స్టూడియో వెనక్కి వెళ్ళింది: కెమెరా ఆపాను. మళ్ళీ కావాలంటే 📷 నొక్కండి.', 4000); } break;
-      case 'tab': if (m.tab === 'idea') { showTab('home'); toIdea(); } else if (TABS.indexOf(m.tab) >= 0) showTab(m.tab); break;
+      case 'tab': if (m.tab === 'idea') { showTab('home'); toIdea(); } else if (m.tab === 'drawer') { showTab('home'); drawerSheet(); } else if (TABS.indexOf(m.tab) >= 0) showTab(m.tab); break;
       // ---- 🤖 the studio's AI (asked by Jarvis; this page never sees a key or the network)
       case 'aiquote': { const cb = quoteCb[m.kind]; if (cb) cb(m); break; }
       case 'aiwait': ai.wait = { kind: m.kind, words: String(m.words || ''), model: String(m.model || ''), money: String(m.money || ''), until: Date.now() + (m.secs || 3) * 1000 }; bar(); break;
@@ -158,6 +161,7 @@
       case 'xrpose': if (xrS.on && v3d) v3d.xrPose(m); break;
       case 'idea': idea.text = String(m.s || ''); showTab('home'); toIdea(); if (m.go) makeIdea(true); break;
       case 'change': heard(String(m.s || ''), true); break;
+      case 'fromlab': fromLab(m); break; // ⚡→🔌 (28 Nov, D) a circuit-lab board made into a PCB, ₹0
       case 'project': {
         const pr = J.PROJECTS.find((q) => q.id === m.id);
         if (!pr) break;
@@ -264,6 +268,7 @@
       h.appendChild(cur);
     }
     learnCard(h);
+    drawerCard(h);
     modLibCard(h);
     h.appendChild(el('h3', null, '📚 రెడీ బోర్డ్‌లు (₹0, మీ కాపీగా తెరుచుకుంటాయి)'));
     J.PROJECTS.forEach((pr) => {
@@ -2619,8 +2624,9 @@
     });
     h.appendChild(sr);
     const rows = buyRows();
+    drawerBar(h, rows);
     // ✅ (26 Nov, "8. కొనే చెక్‌లిస్ట్"): he ticks what he has; kept with this board
-    const got = () => rows.filter((r) => D.buy && D.buy[r.key]).length;
+    const got = () => rows.filter((r) => (D.buy && D.buy[r.key]) || covered(r)).length;
     const prog = el('div', 'card');
     const pt0 = el('div');
     const bar = el('div'); bar.style.cssText = 'height:8px;border-radius:4px;background:var(--line);margin-top:6px;overflow:hidden';
@@ -2641,10 +2647,12 @@
       });
       tick.style.flex = 'none';
       it.appendChild(tick);
-      if (D.buy && D.buy[r.key]) it.style.opacity = '0.55';
+      if ((D.buy && D.buy[r.key]) || covered(r)) it.style.opacity = '0.55';
       const x = el('div', 'x');
       x.appendChild(el('div', null, r.te + '  × ' + r.n));
       if (r.refs) x.appendChild(el('div', 'f', r.refs));
+      const hv = haveOf(r);
+      if (hv > 0) { const hl = el('div', 'f', hv >= r.n ? '🧰 ఇంట్లో ' + hv + ' ఉన్నాయి: కొనక్కర్లేదు' : '🧰 ఇంట్లో ' + hv + ' ఉన్నాయి · ఇంకా ' + (r.n - hv) + ' కొనాలి'); hl.style.color = hv >= r.n ? '#66bb6a' : '#ffb74d'; x.appendChild(hl); }
       if (r.tip) x.appendChild(el('div', 'f', r.tip));
       if (r.pages.length) {
         const lk = el('div', 'seg');
@@ -2654,6 +2662,7 @@
       }
       it.appendChild(x);
       if (!r.noShop) it.appendChild(btn('🛒', 'small', () => post({ t: 'shopsearch', shop, q: r.q })));
+      if (r.dk) it.appendChild(btn('🧰', 'small', () => countSheet(r.dk, r.te, r.q, () => fab())));
       h.appendChild(it);
     });
     const kc = el('div', 'card');
@@ -2674,16 +2683,145 @@
       post({ t: 'sharetext', text: lines.join('\n') });
     }));
     r4.appendChild(btn('📋 ఇంకా కొనాల్సినవి మాత్రమే', '', () => {
-      const left = rows.filter((r) => !(D.buy && D.buy[r.key]));
+      const left = rows.filter((r) => !(D.buy && D.buy[r.key]) && !covered(r));
       if (!left.length) { toast('🎉 అన్నీ దొరికాయి: కొనాల్సింది ఏమీ లేదు'); return; }
       const lines = ['🔌 ' + D.name + ': ఇంకా కొనాల్సినవి (' + left.length + ')'];
-      left.forEach((r) => lines.push('• ' + (r.q || r.te) + ' × ' + r.n + (r.refs ? ' (' + r.refs + ')' : '')));
+      left.forEach((r) => lines.push('• ' + (r.q || r.te) + ' × ' + Math.max(1, r.n - haveOf(r)) + (r.refs ? ' (' + r.refs + ')' : '')));
       lines.push('(Jarvis PCB స్టూడియో)');
       post({ t: 'sharetext', text: lines.join('\n') });
     }));
     h.appendChild(r4);
     h.appendChild(el('div', 'muted', '💡 రెసిస్టర్లు, LED లు సాధారణంగా 10 / 50 / 100 ప్యాక్‌లలో వస్తాయి. కొనే ముందు పేజీలో విలువ, సైజు ఒకసారి చూడండి. ' + (pr ? '(' + pr.cost + ') ' : '') +
       'కొనడం, పేమెంట్ మీరే; Jarvis కార్ట్‌లో పెట్టదు, కొనదు.'));
+  }
+  // ================================================================ 🧰 his parts drawer (Anil, 28 Nov: "E చేయి"): what he has at home, ₹0
+
+  /** A part's place in the drawer: its kind and value (an LED: its colour), the same on every board. */
+  function dKey(pt) {
+    const lib = String(pt.lib || '');
+    if (/^led[35]$/.test(lib)) return 'p:' + lib + '|' + String(pt.color || pt.val || '').toUpperCase().replace(/[^A-Z]/g, '');
+    return 'p:' + lib + '|' + String(pt.val || '').replace(/\(.*?\)/g, '').replace(/\s+/g, '').toUpperCase();
+  }
+  function rowKey(r) { return r.dk || (/^x:/.test(r.key) && r.key !== 'x:pcb' ? r.key : ''); }
+  function haveOf(r) { const k = rowKey(r), x = k && drawer.items[k]; return x ? Math.max(0, x.n | 0) : 0; }
+  function covered(r) { return r.n > 0 && haveOf(r) >= r.n; }
+  function saveDrawer() { post({ t: 'drawer', v: drawer }); }
+  function drawerTotals() { const ks = Object.keys(drawer.items).filter((k) => (drawer.items[k].n | 0) > 0); return { kinds: ks.length, pieces: ks.reduce((s, k) => s + (drawer.items[k].n | 0), 0) }; }
+  function setHave(k, te, q, n) {
+    n = Math.max(0, Math.min(99999, Math.round(n) || 0));
+    if (!k) return;
+    if (n === 0) delete drawer.items[k];
+    else drawer.items[k] = { te: String(te || (drawer.items[k] || {}).te || k).slice(0, 80), n, q: String(q || (drawer.items[k] || {}).q || '').slice(0, 100) };
+    saveDrawer();
+  }
+  function drawerCard(h) {
+    const t = drawerTotals();
+    const c = el('div', 'card tap');
+    c.appendChild(el('div', 't', '🧰 నా పార్ట్స్ డబ్బా (₹0)'));
+    c.appendChild(el('div', 'muted', t.kinds ? 'ఇంట్లో ' + t.kinds + ' రకాలు, ' + t.pieces + ' ముక్కలు · ఏ బోర్డ్‌కైనా ఇంకా ఏం కొనాలో 🏭 కొనే లిస్ట్‌లో చూపిస్తుంది'
+      : 'ఇంట్లో ఉన్న LED, రెసిస్టర్, మాడ్యూల్స్ ఒకసారి ఇక్కడ రాసుకోండి: ప్రతి బోర్డ్‌కి ఇంకా ఏం కొనాలో అదే చెబుతుంది.'));
+    c.addEventListener('click', () => drawerSheet());
+    h.appendChild(c);
+  }
+  /** On the buy list: the drawer's line, and "these are all in / I used these". */
+  function drawerBar(h, rows) {
+    const t = drawerTotals(), parts = rows.filter((r) => rowKey(r));
+    const c = el('div', 'card');
+    const cov = parts.filter(covered).length;
+    c.appendChild(el('div', null, '🧰 నా పార్ట్స్ డబ్బా: ' + (t.kinds ? t.kinds + ' రకాలు · ఈ బోర్డ్‌కి ' + cov + ' / ' + parts.length + ' ఇంట్లోనే ఉన్నాయి' : 'ఇంకా ఖాళీ')));
+    const r = el('div', 'row');
+    r.appendChild(btn('🧰 డబ్బా తెరువు', 'small', () => drawerSheet()));
+    r.appendChild(btn('➕ ఇవన్నీ కొన్నాను', 'small', () => confirmSheet('➕ ఈ బోర్డ్ భాగాలన్నీ డబ్బాలో పెట్టనా?', 'కొన్న తర్వాత నొక్కండి: ప్రతి భాగం ఎన్ని కావాలో అన్ని డబ్బాలో కలుస్తాయి.', () => {
+      parts.forEach((x) => setHave(rowKey(x), x.te, x.q, haveOf(x) + x.n)); toast('🧰 డబ్బాలో పెట్టాను: ' + parts.length + ' రకాలు'); fab();
+    })));
+    r.appendChild(btn('➖ ఈ బోర్డ్‌కి వాడాను', 'small', () => confirmSheet('➖ ఈ బోర్డ్‌కి వాడినవి డబ్బా నుంచి తీసేయనా?', 'టంకం చేశాక నొక్కండి: ప్రతి భాగం ఎన్ని వాడారో అన్ని తగ్గుతాయి.', () => {
+      parts.forEach((x) => { const hv = haveOf(x); if (hv) setHave(rowKey(x), x.te, x.q, hv - x.n); }); toast('🧰 డబ్బా నుంచి తీసేశాను'); fab();
+    })));
+    c.appendChild(r);
+    h.appendChild(c);
+  }
+  function confirmSheet(title, line, yes) {
+    sheet((s) => {
+      s.appendChild(el('h2', null, title));
+      s.appendChild(el('div', 'step', line));
+      const r = el('div', 'row');
+      r.appendChild(btn('✅ అవును', 'main', () => { closeSheet(); yes(); }));
+      r.appendChild(btn('వద్దు', '', closeSheet));
+      s.appendChild(r);
+    });
+  }
+  /** How many of one thing he has (− / + / type it). */
+  function countSheet(k, te, q, after) {
+    let n = (drawer.items[k] || {}).n | 0;
+    sheet((s) => {
+      s.appendChild(el('h2', null, '🧰 ' + te));
+      s.appendChild(el('div', 'muted', 'ఇంట్లో ఎన్ని ఉన్నాయి? (0 = డబ్బా నుంచి తీసేయి)'));
+      const r = el('div', 'row');
+      const box = el('input'); box.type = 'number'; box.min = '0'; box.max = '99999'; box.value = String(n); box.style.cssText = 'width:90px;font-size:20px;text-align:center;background:#12151c;color:#e8eef8;border:1px solid #3a4352;border-radius:8px;padding:6px 8px;box-sizing:border-box';
+      box.addEventListener('input', () => { n = Math.max(0, parseInt(box.value, 10) || 0); });
+      r.appendChild(btn('−', '', () => { n = Math.max(0, n - 1); box.value = String(n); }));
+      r.appendChild(box);
+      r.appendChild(btn('+', '', () => { n += 1; box.value = String(n); }));
+      [5, 10].forEach((d) => r.appendChild(btn('+' + d, 'small', () => { n += d; box.value = String(n); })));
+      s.appendChild(r);
+      const r2 = el('div', 'row');
+      r2.appendChild(btn('💾 దాచు', 'main', () => { setHave(k, te, q, n); closeSheet(); toast(n ? '🧰 ' + te + ': ' + n : '🧰 ' + te + ' డబ్బా నుంచి తీసేశాను'); if (after) after(); }));
+      r2.appendChild(btn('వద్దు', '', closeSheet));
+      s.appendChild(r2);
+    });
+  }
+  /** Kinds he can add by hand (the studio's parts and modules), with a value box where a value matters. */
+  function addKinds() {
+    const out = [];
+    Object.keys(P.LIB).forEach((k) => { const L = P.LIB[k]; if (L && L.te && !/^(term2|hdr|fhdr)$/.test(k)) out.push([k, L.te]); });
+    out.push(['x:hdr', 'మేల్ బెర్గ్ స్ట్రిప్ (40 పిన్)'], ['x:fhdr', 'ఫిమేల్ బెర్గ్ స్ట్రిప్ (40 పిన్)'], ['x:ff', 'జంపర్ వైర్లు ఫిమేల్–ఫిమేల్ (40 ప్యాక్)'], ['term2', '2 పిన్ స్క్రూ టెర్మినల్']);
+    return out;
+  }
+  function drawerSheet() {
+    sheet((s) => {
+      const t = drawerTotals();
+      s.appendChild(el('h2', null, '🧰 నా పార్ట్స్ డబ్బా'));
+      s.appendChild(el('div', 'muted', 'ఇంట్లో ఉన్నవి (పేర్లు, ఎన్ని: మీ ఫోన్‌లోనే). ' + (t.kinds ? t.kinds + ' రకాలు, ' + t.pieces + ' ముక్కలు.' : 'ఇంకా ఖాళీ: కింద ➕ తో రాసుకోండి, లేదా 🏭 కొనే లిస్ట్‌లో "➕ ఇవన్నీ కొన్నాను".')));
+      const keys = Object.keys(drawer.items).filter((k) => (drawer.items[k].n | 0) > 0).sort((a, b) => String(drawer.items[a].te).localeCompare(String(drawer.items[b].te)));
+      keys.forEach((k) => {
+        const x = drawer.items[k];
+        const it = el('div', 'item');
+        const xx = el('div', 'x');
+        xx.appendChild(el('div', null, x.te));
+        if (x.q) xx.appendChild(el('div', 'f', x.q));
+        it.appendChild(xx);
+        it.appendChild(btn('−', 'small', () => { setHave(k, x.te, x.q, (x.n | 0) - 1); drawerSheet(); }));
+        it.appendChild(el('div', 'k', String(x.n)));
+        it.appendChild(btn('+', 'small', () => { setHave(k, x.te, x.q, (x.n | 0) + 1); drawerSheet(); }));
+        it.appendChild(btn('✏️', 'small', () => countSheet(k, x.te, x.q, drawerSheet)));
+        s.appendChild(it);
+      });
+      // ➕ by hand: a kind, its value (LED: colour), how many
+      const add = el('div', 'card');
+      add.appendChild(el('div', null, '➕ కొత్తది రాసుకో'));
+      const sel = el('select'); sel.style.cssText = 'width:100%;font-size:16px;margin:6px 0;background:#12151c;color:#e8eef8;border:1px solid #3a4352;border-radius:8px;padding:6px 8px;box-sizing:border-box';
+      addKinds().forEach((q) => { const o = el('option', null, q[1]); o.value = q[0]; sel.appendChild(o); });
+      const val = el('input'); val.placeholder = 'విలువ: 1k / 100uF 25V / RED (LED రంగు)'; val.style.cssText = 'width:100%;font-size:16px;margin:4px 0;background:#12151c;color:#e8eef8;border:1px solid #3a4352;border-radius:8px;padding:6px 8px;box-sizing:border-box';
+      const cnt = el('input'); cnt.type = 'number'; cnt.min = '1'; cnt.value = '10'; cnt.style.cssText = 'width:90px;font-size:16px;margin:4px 0;background:#12151c;color:#e8eef8;border:1px solid #3a4352;border-radius:8px;padding:6px 8px;box-sizing:border-box';
+      add.appendChild(sel); add.appendChild(val); add.appendChild(cnt);
+      add.appendChild(btn('💾 డబ్బాలో పెట్టు', 'main', () => {
+        const lib = sel.value, v = val.value.trim(), n = Math.max(1, parseInt(cnt.value, 10) || 1);
+        let k, te, q;
+        if (/^x:/.test(lib)) { k = lib; te = sel.options[sel.selectedIndex].textContent; q = ''; }
+        else {
+          const pt = /^led[35]$/.test(lib) ? { lib, color: v || 'RED', val: (v || 'RED').toUpperCase() } : { lib, val: v };
+          k = dKey(pt); te = (P.LIB[lib] || {}).te + (v ? ' · ' + v : ''); q = window.PcbBuy ? window.PcbBuy.query(pt) : '';
+        }
+        setHave(k, te, q, ((drawer.items[k] || {}).n | 0) + n);
+        toast('🧰 ' + te + ': ' + ((drawer.items[k] || {}).n | 0));
+        drawerSheet();
+      }));
+      s.appendChild(add);
+      s.appendChild(el('div', 'muted', '💡 ఒకే విలువ వేరేగా రాస్తే (1k / 1K / 1000) వేరుగా లెక్కపెడుతుంది: బోర్డ్‌లో ఉన్నట్టే రాయండి, లేదా 🏭 కొనే లిస్ట్‌లో ప్రతి భాగం పక్క 🧰 నొక్కండి.'));
+      const r = el('div', 'row');
+      r.appendChild(btn('మూసేయి', '', closeSheet));
+      s.appendChild(r);
+    });
   }
   /** Open 🏭 at the checklist. */
   function buyGo() {
@@ -2698,7 +2836,7 @@
     const B = window.PcbBuy, pr = D.proj && J.PROJECTS.find((q) => q.id === D.proj), rows = [];
     const g = new Map();
     D.parts.forEach((pt) => { const k = pt.lib + '|' + pt.val + '|' + (pt.color || ''); if (!g.has(k)) g.set(k, { pt, refs: [], k }); g.get(k).refs.push(pt.ref); });
-    g.forEach((v) => rows.push({ key: 'p:' + v.k, te: ((P.LIB[v.pt.lib] || {}).te || v.pt.lib) + (v.pt.val ? ' · ' + v.pt.val : ''), refs: v.refs.join(', '), n: v.refs.length, q: B.query(v.pt), pages: B.pages(B.key(v.pt)), tip: sizeTip(v.pt) }));
+    g.forEach((v) => rows.push({ key: 'p:' + v.k, dk: dKey(v.pt), te: ((P.LIB[v.pt.lib] || {}).te || v.pt.lib) + (v.pt.val ? ' · ' + v.pt.val : ''), refs: v.refs.join(', '), n: v.refs.length, q: B.query(v.pt), pages: B.pages(B.key(v.pt)), tip: sizeTip(v.pt) }));
     if (pr) ((pr.extra || [])).forEach((x) => rows.push({ key: 'x:' + x.te, te: x.te + (x.val ? ' · ' + x.val : ''), refs: x.why || '', n: x.n || 1, q: x.q, pages: B.pages(x.k) }));
     else {
       // what the parts need that is not a part on the board
@@ -3193,6 +3331,25 @@
         '👉 ఆర్డర్ ముందు: 📐 స్కీమాటిక్‌లో కలుపులు ఒకసారి చూడండి (AI కూడా తప్పు చేయొచ్చు), 🏭 ఫ్యాక్టరీ లో "కొలిచి చూడాల్సినవి" చూడండి.']),
       [btn('📐 స్కీమాటిక్', '', () => showTab('sch')), btn('🧊 3D', '', () => showTab('d3'))]);
       said('బోర్డ్ రెడీ Sir: ' + D.parts.length + ' భాగాలు, ' + (r.miss ? r.miss + ' పిన్నులు కలపలేకపోయాను' : 'అన్నీ కలిశాయి') + '. ఖర్చు ' + m.cost + '.');
+    }, 40);
+  }
+  /** ⚡→🔌 (Anil, 28 Nov: "D చేయి") the circuit lab's board → this studio's parts and joins (pcblab.js) → placed, routed, checked. ₹0. */
+  function fromLab(m) {
+    const L = window.PcbFromLab;
+    const r = L ? L.convert(m.board || {}) : { err: 'సర్క్యూట్ ల్యాబ్ బోర్డ్ చదవలేకపోయాను.' };
+    if (r.err) { showTab('home'); resultSheet('🚫 PCB గా చేయలేదు', [r.err, '💰 ఖర్చు ₹0 (AI వాడలేదు)']); return; }
+    toast('⚡ సర్క్యూట్ ల్యాబ్ బోర్డ్: భాగాలు అమర్చి దారులు వేస్తున్నాను…', 9000);
+    setTimeout(() => {
+      const b = A.build(r.ans, { model: '⚡ సర్క్యూట్ ల్యాబ్', cost: '₹0', words: r.ans.title });
+      if (b.err) { resultSheet('✗ బోర్డ్ కాలేదు', [b.err, '💰 ఖర్చు ₹0']); return; }
+      $('toast').style.display = 'none';
+      open(b.D);
+      showTab('pcb');
+      const info = b.info, warn = info.dropped.map((d) => '⚠️ వదిలేశాను: ' + d).concat(info.fixes.slice(0, 6).map((f) => '⚠️ ' + f));
+      const head = D.parts.length + ' భాగాలు · ' + D.board.w + ' × ' + D.board.h + ' mm · ' + (b.miss ? '⚡ ' + b.miss + ' పిన్నులు కలపలేకపోయాను' : '🔗 అన్నీ కలిశాయి') + ' · ' + (check && check.errors ? '❌ ' + check.errors + ' తప్పులు (✅ చెక్ చూడండి)' : '✅ చెక్ అయింది');
+      resultSheet('🔌 సర్క్యూట్ ల్యాబ్ నుంచి PCB: ' + D.name, [head].concat(r.lines, r.left.slice(0, 8).map((x) => '↪️ ' + x), warn, moduleLines(), ['💰 ఖర్చు ₹0 (AI వాడలేదు)',
+        '👉 ఆర్డర్ ముందు: 📐 స్కీమాటిక్‌లో కలుపులు ఒకసారి చూడండి, 🏭 ఫ్యాక్టరీ లో "కొలిచి చూడాల్సినవి" చూడండి.']),
+      [btn('📐 స్కీమాటిక్', '', () => showTab('sch')), btn('🧊 3D', '', () => showTab('d3'))]);
     }, 40);
   }
   function editDone(m, a, pend, cost, said) {

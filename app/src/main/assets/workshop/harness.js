@@ -10,7 +10,7 @@
   var toStage = [];         // (sent by Jarvis before the stage was ready)
   var KINDS = { ready: 1, ok: 1, err: 1, warn: 1, stats: 1, pick: 1, view: 1, size: 1, hid: 1, replay: 1, file: 1,
     grab: 1, moved: 1, snap: 1, bin: 1, bintap: 1, desc: 1,
-    painthit: 1, tape: 1, mass: 1, ortho: 1, guest: 1, xrtap: 1, xrsize: 1,
+    painthit: 1, tape: 1, mass: 1, ortho: 1, nets: 1, guest: 1, xrtap: 1, xrsize: 1,
     power: 1, over: 1, listen: 1, rgb: 1, peel: 1, timeline: 1, inside: 1, buddy: 1, env: 1, hint: 1, // (🏆 a machine that runs)
     day: 1, walk: 1 }; // (🕐 the hour of its sky, 🚶 walking inside)
 
@@ -33,7 +33,7 @@
       if (d.kind === 'jpg' || d.kind === 'png' || d.kind === 'stl' || d.kind === 'mp4' || d.kind === 'webm' || d.kind === 'none') o.kind = d.kind; // (🎞️ the show's video too; 📏 a see-through picture)
       if (typeof d.data === 'string' && d.data.length <= 40000000) o.data = d.data;
     }
-    if (d.t === 'desc' || d.t === 'mass' || d.t === 'painthit') { // (E) the model's parts, names, sizes; ⚖️ volumes; 🎨 a named part (Jarvis checks it)
+    if (d.t === 'desc' || d.t === 'mass' || d.t === 'painthit' || d.t === 'nets') { // (E) the model's parts, names, sizes; ⚖️ volumes; 🎨 a named part; 📦 the nets' sizes (Jarvis checks it)
       if (typeof d.req === 'string') o.req = d.req.slice(0, 40);
       if (typeof d.data === 'string' && d.data.length <= 300000) o.data = d.data;
     }

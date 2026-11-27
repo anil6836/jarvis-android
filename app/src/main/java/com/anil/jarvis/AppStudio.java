@@ -832,7 +832,8 @@ final class AppStudio {
     // ================================================================ 📦 ready starters (assets/apps/starters/<id>.json: a plan and its parts)
 
     static final String[][] STARTERS = {{"expenses", "💰 ఖర్చుల లెక్క"}, {"charging", "⚡ ఛార్జింగ్ లాగ్"}, {"tasks", "✅ పనుల లిస్ట్"},
-            {"shop", "🧾 షాప్ బిల్లు"}, {"cricket", "🏏 క్రికెట్ స్కోర్"}};
+            {"shop", "🧾 షాప్ బిల్లు"}, {"cricket", "🏏 క్రికెట్ స్కోర్"},
+            {"milk", "🥛 పాల లెక్క"}, {"duty", "🗓️ డ్యూటీ లెక్క"}}; // (28 Nov, H: two more ready apps, ₹0)
 
     /** A starter as a new app of his (₹0): its plan, its parts, a new slug and key. Null when the file is missing. */
     static Made starter(String json, Set<String> taken) {

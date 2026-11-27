@@ -1,0 +1,104 @@
+{
+ "plan": {
+  "title": "పాల లెక్క",
+  "name": "పాల లెక్క",
+  "slug": "milk-account",
+  "about": "రోజూ వచ్చే పాలు (లీటర్లు, ధర), రాని రోజులు రాసుకుని, నెల బిల్లు, చెల్లించారో లేదో చూసే యాప్.",
+  "color": "#3949ab",
+  "theme": "light",
+  "size": "small",
+  "internet": false,
+  "say": "పాల లెక్క రెడీ Sir.",
+  "screens": [
+   {
+    "id": "home",
+    "name": "పాలు",
+    "what": "ఈ నెల లీటర్లు, బిల్లు; ఈరోజు ఒక్క నొక్కుతో; ఈ నెల రోజుల లిస్ట్",
+    "tab": true
+   },
+   {
+    "id": "day",
+    "name": "ఒక రోజు",
+    "what": "తేదీ, లీటర్లు, ధర, రాలేదు, నోట్",
+    "tab": false
+   },
+   {
+    "id": "months",
+    "name": "నెలలు",
+    "what": "నెలల వారీ బిల్లు, చెల్లించాను గుర్తు, రోజువారీ లీటర్లు / ధర సెట్టింగ్, 📤 షేర్, 📄 PDF",
+    "tab": true
+   }
+  ],
+  "saves": [
+   "ప్రతి రోజు: తేదీ, లీటర్లు, ధర, రాలేదా",
+   "ఏ నెల బిల్లు చెల్లించారో",
+   "రోజువారీ లీటర్లు, ధర"
+  ],
+  "extras": [
+   "ఈరోజు పాలు ఒక్క నొక్కుతో",
+   "📲 విడ్జెట్‌లో ఈ నెల బిల్లు"
+  ],
+  "later": [],
+  "powers": [
+   "share",
+   "pdf",
+   "widget",
+   "jarvis"
+  ],
+  "icon": {
+   "bg": "#3949ab",
+   "fg": "#ffffff",
+   "paths": [
+    {
+     "d": "M40,20 H60 V30 L68,42 V82 Q68,86 64,86 H36 Q32,86 32,82 V42 L40,30 Z",
+     "fill": "#ffffff"
+    },
+    {
+     "d": "M36,56 H64 V80 H36 Z",
+     "fill": "#c5cae9"
+    }
+   ]
+  },
+  "jarvis": [
+   {
+    "id": "add",
+    "what": "ఒక రోజు పాలు రాయడం",
+    "fields": {
+     "litres": "number",
+     "date": "date",
+     "missed": "bool"
+    }
+   }
+  ]
+ },
+ "parts": [
+  {
+   "css": "",
+   "js": "App.my.KEY = 'milk';\nApp.my.set = () => Object.assign({ litres: 1, rate: 60 }, App.load('milk-set', {}));\nApp.my.paid = () => App.load('milk-paid', {});\nApp.my.list = () => App.items(App.my.KEY).slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.at - a.at);\nApp.my.month = (key) => App.items(App.my.KEY).filter((d) => App.monthKey(d.date) === key);\nApp.my.byDate = (date) => App.items(App.my.KEY).find((d) => d.date === date);\nApp.my.litres = (l) => l.reduce((s, d) => s + (d.missed ? 0 : Number(d.litres) || 0), 0);\nApp.my.bill = (l) => l.reduce((s, d) => s + (d.missed ? 0 : (Number(d.litres) || 0) * (Number(d.rate) || 0)), 0);\nApp.my.put = (date, rec) => {\n  const old = App.my.byDate(date);\n  if (old) App.update(App.my.KEY, old.id, rec); else App.add(App.my.KEY, Object.assign({ date }, rec));\n};\nApp.my.widget = async () => {\n  const k = App.monthKey(new Date()), l = App.my.month(k), paid = App.my.paid()[k];\n  try { await App.widget('🥛 పాలు', ['ఈ నెల: ' + App.n(App.my.litres(l), 1) + ' L · ' + App.rs(App.my.bill(l)), paid ? '✅ చెల్లించారు' : 'ఇంకా చెల్లించలేదు']); } catch (e) { /* the widget only helps */ }\n};\nApp.onStart(() => { App.my.widget(); });\nApp.onJarvis('add', (d) => {\n  const s = App.my.set(), date = /^\\d{4}-\\d{2}-\\d{2}$/.test(String(d.date || '')) ? d.date : App.today();\n  if (d.missed === true) { App.my.put(date, { litres: 0, rate: s.rate, missed: true }); App.my.widget(); return App.date(date, 'short') + ' పాలు రాలేదు అని రాశాను'; }\n  const litres = Number(d.litres) > 0 ? Number(d.litres) : s.litres;\n  App.my.put(date, { litres, rate: s.rate, missed: false });\n  App.my.widget();\n  return App.date(date, 'short') + ' ' + App.n(litres, 1) + ' లీటర్లు రాశాను';\n});\n",
+   "html": "",
+   "id": "data",
+   "status": "డేటా సిద్ధం చేస్తున్నాను"
+  },
+  {
+   "css": "#home .stat .v { color: var(--accent); }\n#home .today .btns { margin-top: 8px; }\n#home .miss .t { color: #c62828; }\n",
+   "js": "App.onShow('home', () => {\n  const k = App.monthKey(new Date()), l = App.my.month(k), s = App.my.set(), t = App.my.byDate(App.today());\n  App.text('#home-l', App.n(App.my.litres(l), 1) + ' L');\n  App.text('#home-rs', App.rs(App.my.bill(l)));\n  App.text('#home-got', '✅ వచ్చాయి (' + App.n(s.litres, 1) + ' L)');\n  App.text('#home-today', !t ? 'ఇంకా రాయలేదు' : t.missed ? '✗ రాలేదు అని రాశారు' : '✅ ' + App.n(t.litres, 1) + ' L · ' + App.rs((Number(t.litres) || 0) * (Number(t.rate) || 0)));\n  const days = l.sort((a, b) => (b.date || '').localeCompare(a.date || ''));\n  App.set('#home-list', days.length ? '<div class=\"list\">' + days.map((d) => `\n    <div class=\"item${d.missed ? ' miss' : ''}\" data-id=\"${App.esc(d.id)}\">\n      <div class=\"ic\">${d.missed ? '✗' : '🥛'}</div>\n      <div class=\"w\"><div class=\"t\">${d.missed ? 'రాలేదు' : App.esc(App.n(d.litres, 1)) + ' లీటర్లు'}</div><div class=\"s\">${App.date(d.date, 'day')}${d.note ? ' · ' + App.esc(d.note) : ''}</div></div>\n      <div class=\"r\">${d.missed ? '' : App.rs((Number(d.litres) || 0) * (Number(d.rate) || 0))}</div>\n    </div>`).join('') + '</div>'\n    : '<div class=\"empty\"><div class=\"e\">🥛</div>ఈ నెల ఇంకా ఏమీ రాయలేదు. పైన \"వచ్చాయి\" నొక్కండి.</div>');\n});\nApp.click('#home-got', () => { const s = App.my.set(); App.my.put(App.today(), { litres: s.litres, rate: s.rate, missed: false }); App.my.widget(); App.beep('ok'); App.toast('ఈరోజు ' + App.n(s.litres, 1) + ' L రాశాను'); App.refresh(); });\nApp.click('#home-more', async () => {\n  const s = App.my.set(), v = await App.input('ఈరోజు ఎన్ని లీటర్లు?', { type: 'number', value: s.litres });\n  if (v == null) return;\n  const litres = Number(v);\n  if (!(litres > 0)) { App.toast('లీటర్లు సరిగా రాయండి'); return; }\n  App.my.put(App.today(), { litres, rate: s.rate, missed: false }); App.my.widget(); App.beep('ok'); App.refresh();\n});\nApp.click('#home-miss', () => { App.my.put(App.today(), { litres: 0, rate: App.my.set().rate, missed: true }); App.my.widget(); App.toast('ఈరోజు రాలేదు అని రాశాను'); App.refresh(); });\nApp.click('#home-add', () => App.go('day'));\nApp.click('#home-list .item', (ev, el) => App.go('day', App.find(App.my.KEY, el.dataset.id)));\n",
+   "html": "<section class=\"screen\" id=\"home\" data-title=\"పాల లెక్క\" data-tab=\"🥛|పాలు\">\n  <div class=\"grid\">\n    <div class=\"stat\"><div class=\"v\" id=\"home-l\">0 L</div><div class=\"k\">ఈ నెల పాలు</div></div>\n    <div class=\"stat\"><div class=\"v\" id=\"home-rs\">₹0</div><div class=\"k\">ఈ నెల బిల్లు</div></div>\n  </div>\n  <div class=\"gap\"></div>\n  <div class=\"card today\"><div class=\"row\"><div><b>ఈరోజు</b><div class=\"muted\" id=\"home-today\">ఇంకా రాయలేదు</div></div></div>\n    <div class=\"btns\"><button class=\"btn primary\" id=\"home-got\">✅ వచ్చాయి</button><button class=\"btn\" id=\"home-more\">✏️ వేరే లీటర్లు</button><button class=\"btn\" id=\"home-miss\">✗ రాలేదు</button></div></div>\n  <div id=\"home-list\"></div>\n  <button class=\"fab\" id=\"home-add\" aria-label=\"ఒక రోజు రాయండి\">+</button>\n</section>",
+   "id": "home",
+   "status": "ఈ నెల పాల లిస్ట్ గీస్తున్నాను"
+  },
+  {
+   "css": "",
+   "js": "App.onShow('day', (d) => {\n  const s = App.my.set();\n  App.my.editing = d && d.id ? d.id : null;\n  App.title(App.my.editing ? 'రోజు మార్చండి' : 'ఒక రోజు రాయండి');\n  App.val('#day-date', d && d.date ? d.date : App.today());\n  App.val('#day-l', d ? d.litres : s.litres);\n  App.val('#day-rate', d ? d.rate : s.rate);\n  App.val('#day-miss', !!(d && d.missed));\n  App.val('#day-note', d && d.note ? d.note : '');\n  App.show('#day-del', !!App.my.editing);\n});\nApp.click('#day-save', () => {\n  const missed = App.val('#day-miss') === true, litres = Number(App.val('#day-l')), rate = Number(App.val('#day-rate'));\n  if (!missed && !(litres > 0)) { App.toast('లీటర్లు రాయండి (రాకపోతే \"రాలేదు\" టిక్ చేయండి)'); return; }\n  if (!(rate >= 0)) { App.toast('ధర సరిగా రాయండి'); return; }\n  const rec = { date: App.val('#day-date') || App.today(), litres: missed ? 0 : litres, rate, missed, note: App.val('#day-note') };\n  if (App.my.editing) App.update(App.my.KEY, App.my.editing, rec); else App.my.put(rec.date, rec);\n  App.my.widget(); App.beep('ok'); App.toast('దాచాను'); App.back();\n});\nApp.click('#day-del', async () => {\n  if (!App.my.editing) return;\n  if (await App.ask('ఈ రోజు తీసేయాలా?', 'తీసేయి', 'వద్దు')) { App.del(App.my.KEY, App.my.editing); App.my.widget(); App.toast('తీసేశాను'); App.back(); }\n});\n",
+   "html": "<section class=\"screen\" id=\"day\" data-title=\"ఒక రోజు\">\n  <div class=\"field\"><label>తేదీ</label><input id=\"day-date\" type=\"date\"></div>\n  <div class=\"grid\">\n    <div class=\"field\"><label>లీటర్లు</label><input id=\"day-l\" type=\"number\" inputmode=\"decimal\"></div>\n    <div class=\"field\"><label>ధర (₹ / లీటర్)</label><input id=\"day-rate\" type=\"number\" inputmode=\"decimal\"></div>\n  </div>\n  <div class=\"field\"><label><input id=\"day-miss\" type=\"checkbox\"> ఈరోజు పాలు రాలేదు</label></div>\n  <div class=\"field\"><label>నోట్ (ఉంటే)</label><input id=\"day-note\" type=\"text\"></div>\n  <button class=\"btn primary block\" id=\"day-save\">దాచు</button>\n  <div class=\"gap\"></div>\n  <button class=\"btn danger block\" id=\"day-del\" hidden>ఈ రోజు తీసేయి</button>\n</section>",
+   "id": "day",
+   "status": "ఒక రోజు ఫారం"
+  },
+  {
+   "css": "#months .paid { color: #2e7d32; font-weight: 700; }\n",
+   "js": "App.my.keys = (n) => { const ks = []; for (let i = n - 1; i >= 0; i--) { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i); ks.push(App.monthKey(d)); } return ks; };\nApp.onShow('months', () => {\n  const ks = App.my.keys(6), paid = App.my.paid(), s = App.my.set();\n  App.chart('#months-chart', { type: 'bar', labels: ks.map((k) => App.month(k + '-01').split(' ')[0]), values: ks.map((k) => App.my.bill(App.my.month(k))), money: true });\n  const rows = App.my.keys(12).reverse().filter((k) => App.my.month(k).length);\n  App.set('#months-list', rows.length ? '<div class=\"list\">' + rows.map((k) => {\n    const l = App.my.month(k), miss = l.filter((d) => d.missed).length;\n    return `<div class=\"item\" data-k=\"${App.esc(k)}\"><div class=\"ic\">📅</div>\n      <div class=\"w\"><div class=\"t\">${App.esc(App.month(k + '-01'))}</div><div class=\"s\">${App.n(App.my.litres(l), 1)} L${miss ? ' · ' + miss + ' రోజులు రాలేదు' : ''}</div></div>\n      <div class=\"r\">${App.rs(App.my.bill(l))}<div class=\"${paid[k] ? 'paid' : 'muted'}\">${paid[k] ? '✅ చెల్లించారు' : 'చెల్లించాను →'}</div></div></div>`;\n  }).join('') + '</div>' : '<div class=\"empty\"><div class=\"e\">📅</div>ఇంకా నెలలు లేవు.</div>');\n  App.text('#months-set-s', 'రోజూ ' + App.n(s.litres, 1) + ' L · ₹' + App.n(s.rate, 2) + ' / లీటర్');\n});\nApp.click('#months-list .item', async (ev, el) => {\n  const k = el.dataset.k, paid = App.my.paid();\n  if (paid[k]) { if (await App.ask(App.month(k + '-01') + ': \"చెల్లించారు\" తీసేయాలా?', 'తీసేయి', 'వద్దు')) { delete paid[k]; App.save('milk-paid', paid); } }\n  else if (await App.ask(App.month(k + '-01') + ' బిల్లు ' + App.rs(App.my.bill(App.my.month(k))) + ' చెల్లించారా?', 'చెల్లించాను', 'ఇంకా లేదు')) { paid[k] = { at: Date.now() }; App.save('milk-paid', paid); App.beep('done'); }\n  App.my.widget(); App.refresh();\n});\nApp.click('#months-set', async () => {\n  const s = App.my.set();\n  const v = await App.form('⚙️ రోజూ ఎంత, ధర', [{ key: 'litres', label: 'రోజూ లీటర్లు', type: 'number', value: s.litres }, { key: 'rate', label: 'ధర (₹ / లీటర్)', type: 'number', value: s.rate }]);\n  if (!v) return;\n  const litres = Number(v.litres), rate = Number(v.rate);\n  if (!(litres > 0) || !(rate >= 0)) { App.toast('సరిగా రాయండి'); return; }\n  App.save('milk-set', { litres, rate }); App.toast('మార్చాను: కొత్త రోజుల నుంచి'); App.refresh();\n});\nApp.my.thisMonth = () => App.my.month(App.monthKey(new Date())).sort((a, b) => (a.date || '').localeCompare(b.date || ''));\nApp.click('#months-share', async () => {\n  const l = App.my.thisMonth(), miss = l.filter((d) => d.missed).length;\n  const t = '🥛 ' + App.month(App.today()) + ' పాల బిల్లు: ' + App.n(App.my.litres(l), 1) + ' లీటర్లు, ' + App.rs(App.my.bill(l)) + (miss ? '\\n' + miss + ' రోజులు పాలు రాలేదు' : '');\n  try { await App.share(t); } catch (e) { App.toast('షేర్ కాలేదు'); }\n});\nApp.click('#months-pdf', async () => {\n  const l = App.my.thisMonth();\n  const rows = l.map((d) => `<tr><td>${App.date(d.date, 'short')}</td><td class=\"n\">${d.missed ? 'రాలేదు' : App.n(d.litres, 1)}</td><td class=\"n\">${d.missed ? '' : App.rs(d.rate)}</td><td class=\"n\">${d.missed ? '' : App.rs((Number(d.litres) || 0) * (Number(d.rate) || 0))}</td></tr>`).join('');\n  const html = `<h2>${App.esc(App.month(App.today()))} పాల బిల్లు</h2><p>${App.n(App.my.litres(l), 1)} లీటర్లు · <b>${App.rs(App.my.bill(l))}</b></p>`\n    + `<table><tr><th>తేదీ</th><th>లీటర్లు</th><th>ధర</th><th>మొత్తం</th></tr>${rows}</table>`;\n  try { await App.pdf('పాల బిల్లు ' + App.monthKey(new Date()), html); } catch (e) { App.toast('PDF కాలేదు'); }\n});\n",
+   "html": "<section class=\"screen\" id=\"months\" data-title=\"నెలలు\" data-tab=\"📅|నెలలు\">\n  <div class=\"card\"><h3>నెలల వారీ బిల్లు</h3><div id=\"months-chart\"></div></div>\n  <div id=\"months-list\"></div>\n  <div class=\"btns\"><button class=\"btn\" id=\"months-share\">📤 ఈ నెల బిల్లు షేర్</button><button class=\"btn\" id=\"months-pdf\">📄 ఈ నెల PDF</button></div>\n  <div class=\"card\"><div class=\"row\"><div><b>⚙️ రోజూ ఎంత, ధర</b><div class=\"muted\" id=\"months-set-s\"></div></div><button class=\"btn small\" id=\"months-set\">మార్చు</button></div></div>\n</section>",
+   "id": "months",
+   "status": "నెలల బిల్లులు, చార్ట్"
+  }
+ ]
+}

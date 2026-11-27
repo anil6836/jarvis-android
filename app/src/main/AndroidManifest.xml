@@ -624,6 +624,15 @@
             android:label="మొక్కలకి నీళ్ళు"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
 
+        <!-- 🗂️ one shelf for everything he made in the studios (3D, apps, games, circuits, PCBs): read only, ₹0 -->
+        <activity
+            android:name=".StudioShelfActivity"
+            android:exported="false"
+            android:label="నా స్టూడియో షెల్ఫ్"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize|stateHidden"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
+
         <!-- 💰 his money advisor: the month from bank SMS (counted on the phone), waste, safety net, goals, investments, loans, sums, tax -->
         <activity
             android:name=".MoneyActivity"

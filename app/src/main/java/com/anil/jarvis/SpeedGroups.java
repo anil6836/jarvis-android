@@ -128,10 +128,10 @@ final class SpeedGroups {
         group("watch", "his Galaxy Watch: find it, silent, wake with the watch, watch tools",
                 new String[]{"watch_tools"},
                 new String[]{"వాచ్", "watch"});
-        group("workshop", "the 3D workshop: build a 3D model of a physical object or machine, open the last build, what it cost",
+        group("workshop", "the 3D workshop: build a 3D model of a physical object or machine, open the last build, what it cost; the one shelf of everything he made in all the studios",
                 new String[]{"workshop"},
                 new String[]{"3d", "3డి", "త్రీడీ", "వర్క్‌షాప్", "వర్క్ షాప్", "బిల్డ్", "తయారు చెయ్", "తయారుచెయ్", "తయారు చేయ్", "తయారు చేయి", "డిజైన్",
-                        "బొమ్మ", "workshop", "build", "design", "make me", "model"});
+                        "బొమ్మ", "workshop", "build", "design", "make me", "model", "స్టూడియో షెల్ఫ్", "షెల్ఫ్", "నేను చేసినవన్నీ", "studio shelf"});
         group("games", "the game studio: make a small game to play in Jarvis, play a saved game, his games shelf, what a game cost",
                 new String[]{"game_studio"},
                 new String[]{"గేమ్", "గేమ్స్", "ఆట", "ఆటలు", "ఆడు", "ఆడదాం", "game", "games", "play"});

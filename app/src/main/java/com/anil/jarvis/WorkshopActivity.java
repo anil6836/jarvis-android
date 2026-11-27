@@ -130,6 +130,8 @@ public class WorkshopActivity extends Activity {
     private WorkshopShow show;
     private final Pinch pinch = new Pinch();
     static final String EXTRA_SHOWPIECE = "showpiece", EXTRA_SHELF = "shelf";
+    /** 🗂️ (28 Nov, I) open this saved model (its save time) from the studio shelf, ₹0. */
+    static final String EXTRA_OPEN_AT = "open_at";
     private android.hardware.SensorManager sensors;
     private android.hardware.SensorEventListener tiltL;
     private float[] tilt0;
@@ -162,10 +164,16 @@ public class WorkshopActivity extends Activity {
     private android.hardware.display.DisplayManager.DisplayListener turnL;
     private static final int REQ_AR_PERM = 64;
     // (1–9) 🎨 colours, 📏 tape, ⚖️ weight, 📐 drawing, 🎞️ show video, 🖼️ pictures, 🔀 second model, ✋ hand signs, 📏 real size
-    private TextView paintBtn, tapeBtn, weightBtn, drawBtn, videoBtn, guestBtn, guestTopBtn, guestOffBtn, handsBtn, realBtn;
+    private TextView paintBtn, tapeBtn, weightBtn, drawBtn, cardBtn, gameBtn, videoBtn, guestBtn, guestTopBtn, guestOffBtn, handsBtn, realBtn;
     private boolean tapeOn, guestTop, recordNext, recording, massVoice, drawVoice, paintVoice, handsOn, realOn;
     private long recordAt;
-    private String guestTitle, massReq, drawReq, drawDesc, drawViews, paintReq, thumbReq;
+    private String guestTitle, massReq, drawReq, drawDesc, drawViews, paintReq, thumbReq, netsReq;
+    private boolean netsVoice; // 📦 (28 Nov, F) the cardboard sheet asked by voice
+    // 🏍️ (28 Nov, G) the model's see-through picture for a game's hero: asked for, which save, then open the game studio
+    private String spriteReq;
+    private long spriteAt;
+    private String spriteTitle;
+    private boolean spriteThenGame;
     private long thumbAt;
     private Workshop.PaintSay paintAsk;
     // (7) ✋ the front camera's hand signs; (8) 📏 the model at its real size on his floor (ARCore)
@@ -386,6 +394,12 @@ public class WorkshopActivity extends Activity {
             JSONObject b = Showpiece.load(this, spId);
             if (b != null) { show(b); return; }
         }
+        long openAt = i.getLongExtra(EXTRA_OPEN_AT, 0);
+        if (openAt > 0 && job == null) { // 🗂️ from the studio shelf
+            i.removeExtra(EXTRA_OPEN_AT);
+            JSONObject b = Workshop.read(new java.io.File(Workshop.dir(this), openAt + ".json"));
+            if (b != null) { show(b); return; }
+        }
         if (job != null) return;
         if (i.getBooleanExtra(EXTRA_OPEN_LAST, false) || onStage.isEmpty()) {
             JSONObject last = Workshop.last(this);
@@ -500,6 +514,8 @@ public class WorkshopActivity extends Activity {
         tapeBtn = pill("📏 టేప్", v -> command(tapeOn ? "tape_off" : "tape_on", false));
         weightBtn = pill("⚖️ బరువు", v -> command("weight", false));
         drawBtn = pill("📐 డ్రాయింగ్", v -> command("drawing", false));
+        cardBtn = pill("📦 కార్డ్‌బోర్డ్", v -> command("cardboard", false));
+        gameBtn = pill("🎮 ఈ బొమ్మతో ఆట", v -> command("game_hero", false));
         videoBtn = pill("🎞️ షో వీడియో", v -> command("show_video", false));
         guestBtn = pill("🔀 కలిపి చూడు", v -> command("guest_add", false));
         guestTopBtn = pill("🔝 పైన పెట్టు", v -> command(guestTop ? "guest_side" : "guest_top", false));
@@ -531,6 +547,8 @@ public class WorkshopActivity extends Activity {
         actions.addView(tapeBtn);
         actions.addView(weightBtn);
         actions.addView(drawBtn);
+        actions.addView(cardBtn);
+        actions.addView(gameBtn);
         actions.addView(videoBtn);
         actions.addView(guestBtn);
         actions.addView(snapBtn);
@@ -723,7 +741,7 @@ public class WorkshopActivity extends Activity {
         if (paintBtn != null) { // (1–9)
             paintBtn.setVisibility(has && pickedId != null && !tapeOn ? View.VISIBLE : View.GONE);
             paintBtn.setText("🎨 " + (pickedName != null ? Workshop.cap(pickedName, 14) + " " : "") + "రంగు");
-            for (TextView t : new TextView[]{tapeBtn, weightBtn, drawBtn}) t.setVisibility(has ? View.VISIBLE : View.GONE);
+            for (TextView t : new TextView[]{tapeBtn, weightBtn, drawBtn, cardBtn, gameBtn}) t.setVisibility(has ? View.VISIBLE : View.GONE);
             if (realOn) tapeBtn.setVisibility(View.GONE); // (📏 on the real floor the tape's centimetres would not be the model's)
             tapeBtn.setText(tapeOn ? "📏 టేప్ ఆపు" : "📏 టేప్");
             videoBtn.setVisibility(has && tourSteps == null && !arOn && !realOn ? View.VISIBLE : View.GONE);
@@ -1178,6 +1196,20 @@ public class WorkshopActivity extends Activity {
                 try { send(json("describe").put("req", drawReq)); send(json("ortho").put("req", drawReq)); } catch (Exception ignored) {}
                 setStatus("📐 డ్రాయింగ్ గీస్తోంది… (ఖర్చు లేదు)");
                 break;
+            case "cardboard": // 📦 (28 Nov, F) the box-like pieces unfolded to cut, fold and glue (₹0)
+                if (!has) break;
+                netsReq = "n" + Long.toHexString(System.nanoTime());
+                netsVoice = byVoice;
+                try { send(json("nets").put("req", netsReq)); } catch (Exception ignored) {}
+                setStatus("📦 కార్డ్‌బోర్డ్ కటింగ్ షీట్ గీస్తోంది… (ఖర్చు లేదు)");
+                break;
+            case "game_hero": // 🏍️ (28 Nov, G) this model as the player of a new game in the game studio
+                if (!has) break;
+                if (shown == null || shown.at <= 0) { said = "ముందు ఈ బొమ్మ దాచబడాలి Sir; తయారీ అయ్యాక మళ్ళీ నొక్కండి."; break; }
+                if (Workshop.sprite(this, shown.at).isFile()) { openGameHero(shown.at, shown.title); break; }
+                askSprite(shown.at, shown.title, true);
+                setStatus("🎮 బొమ్మ చిత్రం తీస్తున్నాను… (ఖర్చు లేదు)");
+                break;
             case "show_video":
                 if (!has) break;
                 if (arOn || realOn) { said = "గదిలో చూస్తున్నప్పుడు వీడియో రాదు Sir. ముందు గది ఆపండి."; break; }
@@ -1500,6 +1532,12 @@ public class WorkshopActivity extends Activity {
             setStatus("⚖️ " + card[2]);
             textCard(card[0], card[1]);
             if (massVoice) speak(card[2], true);
+            return;
+        }
+        if ("nets".equals(t)) { // 📦 the box / cylinder pieces → the cutting sheet
+            if (netsReq == null || !netsReq.equals(m.optString("req"))) return;
+            netsReq = null;
+            cardboard(m.optString("data", ""), netsVoice);
             return;
         }
         if ("ortho".equals(t)) { // 📐 the three views
@@ -2350,6 +2388,49 @@ public class WorkshopActivity extends Activity {
     }
 
     /** 📐 When both the three views and the parts list are here: the PDF, into Downloads/Jarvis/workshop. */
+    /** 📦 (Anil, 28 Nov: "F చేయి") the nets on A4 pages, saved in Downloads/Jarvis/workshop like the drawing. ₹0. */
+    private void cardboard(String data, boolean voice) {
+        final String title = shown != null ? shown.title : "model";
+        new Thread(() -> {
+            Coder.Made made = null;
+            String err = null;
+            int n = 0;
+            try {
+                if (data.isEmpty()) throw new IllegalStateException("బొమ్మ భాగాలు రాలేదు");
+                n = CardboardPdf.pieces(new JSONObject(data)).size();
+                byte[] pdf = n == 0 ? null : CardboardPdf.make(title, data);
+                if (pdf != null) made = Coder.save(this, "Jarvis/workshop", Workshop.fileName(title, "కార్డ్‌బోర్డ్.pdf"), "application/pdf", pdf);
+            } catch (Throwable x) { err = x.getMessage(); }
+            final Coder.Made m0 = made;
+            final String e0 = err;
+            final int n0 = n;
+            ui.post(() -> {
+                if (destroyed) return;
+                if (m0 == null) {
+                    String s = n0 == 0 && e0 == null ? "📦 ఈ బొమ్మలో డబ్బా / గొట్టం ఆకారం భాగాలు లేవు Sir (అన్నీ వంపులు, గుండ్రాలు): కార్డ్‌బోర్డ్ షీట్ చేయలేను. ఖర్చు ₹0."
+                            : "✗ కార్డ్‌బోర్డ్ షీట్ కాలేదు Sir" + (e0 != null ? ": " + e0 : "");
+                    setStatus(s);
+                    if (voice) speak(s, true);
+                    return;
+                }
+                setStatus("📦 " + m0.where + " · " + n0 + " భాగాలు · ఖర్చు ₹0");
+                if (voice) speak("కార్డ్‌బోర్డ్ కటింగ్ షీట్ Downloads లో దాచాను Sir.", true);
+                new AlertDialog.Builder(this).setTitle("📦 కార్డ్‌బోర్డ్ షీట్ సిద్ధం")
+                        .setMessage(m0.where + "\n\n" + n0 + " భాగాల నమూనాలు: నల్ల గీత కత్తిరించు, నీలం గీత మడువు, బూడిద పట్టీ గమ్. "
+                                + "\"Actual size / 100%\" లో ప్రింట్ చేయండి; ప్రతి పేజీ కింద 5 సెం.మీ గీతతో చెక్ చేయండి. పేజీకి పెద్ద భాగాలు చిన్నగా గీశాను: వాటి కొలతలు చూసి అట్ట మీద గీయండి.")
+                        .setPositiveButton("📄 తెరువు", (d, w) -> {
+                            try { startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(m0.uri, "application/pdf").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)); }
+                            catch (Exception x) { Toast.makeText(this, "PDF తెరిచే యాప్ దొరకలేదు", Toast.LENGTH_SHORT).show(); }
+                        })
+                        .setNeutralButton("📤 పంచుకో", (d, w) -> {
+                            Intent sh = new Intent(Intent.ACTION_SEND).setType("application/pdf").putExtra(Intent.EXTRA_STREAM, m0.uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                            try { startActivity(Intent.createChooser(sh, "పంచుకోండి")); } catch (Exception ignored) {}
+                        })
+                        .setNegativeButton("సరే", null).show();
+            });
+        }, "jarvis-workshop-cardboard").start();
+    }
+
     private void maybeDraw() {
         if (drawViews == null || drawDesc == null) return;
         final String views = drawViews, desc = drawDesc, title = shown != null ? shown.title : "model";
@@ -2507,6 +2588,22 @@ public class WorkshopActivity extends Activity {
         thumbAt = shown.at;
         try { send(json("snap").put("req", thumbReq).put("clean", true).put("most", 360)); } catch (Exception ignored) {}
     };
+
+    /** 🏍️ the model's see-through picture (the stage draws it alone, framed); then = open the game studio with it. */
+    private void askSprite(long at, String title, boolean then) {
+        spriteReq = "s" + Long.toHexString(System.nanoTime());
+        spriteAt = at;
+        spriteTitle = title;
+        spriteThenGame = then;
+        try { send(json("sprite").put("req", spriteReq).put("size", 320)); } catch (Exception ignored) {}
+    }
+
+    private void openGameHero(long at, String title) {
+        Intent i = new Intent(this, GameStudioActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                .putExtra(GameStudioActivity.EXTRA_HERO_AT, at).putExtra(GameStudioActivity.EXTRA_HERO_TITLE, title == null ? "" : title);
+        startActivity(i);
+        setStatus("🎮 గేమ్ స్టూడియో: " + (title == null ? "ఈ బొమ్మ" : title) + " హీరోగా · ఏ ఆటో చెప్పండి");
+    }
 
     private void thumbLater() {
         ui.removeCallbacks(thumbR);
@@ -3050,8 +3147,37 @@ public class WorkshopActivity extends Activity {
     private void gotFile(JSONObject m) {
         String req = m.optString("req"), what = fileFor;
         if (realPhotoReq != null && realPhotoReq.equals(req)) { realPhotoDone(m); return; } // (📏 the model's see-through picture)
+        if (spriteReq != null && spriteReq.equals(req)) { // 🏍️ the see-through picture for a game's hero
+            spriteReq = null;
+            final String data = m.optString("data", "");
+            final long at = spriteAt;
+            final String title = spriteTitle;
+            final boolean then = spriteThenGame;
+            final boolean png = "png".equals(m.optString("kind"));
+            new Thread(() -> {
+                boolean ok = false;
+                try {
+                    byte[] b = png ? android.util.Base64.decode(data, android.util.Base64.DEFAULT) : null;
+                    if (b != null && b.length > 100 && b[0] == (byte) 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G') {
+                        java.io.File f = Workshop.sprite(this, at), tmp = new java.io.File(f.getPath() + ".part");
+                        try (java.io.FileOutputStream o = new java.io.FileOutputStream(tmp)) { o.write(b); }
+                        ok = tmp.renameTo(f) || !tmp.delete();
+                    }
+                } catch (Exception ignored) {}
+                final boolean done = ok;
+                ui.post(() -> {
+                    if (destroyed || !then) return;
+                    if (done) openGameHero(at, title);
+                    else setStatus("🎮 బొమ్మ చిత్రం తీయలేకపోయాను Sir. బొమ్మ పూర్తిగా కనిపిస్తున్నప్పుడు మళ్ళీ నొక్కండి.");
+                });
+            }, "jarvis-workshop-sprite").start();
+            return;
+        }
         if (thumbReq != null && thumbReq.equals(req)) { // 🖼️ a saved model's small picture
             thumbReq = null;
+            final long sAt = thumbAt;
+            if (shown != null && shown.at == sAt && !Workshop.sprite(this, sAt).isFile() && spriteReq == null)
+                ui.postDelayed(() -> { if (!destroyed && shown != null && shown.at == sAt && spriteReq == null) askSprite(sAt, shown.title, false); }, 1200); // (🏍️ its game picture too)
             final String data = m.optString("data", "");
             final long at = thumbAt;
             new Thread(() -> {

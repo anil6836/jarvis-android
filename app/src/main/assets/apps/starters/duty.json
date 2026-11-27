@@ -1,0 +1,107 @@
+{
+ "plan": {
+  "title": "డ్యూటీ లెక్క",
+  "name": "డ్యూటీ లెక్క",
+  "slug": "duty-count",
+  "about": "రోజూ డ్యూటీ (పగలు / రాత్రి / సెకండ్ / ఎక్స్‌ట్రా / సెలవు), గంటలు, OT రాసుకుని నెల లెక్క చూసే యాప్.",
+  "color": "#5e35b1",
+  "theme": "light",
+  "size": "small",
+  "internet": false,
+  "say": "డ్యూటీ లెక్క రెడీ Sir.",
+  "screens": [
+   {
+    "id": "home",
+    "name": "డ్యూటీ",
+    "what": "ఈ నెల డ్యూటీలు, రాత్రి, OT, సెలవులు; ఈరోజు ఒక్క నొక్కుతో; లిస్ట్",
+    "tab": true
+   },
+   {
+    "id": "shift",
+    "name": "ఒక రోజు",
+    "what": "తేదీ, రకం, గంటలు, OT, నోట్",
+    "tab": false
+   },
+   {
+    "id": "stats",
+    "name": "లెక్కలు",
+    "what": "నెలల వారీ చార్ట్, 📤 షేర్, 📄 PDF, 🔔 రోజూ రాత్రి గుర్తు",
+    "tab": true
+   }
+  ],
+  "saves": [
+   "ప్రతి రోజు: తేదీ, డ్యూటీ రకం, గంటలు, OT గంటలు, నోట్"
+  ],
+  "extras": [
+   "ఈరోజు డ్యూటీ ఒక్క నొక్కుతో",
+   "📲 విడ్జెట్‌లో ఈ నెల డ్యూటీలు"
+  ],
+  "later": [],
+  "powers": [
+   "remind",
+   "share",
+   "pdf",
+   "widget",
+   "jarvis"
+  ],
+  "icon": {
+   "bg": "#5e35b1",
+   "fg": "#ffffff",
+   "paths": [
+    {
+     "d": "M26,30 H74 Q80,30 80,36 V78 Q80,84 74,84 H26 Q20,84 20,78 V36 Q20,30 26,30 Z",
+     "fill": "#ffffff"
+    },
+    {
+     "d": "M20,30 H80 V46 H20 Z",
+     "fill": "#d1c4e9"
+    },
+    {
+     "d": "M38,64 L46,72 L64,54 L60,50 L46,64 L42,60 Z",
+     "fill": "#5e35b1"
+    }
+   ]
+  },
+  "jarvis": [
+   {
+    "id": "add",
+    "what": "ఒక రోజు డ్యూటీ రాయడం",
+    "fields": {
+     "kind": "text",
+     "date": "date",
+     "ot": "number"
+    }
+   }
+  ]
+ },
+ "parts": [
+  {
+   "css": "",
+   "js": "App.my.KEY = 'duty';\nApp.my.KINDS = [['day', '☀️ పగలు'], ['night', '🌙 రాత్రి'], ['second', '🌇 సెకండ్'], ['extra', '➕ ఎక్స్‌ట్రా'], ['leave', '🏖️ సెలవు']];\nApp.my.label = (k) => (App.my.KINDS.find((x) => x[0] === k) || ['', k])[1];\nApp.my.set = () => Object.assign({ hours: 8 }, App.load('duty-set', {}));\nApp.my.month = (key) => App.items(App.my.KEY).filter((d) => App.monthKey(d.date) === key);\nApp.my.byDate = (date) => App.items(App.my.KEY).find((d) => d.date === date);\nApp.my.count = (l) => {\n  const c = { work: 0, night: 0, extra: 0, leave: 0, hours: 0, ot: 0 };\n  l.forEach((d) => {\n    if (d.kind === 'leave') { c.leave++; return; }\n    c.work++; if (d.kind === 'night') c.night++; if (d.kind === 'extra') c.extra++;\n    c.hours += Number(d.hours) || 0; c.ot += Number(d.ot) || 0;\n  });\n  return c;\n};\nApp.my.put = (date, rec) => { const old = App.my.byDate(date); if (old) App.update(App.my.KEY, old.id, rec); else App.add(App.my.KEY, Object.assign({ date }, rec)); };\nApp.my.kindOf = (w) => {\n  const t = String(w || '').toLowerCase();\n  if (/రాత్రి|night|నైట్/.test(t)) return 'night';\n  if (/సెకండ్|second|సాయంత్రం|evening/.test(t)) return 'second';\n  if (/ఎక్స్‌?ట్రా|extra|అదనపు|ఓవర్/.test(t)) return 'extra';\n  if (/సెలవు|leave|off|రెస్ట్|lv/.test(t)) return 'leave';\n  return 'day';\n};\nApp.my.widget = async () => {\n  const c = App.my.count(App.my.month(App.monthKey(new Date())));\n  try { await App.widget('🗓️ డ్యూటీ', ['ఈ నెల ' + c.work + ' డ్యూటీలు · 🌙 ' + c.night, (c.ot ? 'OT ' + App.n(c.ot, 1) + ' గం · ' : '') + c.leave + ' సెలవులు']); } catch (e) { /* the widget only helps */ }\n};\nApp.onStart(() => { App.my.widget(); });\nApp.onJarvis('add', (d) => {\n  const date = /^\\d{4}-\\d{2}-\\d{2}$/.test(String(d.date || '')) ? d.date : App.today(), kind = App.my.kindOf(d.kind);\n  const ot = Number(d.ot) > 0 ? Number(d.ot) : 0;\n  App.my.put(date, { kind, hours: kind === 'leave' ? 0 : App.my.set().hours, ot });\n  App.my.widget();\n  return App.date(date, 'short') + ' ' + App.my.label(kind) + (ot ? ', OT ' + App.n(ot, 1) + ' గంటలు' : '') + ' రాశాను';\n});\n",
+   "html": "",
+   "id": "data",
+   "status": "డేటా సిద్ధం చేస్తున్నాను"
+  },
+  {
+   "css": "#home .stat .v { color: var(--accent); }\n#home .quick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }\n",
+   "js": "App.onShow('home', () => {\n  const l = App.my.month(App.monthKey(new Date())), c = App.my.count(l), t = App.my.byDate(App.today());\n  App.text('#home-work', String(c.work));\n  App.text('#home-night', String(c.night));\n  App.text('#home-ot', App.n(c.ot, 1));\n  App.text('#home-leave', String(c.leave));\n  App.text('#home-today', t ? App.my.label(t.kind) + (t.ot ? ' · OT ' + App.n(t.ot, 1) : '') : 'ఇంకా రాయలేదు');\n  App.set('#home-quick', App.my.KINDS.map((k) => `<button class=\"btn small${t && t.kind === k[0] ? ' primary' : ''}\" data-k=\"${k[0]}\">${k[1]}</button>`).join(''));\n  const days = l.sort((a, b) => (b.date || '').localeCompare(a.date || ''));\n  App.set('#home-list', days.length ? '<div class=\"list\">' + days.map((d) => `\n    <div class=\"item\" data-id=\"${App.esc(d.id)}\">\n      <div class=\"ic\">${App.esc(App.my.label(d.kind).split(' ')[0])}</div>\n      <div class=\"w\"><div class=\"t\">${App.esc(App.my.label(d.kind).split(' ').slice(1).join(' '))}${d.kind !== 'leave' && d.hours ? ' · ' + App.esc(App.n(d.hours, 1)) + ' గం' : ''}${d.ot ? ' · OT ' + App.esc(App.n(d.ot, 1)) : ''}</div>\n        <div class=\"s\">${App.date(d.date, 'day')}${d.note ? ' · ' + App.esc(d.note) : ''}</div></div>\n    </div>`).join('') + '</div>'\n    : '<div class=\"empty\"><div class=\"e\">🗓️</div>ఈ నెల ఇంకా ఏమీ రాయలేదు. పైన ఈరోజు డ్యూటీ నొక్కండి.</div>');\n});\nApp.click('#home-quick .btn', (ev, el) => {\n  const kind = el.dataset.k;\n  App.my.put(App.today(), { kind, hours: kind === 'leave' ? 0 : App.my.set().hours, ot: (App.my.byDate(App.today()) || {}).ot || 0 });\n  App.my.widget(); App.beep('ok'); App.toast('ఈరోజు: ' + App.my.label(kind)); App.refresh();\n});\nApp.click('#home-add', () => App.go('shift'));\nApp.click('#home-list .item', (ev, el) => App.go('shift', App.find(App.my.KEY, el.dataset.id)));\n",
+   "html": "<section class=\"screen\" id=\"home\" data-title=\"డ్యూటీ లెక్క\" data-tab=\"🗓️|డ్యూటీ\">\n  <div class=\"grid\">\n    <div class=\"stat\"><div class=\"v\" id=\"home-work\">0</div><div class=\"k\">ఈ నెల డ్యూటీలు</div></div>\n    <div class=\"stat\"><div class=\"v\" id=\"home-night\">0</div><div class=\"k\">రాత్రి డ్యూటీలు</div></div>\n  </div>\n  <div class=\"gap\"></div>\n  <div class=\"grid\">\n    <div class=\"stat\"><div class=\"v\" id=\"home-ot\">0</div><div class=\"k\">OT గంటలు</div></div>\n    <div class=\"stat\"><div class=\"v\" id=\"home-leave\">0</div><div class=\"k\">సెలవులు</div></div>\n  </div>\n  <div class=\"gap\"></div>\n  <div class=\"card\"><b>ఈరోజు</b> <span class=\"muted\" id=\"home-today\">ఇంకా రాయలేదు</span><div class=\"quick\" id=\"home-quick\"></div></div>\n  <div id=\"home-list\"></div>\n  <button class=\"fab\" id=\"home-add\" aria-label=\"ఒక రోజు రాయండి\">+</button>\n</section>",
+   "id": "home",
+   "status": "ఈ నెల డ్యూటీ లిస్ట్ గీస్తున్నాను"
+  },
+  {
+   "css": "",
+   "js": "App.onShow('shift', (d) => {\n  App.my.editing = d && d.id ? d.id : null;\n  App.title(App.my.editing ? 'రోజు మార్చండి' : 'ఒక రోజు రాయండి');\n  App.val('#shift-date', d && d.date ? d.date : App.today());\n  App.val('#shift-kind', d && d.kind ? d.kind : 'day');\n  App.val('#shift-h', d ? d.hours : App.my.set().hours);\n  App.val('#shift-ot', d && d.ot ? d.ot : '');\n  App.val('#shift-note', d && d.note ? d.note : '');\n  App.show('#shift-del', !!App.my.editing);\n});\nApp.click('#shift-save', () => {\n  const kind = App.val('#shift-kind') || 'day', hours = Number(App.val('#shift-h')) || 0, ot = Number(App.val('#shift-ot')) || 0;\n  if (hours < 0 || hours > 24 || ot < 0 || ot > 24) { App.toast('గంటలు 0–24 లో రాయండి'); return; }\n  const rec = { date: App.val('#shift-date') || App.today(), kind, hours: kind === 'leave' ? 0 : hours, ot, note: App.val('#shift-note') };\n  if (App.my.editing) App.update(App.my.KEY, App.my.editing, rec); else App.my.put(rec.date, rec);\n  App.my.widget(); App.beep('ok'); App.toast('దాచాను'); App.back();\n});\nApp.click('#shift-del', async () => {\n  if (!App.my.editing) return;\n  if (await App.ask('ఈ రోజు తీసేయాలా?', 'తీసేయి', 'వద్దు')) { App.del(App.my.KEY, App.my.editing); App.my.widget(); App.toast('తీసేశాను'); App.back(); }\n});\n",
+   "html": "<section class=\"screen\" id=\"shift\" data-title=\"ఒక రోజు\">\n  <div class=\"field\"><label>తేదీ</label><input id=\"shift-date\" type=\"date\"></div>\n  <div class=\"field\"><label>డ్యూటీ</label><select id=\"shift-kind\"><option value=\"day\">☀️ పగలు</option><option value=\"night\">🌙 రాత్రి</option><option value=\"second\">🌇 సెకండ్</option><option value=\"extra\">➕ ఎక్స్‌ట్రా</option><option value=\"leave\">🏖️ సెలవు</option></select></div>\n  <div class=\"grid\">\n    <div class=\"field\"><label>గంటలు</label><input id=\"shift-h\" type=\"number\" inputmode=\"decimal\"></div>\n    <div class=\"field\"><label>OT గంటలు</label><input id=\"shift-ot\" type=\"number\" inputmode=\"decimal\"></div>\n  </div>\n  <div class=\"field\"><label>నోట్ (ఉంటే)</label><input id=\"shift-note\" type=\"text\"></div>\n  <button class=\"btn primary block\" id=\"shift-save\">దాచు</button>\n  <div class=\"gap\"></div>\n  <button class=\"btn danger block\" id=\"shift-del\" hidden>ఈ రోజు తీసేయి</button>\n</section>",
+   "id": "shift",
+   "status": "ఒక రోజు ఫారం"
+  },
+  {
+   "css": "",
+   "js": "App.my.keys = (n) => { const ks = []; for (let i = n - 1; i >= 0; i--) { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i); ks.push(App.monthKey(d)); } return ks; };\nApp.onShow('stats', () => {\n  const ks = App.my.keys(6);\n  App.chart('#stats-chart', { type: 'bar', labels: ks.map((k) => App.month(k + '-01').split(' ')[0]), values: ks.map((k) => App.my.count(App.my.month(k)).work) });\n  const rows = App.my.keys(12).reverse().filter((k) => App.my.month(k).length);\n  App.set('#stats-list', rows.length ? '<div class=\"list\">' + rows.map((k) => {\n    const c = App.my.count(App.my.month(k));\n    return `<div class=\"item\"><div class=\"ic\">📅</div><div class=\"w\"><div class=\"t\">${App.esc(App.month(k + '-01'))}</div>\n      <div class=\"s\">🌙 ${c.night} రాత్రి · ➕ ${c.extra} ఎక్స్‌ట్రా · 🏖️ ${c.leave} సెలవు${c.ot ? ' · OT ' + App.n(c.ot, 1) + ' గం' : ''}</div></div><div class=\"r\">${c.work}</div></div>`;\n  }).join('') + '</div>' : '<div class=\"empty\"><div class=\"e\">📊</div>ఇంకా నెలలు లేవు.</div>');\n  App.text('#stats-set-s', 'ఇప్పుడు: ' + App.n(App.my.set().hours, 1) + ' గంటలు');\n  App.my.drawRem();\n});\nApp.my.next9 = () => { const d = new Date(); d.setHours(21, 0, 0, 0); if (d.getTime() < Date.now()) d.setDate(d.getDate() + 1); return App.ymd(d) + ' 21:00'; };\nApp.my.drawRem = async () => {\n  let on = false;\n  try { on = (await App.reminders()).some((r) => r.id === 'daily'); } catch (e) { /* */ }\n  App.my.remOn = on;\n  App.text('#stats-rem', on ? 'తీసేయి' : 'పెట్టు');\n  App.text('#stats-rem-s', on ? 'పెట్టారు: రోజూ రాత్రి 9 కి' : '\"ఈరోజు డ్యూటీ రాశారా?\" అని');\n};\nApp.click('#stats-rem', async () => {\n  try {\n    if (App.my.remOn) { await App.unremind('daily'); App.toast('రిమైండర్ తీసేశాను'); }\n    else { await App.remind({ id: 'daily', when: App.my.next9(), every: 'day', title: '🗓️ డ్యూటీ లెక్క', text: 'ఈరోజు డ్యూటీ రాశారా?', screen: 'home' }); App.toast('రోజూ రాత్రి 9 కి గుర్తు చేస్తాను'); }\n  } catch (e) { App.toast('రిమైండర్ పెట్టలేకపోయాను'); }\n  App.my.drawRem();\n});\nApp.click('#stats-set', async () => {\n  const v = await App.input('ఒక డ్యూటీ ఎన్ని గంటలు?', { type: 'number', value: App.my.set().hours });\n  if (v == null) return;\n  const h = Number(v);\n  if (!(h > 0 && h <= 24)) { App.toast('1–24 లో రాయండి'); return; }\n  App.save('duty-set', { hours: h }); App.toast('మార్చాను'); App.refresh();\n});\nApp.my.thisMonth = () => App.my.month(App.monthKey(new Date())).sort((a, b) => (a.date || '').localeCompare(b.date || ''));\nApp.click('#stats-share', async () => {\n  const c = App.my.count(App.my.thisMonth());\n  const t = '🗓️ ' + App.month(App.today()) + ' డ్యూటీ: ' + c.work + ' డ్యూటీలు (🌙 ' + c.night + ' రాత్రి, ➕ ' + c.extra + ' ఎక్స్‌ట్రా), 🏖️ ' + c.leave + ' సెలవులు' + (c.ot ? ', OT ' + App.n(c.ot, 1) + ' గంటలు' : '');\n  try { await App.share(t); } catch (e) { App.toast('షేర్ కాలేదు'); }\n});\nApp.click('#stats-pdf', async () => {\n  const l = App.my.thisMonth(), c = App.my.count(l);\n  const rows = l.map((d) => `<tr><td>${App.date(d.date, 'day')}</td><td>${App.esc(App.my.label(d.kind))}</td><td class=\"n\">${d.kind === 'leave' ? '' : App.n(d.hours, 1)}</td><td class=\"n\">${d.ot ? App.n(d.ot, 1) : ''}</td><td>${App.esc(d.note || '')}</td></tr>`).join('');\n  const html = `<h2>${App.esc(App.month(App.today()))} డ్యూటీ</h2><p>${c.work} డ్యూటీలు · 🌙 ${c.night} · ➕ ${c.extra} · 🏖️ ${c.leave}${c.ot ? ' · OT ' + App.n(c.ot, 1) + ' గం' : ''}</p>`\n    + `<table><tr><th>తేదీ</th><th>డ్యూటీ</th><th>గంటలు</th><th>OT</th><th>నోట్</th></tr>${rows}</table>`;\n  try { await App.pdf('డ్యూటీ ' + App.monthKey(new Date()), html); } catch (e) { App.toast('PDF కాలేదు'); }\n});\n",
+   "html": "<section class=\"screen\" id=\"stats\" data-title=\"లెక్కలు\" data-tab=\"📊|లెక్కలు\">\n  <div class=\"card\"><h3>నెలల వారీ డ్యూటీలు</h3><div id=\"stats-chart\"></div></div>\n  <div id=\"stats-list\"></div>\n  <div class=\"btns\"><button class=\"btn\" id=\"stats-share\">📤 ఈ నెల షేర్</button><button class=\"btn\" id=\"stats-pdf\">📄 ఈ నెల PDF</button></div>\n  <div class=\"card\"><div class=\"row\"><div><b>🔔 రోజూ రాత్రి 9 కి గుర్తు</b><div class=\"muted\" id=\"stats-rem-s\"></div></div><button class=\"btn small\" id=\"stats-rem\">పెట్టు</button></div></div>\n  <div class=\"card\"><div class=\"row\"><div><b>⚙️ ఒక డ్యూటీ ఎన్ని గంటలు</b><div class=\"muted\" id=\"stats-set-s\"></div></div><button class=\"btn small\" id=\"stats-set\">మార్చు</button></div></div>\n</section>",
+   "id": "stats",
+   "status": "నెలల లెక్కలు, చార్ట్"
+  }
+ ]
+}

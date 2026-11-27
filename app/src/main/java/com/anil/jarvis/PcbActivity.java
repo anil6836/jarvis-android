@@ -62,11 +62,15 @@ public class PcbActivity extends Activity {
     static final String EXTRA_TAB = "pcb_tab", EXTRA_PROJECT = "pcb_project";
     /** (from Jarvis's brain) a new board of these words (waits ✋ 3 seconds here); his words about the open board. */
     static final String EXTRA_WHAT = "pcb_what", EXTRA_HEARD = "pcb_heard", EXTRA_CHANGE = "pcb_change";
+    /** ⚡→🔌 (28 Nov, D) a circuit-lab board (its JSON) to be made into a PCB on the page, ₹0. */
+    static final String EXTRA_LAB = "pcb_from_lab";
+    /** 🗂️ (28 Nov, I) open this design of his (its id) from the studio shelf. */
+    static final String EXTRA_OPEN_ID = "pcb_open_id";
     private static final int REQ_CAM = 81, REQ_GAL = 82, REQ_CAM_PERM = 83, REQ_AR = 84, REQ_CAMWEB = 85;
     private static final String HOST = "appassets.androidplatform.net";
     private static final String PATH = "/assets/pcb/";
     private static final String PAGE = "https://" + HOST + PATH + "pcb.html";
-    private static final Set<String> FILES = new HashSet<>(Arrays.asList("pcb.html", "pcb.js", "pcbparts.js", "pcbcore.js", "pcbfab.js", "pcbprojects.js", "pcbbuy.js", "pcbai.js", "pcb3d.js", "pcbsim.js", "pcbkicad.js", "pcbmake.js", "pcbclass.js", "pcbcam.js"));
+    private static final Set<String> FILES = new HashSet<>(Arrays.asList("pcb.html", "pcb.js", "pcbparts.js", "pcbcore.js", "pcbfab.js", "pcbprojects.js", "pcbbuy.js", "pcbai.js", "pcb3d.js", "pcbsim.js", "pcbkicad.js", "pcbmake.js", "pcbclass.js", "pcbcam.js", "pcblab.js"));
     /** 🧊 The 3D view uses the workshop's bundled three.js (one copy in the app), served here under the studio's own path. */
     private static final Set<String> SHARED = new HashSet<>(Arrays.asList("three.module.min.js", "OrbitControls.js"));
     /** The factories' own sites (opened in his browser only when he taps 🌐; nothing is sent to them by Jarvis). */
@@ -87,7 +91,7 @@ public class PcbActivity extends Activity {
         SEARCH.put("probots", "https://probots.co.in/catalogsearch/result/?q=");
     }
     private static final Set<String> SHOP_HOSTS = new HashSet<>(Arrays.asList("robu.in", "robocraze.com"));
-    private static final Set<String> TABS = new HashSet<>(Arrays.asList("home", "idea", "sch", "pcb", "drc", "sim", "d3", "fab", "calc", "learn"));
+    private static final Set<String> TABS = new HashSet<>(Arrays.asList("home", "idea", "sch", "pcb", "drc", "sim", "d3", "fab", "calc", "learn", "drawer"));
     private static final Set<String> KINDS = new HashSet<>(Arrays.asList(Pcb.NEW, Pcb.PHOTO, Pcb.EDIT, Pcb.HELP, Pcb.PINS, Pcb.SOLDER, Pcb.REVIEW, Pcb.SCAN));
     private static final Set<String> PROJECTS = new HashSet<>(Arrays.asList("flasher", "usb", "soil", "esp32", "irboard", "plant"));
 
@@ -144,7 +148,7 @@ public class PcbActivity extends Activity {
         Intent i = getIntent();
         boolean again = b != null || (i != null && (i.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0);
         newPage(again ? null : i);
-        if (i != null) { i.removeExtra(EXTRA_TAB); i.removeExtra(EXTRA_PROJECT); i.removeExtra(EXTRA_WHAT); i.removeExtra(EXTRA_HEARD); i.removeExtra(EXTRA_CHANGE); }
+        if (i != null) { i.removeExtra(EXTRA_TAB); i.removeExtra(EXTRA_PROJECT); i.removeExtra(EXTRA_WHAT); i.removeExtra(EXTRA_HEARD); i.removeExtra(EXTRA_CHANGE); i.removeExtra(EXTRA_LAB); i.removeExtra(EXTRA_OPEN_ID); }
     }
 
     @Override protected void onNewIntent(Intent i) {
@@ -157,6 +161,14 @@ public class PcbActivity extends Activity {
         i.removeExtra(EXTRA_WHAT);
         i.removeExtra(EXTRA_HEARD);
         i.removeExtra(EXTRA_CHANGE);
+        i.removeExtra(EXTRA_LAB);
+        String openId = i.getStringExtra(EXTRA_OPEN_ID);
+        i.removeExtra(EXTRA_OPEN_ID);
+        if (openId != null && !openId.isEmpty()) { // 🗂️ from the studio shelf: that design, on the PCB tab
+            new Thread(() -> {
+                try { JSONObject d = Pcbs.load(this, openId); if (d != null) send(json("design").put("d", d)); } catch (Exception ignored) {}
+            }, "jarvis-pcb-open").start();
+        }
         try {
             if (pr != null) send(json("project").put("id", pr));
             else if (t != null) send(json("tab").put("tab", t));
@@ -167,8 +179,9 @@ public class PcbActivity extends Activity {
     /** From Jarvis's brain: a new board of his words (the page shows the 💡 card and its cost; ✋ 3 seconds), or his words about the open board. */
     private static JSONObject aiOf(Intent i) {
         if (i == null) return null;
-        String what = i.getStringExtra(EXTRA_WHAT), change = i.getStringExtra(EXTRA_CHANGE);
+        String what = i.getStringExtra(EXTRA_WHAT), change = i.getStringExtra(EXTRA_CHANGE), lab = i.getStringExtra(EXTRA_LAB);
         try {
+            if (lab != null && !lab.trim().isEmpty() && lab.length() < 400_000) return json("fromlab").put("board", new JSONObject(lab));
             if (what != null && !what.trim().isEmpty()) {
                 String heard = i.getStringExtra(EXTRA_HEARD);
                 return json("idea").put("s", Workshop.cap(what.trim(), 2000)).put("heard", heard == null ? "" : Workshop.cap(heard.trim(), 2000)).put("go", true);
@@ -235,15 +248,17 @@ public class PcbActivity extends Activity {
         root.addView(w, new FrameLayout.LayoutParams(-1, -1));
         w.loadUrl(PAGE);
         final String tab = tabOf(start), project = projectOf(start);
+        final String openId = start == null ? null : start.getStringExtra(EXTRA_OPEN_ID); // (🗂️ the studio shelf's pick)
         final JSONObject ai = aiOf(start);
         // its start: his boards, and the one he had open (read off the main thread; sent when the page is there)
         new Thread(() -> {
             try {
-                JSONObject init = json("init").put("list", Pcbs.listJson(this)).put("scr", screen()).put("learn", learnJson());
-                String last = Pcbs.last(this);
+                JSONObject init = json("init").put("list", Pcbs.listJson(this)).put("scr", screen()).put("learn", learnJson()).put("drawer", drawerJson());
+                String last = openId != null && !openId.isEmpty() ? openId : Pcbs.last(this);
                 JSONObject cur = last == null ? null : Pcbs.load(this, last);
                 if (cur != null) init.put("cur", cur);
                 if (tab != null) init.put("tab", tab);
+                else if (openId != null && !openId.isEmpty() && cur != null) init.put("tab", "pcb");
                 send(init);
                 if (project != null) send(json("project").put("id", project));
                 if (ai != null) send(ai);
@@ -346,6 +361,7 @@ public class PcbActivity extends Activity {
             case "read": if (ear != null && front) ear.readAloud(Workshop.cap(m.optString("s", ""), 4000)); break;
             case "hush": if (ear != null) ear.hush(); break;
             case "learn": saveLearn(m.optJSONObject("v")); break;
+            case "drawer": saveDrawer(m.optJSONObject("v")); break;
             case "scale": {
                 double k = m.optDouble("k", 1);
                 if (k >= 0.8 && k <= 1.25) p.sp.edit().putFloat("pcb_scale", (float) k).apply();
@@ -848,6 +864,31 @@ public class PcbActivity extends Activity {
         try { return new JSONObject(p.sp.getString("pcb_learn", "{\"d\":{}}")); } catch (Exception e) { return new JSONObject(); }
     }
 
+    /** 🧰 (28 Nov, E) his parts drawer: what he has at home (kind, value, how many); only names and counts, kept on the phone. */
+    private JSONObject drawerJson() {
+        try { return new JSONObject(p.sp.getString("pcb_drawer", "{\"items\":{}}")); } catch (Exception e) { return new JSONObject(); }
+    }
+
+    private void saveDrawer(JSONObject v) {
+        JSONObject items = v == null ? null : v.optJSONObject("items");
+        if (items == null) return;
+        try {
+            JSONObject out = new JSONObject();
+            java.util.Iterator<String> it = items.keys();
+            int n = 0;
+            while (it.hasNext() && n < 400) {
+                String k = it.next();
+                JSONObject x = items.optJSONObject(k);
+                if (x == null || k.length() > 80) continue;
+                int c = Math.max(0, Math.min(99999, x.optInt("n")));
+                if (c == 0) continue;
+                out.put(k, new JSONObject().put("n", c).put("te", Workshop.cap(x.optString("te", ""), 80)).put("q", Workshop.cap(x.optString("q", ""), 100)));
+                n++;
+            }
+            p.sp.edit().putString("pcb_drawer", new JSONObject().put("items", out).toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
     private void saveLearn(JSONObject v) {
         if (v == null) return;
         JSONObject d = v.optJSONObject("d"), out = new JSONObject(), od = new JSONObject();
@@ -960,6 +1001,14 @@ public class PcbActivity extends Activity {
     @Override public void onConfigurationChanged(android.content.res.Configuration c) {
         super.onConfigurationChanged(c);
         if (realF != null) realF.turned();
+    }
+
+    /** ⚡→🔌 (28 Nov, D) the circuit lab's board opened here as a PCB (the page converts it with its own code, ₹0). */
+    static void openFromLab(Context c, JSONObject board) {
+        Intent i = new Intent(c, PcbActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+        if (!(c instanceof Activity)) i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        i.putExtra(EXTRA_LAB, board.toString());
+        c.startActivity(i);
     }
 
     static void open(Context c, String tab, String project) {

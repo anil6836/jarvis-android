@@ -1165,6 +1165,9 @@ final class Workshop {
     /** 🖼️ A saved model's small picture (next to its file; gone with it). */
     static File thumb(Context c, long at) { return new File(dir(c), at + ".jpg"); }
 
+    /** 🏍️ (28 Nov, G) a saved model's picture with see-through corners, for a game's hero (made while it is open here). */
+    static File sprite(Context c, long at) { return new File(dir(c), at + ".hero.png"); }
+
     /** A guide that is only a polite "no" (no steps, no list). */
     static boolean guideRefused(String guide) {
         String g = guide == null ? "" : guide;
@@ -1364,6 +1367,10 @@ final class Workshop {
             {"weight", "బరువు", "బరువు ఎంత", "ఎంత బరువు", "ఎంత బరువు ఉంటుంది", "బరువు చెప్పు", "ప్రింట్ ఖర్చు", "3d ప్రింట్ ఖర్చు", "ప్రింట్‌కి ఎంత",
                     "weight", "how heavy", "print cost", "3d print cost"},
             {"drawing", "డ్రాయింగ్", "డ్రాయింగ్ షీట్", "2d డ్రాయింగ్", "ప్లాన్ కాగితం", "బ్లూప్రింట్", "drawing", "drawing sheet", "blueprint", "2d drawing"},
+            {"game_hero", "ఈ బొమ్మతో ఆట", "ఈ బొమ్మతో గేమ్", "బొమ్మతో ఆట", "దీనితో ఆట", "దీనితో గేమ్", "దీంతో ఆట", "దీంతో గేమ్", "దీనితో ఒక ఆట",
+                    "game with this", "make a game with this", "game with this model"},
+            {"cardboard", "కార్డ్‌బోర్డ్", "కార్డ్ బోర్డ్", "కార్డ్‌బోర్డ్ షీట్", "కార్డ్‌బోర్డ్ తో చేయాలి", "అట్టతో చేయాలి", "అట్ట మీద", "కటింగ్ షీట్",
+                    "కత్తిరించే షీట్", "పేపర్ మోడల్", "cardboard", "cardboard sheet", "cutting sheet", "paper model", "net"},
             {"show_video", "షో వీడియో", "వీడియో తీయి", "వీడియో తీ", "షో వీడియో తీయి", "వీడియో", "show video", "record show", "record the show", "video"},
             {"guest_add", "రెండో", "రెండో పెట్టు", "ఇంకో", "ఇంకో పెట్టు", "ఇంకోటి పక్కన పెట్టు", "రెండు బొమ్మలు", "two models", "add another model"}, // ("బొమ్మ" goes with the fillers)
             {"guest_top", "పైన పెట్టు", "దాని మీద పెట్టు", "మీద పెట్టు", "put on top", "on top"},
@@ -1784,6 +1791,7 @@ final class Workshop {
                 File old = all.get(i);
                 old.delete();
                 new File(d, old.getName().replace(".json", ".jpg")).delete(); // (🖼️ its small picture too)
+                new File(d, old.getName().replace(".json", ".hero.png")).delete(); // (🏍️ and its game picture)
             }
         } catch (Exception ignored) {}
     }

@@ -387,12 +387,12 @@ final class Tools {
                         + "his words about the model on it (change / add / remove a part, colour, size, a question about a part, pull apart, a view, "
                         + "the light, undo, one part alone, X-ray, cut / inside, hide a part, roof off, size, replay, photo, studio / miniature "
                         + "photo, STL print file, a 3D model from a photo or a floor plan, landscape, the how-it-works show, how to really make it, "
-                        + "the model in his room on the camera, a colour or material for a part, the tape, the weight, the 2D drawing, the show's video, "
+                        + "the model in his room on the camera, a colour or material for a part, the tape, the weight, the 2D drawing, a cardboard cutting sheet (its box / tube pieces unfolded to cut, fold and glue, PDF), a new game with this model as its player ('ఈ బొమ్మతో ఆట': opens the game studio with its picture as the hero), the show's video, "
                         + "a second saved model beside it, hand signs in the air, the model at its real size on his floor) go to the workshop as he said them. "
                         + "showpiece = open one of the hand-made 🏆 showpieces that ship with the app (a turbofan jet engine, a gaming PC, a geared electric "
                         + "motorcycle; free, no AI) by its name, or the showpiece shelf when no name is given. "
                         + "Not for websites, apps, code, food, pictures, scans, games (game_studio) or electric circuits (circuit_lab).",
-                schema(new String[][]{{"action", "string", "build | open_last | cost | talk | showpiece"},
+                schema(new String[][]{{"action", "string", "build | open_last | cost | talk | showpiece | shelf_all (one shelf of everything he made in all the studios: 'నా స్టూడియో షెల్ఫ్', 'నేను చేసినవన్నీ చూపించు')"},
                         {"what", "string", "build: the object in English with every detail he gave (size, colour, style, materials); keep Telugu names he used. "
                                 + "talk: his exact words, unchanged"}},
                         "action")));
@@ -416,7 +416,7 @@ final class Tools {
                         + "the challenges never use the AI); shelf = his saved boards; tab = home (his home's appliances and bill) / calc (backup, "
                         + "inverter, solar, charge-time numbers) / games (challenges) / learn (ready boards, V = I x R...); cost = this month's spend "
                         + "(shared with the workshop's limit). Learning only: never instructions to open or change real mains wiring.",
-                schema(new String[][]{{"action", "string", "build | change | open | shelf | tab | cost"},
+                schema(new String[][]{{"action", "string", "build | change | open | shelf | tab | cost | pcb (the lab's board as a real PCB in the PCB studio, free: 'ఈ సర్క్యూట్ PCB గా చేయి')"},
                         {"what", "string", "build: the circuit in English with every detail he gave (parts, how many, ratings, how they connect); keep "
                                 + "Telugu names he used. change: his exact words. tab: home | calc | games | learn | board"}},
                         "action")));
@@ -443,7 +443,7 @@ final class Tools {
                         + "he can say 'Jarvis తర్వాత'), 📦 a 3D-print box (STL), 📏 the board at its real size (on the screen 1:1, or on his table by the "
                         + "camera's AR) and 🎓 a 5-day Telugu PCB class (all free, on the phone; ask with change and his words, e.g. 'టంకం గైడ్'). "
                         + "open = the studio; project = open a ready "
-                        + "board (what = flasher | usb | soil | esp32 | irboard | plant); tab = what = home | sch | pcb | drc | sim | d3 | fab | calc | learn (sim = ⚡ నడిపించు, learn = 🎓 class); idea = the 💡 card "
+                        + "board (what = flasher | usb | soil | esp32 | irboard | plant); tab = what = home | sch | pcb | drc | sim | d3 | fab | calc | learn | drawer (sim = ⚡ నడిపించు, learn = 🎓 class, drawer = 🧰 his parts drawer: the parts he has at home, so each board's buy list shows only what is still missing); idea = the 💡 card "
                         + "where he types / says his idea or adds a photo of a circuit drawn on paper (free until he taps make); build = the studio's AI "
                         + "makes a NEW board of his idea (paid: the studio shows the cost and waits 3 seconds with ✋ వద్దు); change = his words about "
                         + "the board that is open (a value, turn / move a part, the board size or colour, holes, route, add / remove parts...: small "
@@ -451,7 +451,7 @@ final class Tools {
                         + "site himself: Jarvis never orders or pays. Low-voltage DC boards only (battery / USB / adapter / bike 12 V, up to 24 V): "
                         + "never a 230 V mains board; refuse weapons, shock devices, electric fences, jammers and meter bypass yourself.",
                 schema(new String[][]{{"action", "string", "open | project | tab | idea | build | change"},
-                        {"what", "string", "project: flasher | usb | soil | esp32 | irboard | plant. tab: home | sch | pcb | drc | sim | d3 | fab | calc | learn. build: the board in "
+                        {"what", "string", "project: flasher | usb | soil | esp32 | irboard | plant. tab: home | sch | pcb | drc | sim | d3 | fab | calc | learn | drawer. build: the board in "
                                 + "English with every detail he gave (what it does, the supply, parts, how many, ratings); keep Telugu names he used. change: his exact words"}},
                         "action")));
         DEFS.add(new Def("plant",
@@ -1785,6 +1785,11 @@ final class Tools {
         if (!Workshop.here(c)) return err("phone_only", "The workshop is on his phone only (not the home tablet or the car box). Say so in one line.");
         Prefs p = new Prefs(c);
         if ("cost".equals(action)) return ok().put("said", Workshop.costSaid(c, p)).put("next", "Say this in Telugu, briefly.").toString();
+        if ("shelf_all".equals(action)) { // 🗂️ (28 Nov, I) everything he made in every studio, one list
+            onUi(() -> StudioShelfActivity.open(c));
+            return ok().put("next", "Say in one short line that everything he made in the studios (3D models, apps, games, circuits, PCBs) is on one shelf "
+                    + "on the screen: search, filter, tap to open (free).").toString();
+        }
         if ("talk".equals(action)) {
             String words = Workshop.hintless(heard != null && !heard.trim().isEmpty() ? heard.trim() : what.trim()); // (his own words, not a rewrite)
             if (words.isEmpty()) return err("what_missing", "Ask him in one short line what to change.");
@@ -1869,6 +1874,17 @@ final class Tools {
         Prefs p = new Prefs(c);
         int flags = Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT;
         if ("cost".equals(action)) return ok().put("said", CircuitLab.costSaid(c, p)).put("next", "Say this in Telugu, briefly.").toString();
+        if ("pcb".equals(action)) { // ⚡→🔌 (28 Nov, D) the lab's board as a real PCB (the PCB studio's own code; ₹0, no AI)
+            JSONObject cur = CircuitLab.current0(c);
+            if (cur == null || CircuitLab.empty(cur)) {
+                startIn(new Intent(c, CircuitLabActivity.class).addFlags(flags));
+                return err("empty", "The circuit lab has no board yet; it is open now. Say in one line: draw a circuit first, then '🔌 PCB గా'.");
+            }
+            final JSONObject board = cur;
+            onUi(() -> PcbActivity.openFromLab(c, board));
+            return ok().put("next", "Say in one short line that the lab's board is opening in the PCB studio as a real board, free (no AI). "
+                    + "Only 24 V DC circuits become a PCB: 230 V house things are not made.").toString();
+        }
         if ("shelf".equals(action)) {
             if (CircuitLab.files(c).isEmpty()) {
                 startIn(new Intent(c, CircuitLabActivity.class).addFlags(flags));
@@ -2243,7 +2259,7 @@ final class Tools {
             return ok().put("next", "Say only: 'PCB స్టూడియోలో చూపిస్తున్నాను Sir, ఖర్చు అక్కడ కనిపిస్తుంది; వద్దంటే ✋ వద్దు అనండి.' The studio waits 3 seconds, "
                     + "then the AI makes it and the studio says the cost when it is done.").toString();
         }
-        if ("tab".equals(a) && java.util.Arrays.asList("home", "sch", "pcb", "drc", "sim", "d3", "fab", "calc", "learn").contains(w)) i.putExtra(PcbActivity.EXTRA_TAB, w);
+        if ("tab".equals(a) && java.util.Arrays.asList("home", "sch", "pcb", "drc", "sim", "d3", "fab", "calc", "learn", "drawer").contains(w)) i.putExtra(PcbActivity.EXTRA_TAB, w);
         startIn(i);
         return ok().put("next", "Say in one short Telugu line what is on the screen now (free, nothing sent anywhere).").toString();
     }

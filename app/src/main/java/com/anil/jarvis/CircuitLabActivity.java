@@ -66,6 +66,8 @@ import java.util.concurrent.CancellationException;
 public class CircuitLabActivity extends Activity {
     static final String EXTRA_WHAT = "what", EXTRA_HEARD = "heard", EXTRA_SAID = "said", EXTRA_CHANGE = "change", EXTRA_SHELF = "shelf", EXTRA_TAB = "tab",
             EXTRA_SCAN_TITLE = "scan_title", EXTRA_SCAN_PARTS = "scan_parts";
+    /** 🗂️ (28 Nov, I) open this saved board (its save time) from the studio shelf, ₹0. */
+    static final String EXTRA_OPEN_AT = "open_at";
     /** (G2) The camera's photo of a scanned board waits here (the app's private cache) only until the lab reads it, then it is deleted. */
     private static final String SCAN_PHOTO = "circuit_scan.jpg";
     /** The lab is in front: "Jarvis" opens no panel over it (its own ears hear him). */
@@ -201,6 +203,12 @@ public class CircuitLabActivity extends Activity {
             fromScanAsk(scanTitle == null ? "" : scanTitle, scanParts);
             return;
         }
+        long openAt = i.getLongExtra(EXTRA_OPEN_AT, 0);
+        if (openAt > 0) { // 🗂️ from the studio shelf
+            i.removeExtra(EXTRA_OPEN_AT);
+            JSONObject g = CircuitLab.byAt(this, openAt);
+            if (g != null) { ui.postDelayed(() -> { if (!destroyed) open(g); }, 400); return; }
+        }
         if (tab != null && !tab.isEmpty()) tab(tab);
         if (shelf) ui.postDelayed(this::shelf, 350);
     }
@@ -290,6 +298,7 @@ public class CircuitLabActivity extends Activity {
         actions.addView(pill("📂 దాచినవి", v -> shelf()));
         actions.addView(pill("💾 దాచు", v -> saveAsk()));
         actions.addView(pill("📤 షేర్", v -> shareAsk()));
+        actions.addView(pill("🔌 PCB గా", v -> toPcb())); // ⚡→🔌 (28 Nov, D) this board as a real PCB, ₹0
         actions.addView(pill("💰 ఖర్చు", v -> { String s = CircuitLab.costSaid(this, p); setStatus(s); speak(s, false); }));
         HorizontalScrollView hs = new HorizontalScrollView(this);
         hs.setHorizontalScrollBarEnabled(false);
@@ -480,9 +489,30 @@ public class CircuitLabActivity extends Activity {
             case "pdf": share("pdf"); return;
             case "cost": { String s = CircuitLab.costSaid(this, p); setStatus(s); speak(s, byVoice); return; }
             case "photo": photoAsk(); return;
+            case "pcb": toPcb(); return;
             case "board": case "calc": case "home": case "games": case "learn": tab(cmd); return;
             case "close": leave(); return;
             default:
+        }
+    }
+
+    /** ⚡→🔌 (Anil, 28 Nov: "D చేయి") this board as a real PCB in the PCB studio: its page converts it with its own code (₹0, no AI). */
+    private void toPcb() {
+        JSONObject b = board;
+        if (b == null || CircuitLab.empty(b)) {
+            String s = "ముందు ఒక సర్క్యూట్ గీయండి Sir; అప్పుడు 🔌 PCB గా నొక్కండి.";
+            setStatus(s);
+            speak(s, false);
+            return;
+        }
+        try {
+            String t = b.optString("title", "");
+            JSONObject copy = new JSONObject().put("title", t.isEmpty() ? (title == null ? "" : title) : t)
+                    .put("parts", b.optJSONArray("parts")).put("wires", b.optJSONArray("wires"));
+            PcbActivity.openFromLab(this, copy);
+            setStatus("🔌 PCB స్టూడియోలో తెరుస్తున్నాను · ఖర్చు ₹0");
+        } catch (Exception e) {
+            setStatus("PCB స్టూడియో తెరవలేకపోయాను Sir.");
         }
     }
 

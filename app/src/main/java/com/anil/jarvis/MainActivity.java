@@ -1264,6 +1264,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
             case "file": openFiles(); break;
             case "brief": if (!busy) send(BRIEF_PROMPT, "🌅 శుభోదయం బ్రీఫింగ్", false); break;
             case "missions": showTab(1); break;
+            case "studio_shelf": StudioShelfActivity.open(this); break; // 🗂️ (28 Nov, I)
             case "memories": showTab(2); break;
             default: break;
         }

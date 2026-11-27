@@ -296,6 +296,32 @@ G.emoji = (e, x, y, size, rot) => {
   ctx.fillText(String(e), 0, s * 0.06);
   ctx.restore();
 };
+// 🏍️ (Anil, 28 Nov: "G చేయి") his own 3D model from the workshop as the game's hero: a picture with see-through corners (a data:
+// PNG Jarvis sends with the reset), drawn inside size × size; without one, a smiling emoji stands in.
+let heroImg = null;
+G.heroReady = false;
+function setHero(b64) {
+  heroImg = null;
+  G.heroReady = false;
+  if (typeof b64 !== 'string' || !b64 || b64.length > 3000000 || !/^[A-Za-z0-9+/=\s]+$/.test(b64.slice(0, 200))) return Promise.resolve();
+  return new Promise((res) => {
+    const im = new Image();
+    im.onload = () => { heroImg = im; G.heroReady = true; res(); };
+    im.onerror = () => res();
+    im.src = 'data:image/png;base64,' + b64.replace(/\s+/g, '');
+  });
+}
+G.hero = (x, y, size, rot, flip) => {
+  const s = Math.max(6, +size || 64);
+  if (!heroImg) { G.emoji('🙂', x, y, s, rot); return; }
+  const k = s / Math.max(heroImg.width, heroImg.height), w = heroImg.width * k, h = heroImg.height * k;
+  ctx.save();
+  ctx.translate(x, y);
+  if (rot) ctx.rotate(rot);
+  if (flip) ctx.scale(-1, 1);
+  ctx.drawImage(heroImg, -w / 2, -h / 2, w, h);
+  ctx.restore();
+};
 G.grad = (x1, y1, x2, y2, stops) => {
   const g = ctx.createLinearGradient(x1, y1, x2, y2);
   (stops || [[0, '#000'], [1, '#fff']]).forEach((s) => { try { g.addColorStop(s[0], s[1]); } catch (e) { /* (a bad colour is left out) */ } });
@@ -856,6 +882,7 @@ function reset(m) {
   G.best = best;
   area();
   render();
+  return setHero(m.hero); // (🏍️ the parts wait for his model's picture)
 }
 
 window.addEventListener('message', (e) => {

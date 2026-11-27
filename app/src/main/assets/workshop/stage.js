@@ -892,6 +892,8 @@ window.addEventListener('message', (e) => {
     case 'guestpos': placeGuest(m.where === 'top' ? 'top' : 'side'); break;
     case 'guestoff': guestQueue = guestQueue.then(guestOff); break;
     case 'ortho': ortho(m.req); break;
+    case 'nets': netsOf(m.req); break; // 📦 (28 Nov, F) the cardboard cutting sheet's pieces
+    case 'sprite': sprite(m.req, m.size); break; // 🏍️ (28 Nov, G) the model alone, see-through around it, for a game's hero
     case 'rec': if (m.on) recStart(m); else if (m.stop) recStop(); else recCancel(); break;
     case 'nudge': nudge(m); break;
     case 'xr': setXr(!!m.on); break;
@@ -2188,6 +2190,102 @@ function ortho(req) {
   look();
   resize();
   post({ t: 'ortho', req: String(req || ''), data: JSON.stringify({ size: s.toArray().map((v) => Math.round(v * 10) / 10), views }) });
+}
+
+// ------------------------------------------------------------------ 🏍️ (28 Nov, G) the model as a game's hero: alone, see-through around it
+
+/**
+ * The model by itself (his colours; no floor, backdrop, shadow catcher, second model, tape or labels), from the front-right and a
+ * little above, framed to fill a square, on a clear background: a PNG the game studio draws as the player. Nothing else changes.
+ */
+function sprite(req, size) {
+  const S = Math.max(96, Math.min(512, Math.round(+size || 320)));
+  for (const r of parts.values()) placePieces(r, 0);
+  const hide = [guestGroup, tourGroup, floor, catcher, buddyGroup, runway, skyGroup].map((o) => [o, o.visible]);
+  hide.forEach(([o]) => { o.visible = false; });
+  for (const mk of tape.marks) mk.visible = false;
+  if (tape.line) tape.line.visible = false;
+  if (sizeBox) sizeBox.visible = false;
+  const keep = { picked, isolated, xray, cutOn: cut.on, bg: scene.background, pr: renderer.getPixelRatio() };
+  picked = null; isolated = null; xray = false;
+  if (cut.on) { cut.on = false; cut.version++; }
+  look();
+  scene.background = null;
+  model.updateMatrixWorld(true);
+  const box = new THREE.Box3();
+  for (const r of parts.values()) for (const pc of r.pieces) {
+    if (hiddenPiece(r, pc)) continue;
+    pc.obj.traverse((x) => { if (x.isMesh && x.visible && !x.userData.isEdge) box.union(new THREE.Box3().setFromObject(x)); });
+  }
+  let png = '';
+  if (!box.isEmpty()) {
+    const c = box.getCenter(new THREE.Vector3()), rad = Math.max(0.5, box.getBoundingSphere(new THREE.Sphere()).radius);
+    const cam = new THREE.PerspectiveCamera(28, 1, rad * 0.05, rad * 40);
+    const dir = new THREE.Vector3(0.9, 0.42, 1).normalize();
+    cam.position.copy(c).add(dir.multiplyScalar(rad / Math.sin(THREE.MathUtils.degToRad(14)) * 1.02));
+    cam.lookAt(c);
+    cam.updateProjectionMatrix();
+    renderer.setPixelRatio(1);
+    renderer.setSize(S, S, false);
+    renderer.setClearColor(0x000000, 0);
+    renderer.render(scene, cam);
+    png = canvas.toDataURL('image/png');
+  }
+  // everything back as it was
+  scene.background = keep.bg;
+  hide.forEach(([o, v]) => { o.visible = v; });
+  for (const mk of tape.marks) mk.visible = true;
+  if (tape.line) tape.line.visible = true;
+  if (sizeBox) sizeBox.visible = true;
+  picked = keep.picked; isolated = keep.isolated; xray = keep.xray;
+  if (keep.cutOn) { cut.on = true; cut.version++; }
+  renderer.setPixelRatio(keep.pr);
+  for (const r of parts.values()) placePieces(r, ease(explodeK));
+  look();
+  resize();
+  post({ t: 'file', req: String(req || ''), kind: png ? 'png' : 'none', data: png ? png.slice(png.indexOf(',') + 1) : '' });
+}
+
+// ------------------------------------------------------------------ 📦 (28 Nov, F) the cardboard cutting sheet: the pieces a sheet makes
+
+/**
+ * Every visible piece that is a box (a rounded box too) or a straight cylinder, with its real size in cm (the model's own units,
+ * its scale included) and how many of the same; everything else is only counted (curves, spheres: not a flat-sheet shape).
+ * Jarvis unfolds them into nets on A4 pages (NetPlan / CardboardPdf). Sizes only: no code, no pictures.
+ */
+function netsOf(req) {
+  model.updateMatrixWorld(true);
+  const inv = model.matrixWorld.clone().invert();
+  const r1 = (v) => Math.round(v * 10) / 10;
+  const m4 = new THREE.Matrix4(), pos = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+  const groups = new Map(), otherNames = new Set();
+  let other = 0;
+  for (const r of parts.values()) {
+    for (const pc of r.pieces) {
+      if (hiddenPiece(r, pc)) continue;
+      const name = String(pc.label || r.label || r.id || '').slice(0, 40);
+      pc.obj.traverse((x) => {
+        if (!x.isMesh || x.userData.isEdge || !x.visible) return;
+        if (x.isInstancedMesh) { other += x.count || 1; otherNames.add(name); return; }
+        const g = x.geometry, P = g && g.parameters;
+        m4.multiplyMatrices(inv, x.matrixWorld).decompose(pos, q, sc);
+        let it = null;
+        if (P && /BoxGeometry$/.test(g.type || '') && P.width > 0 && P.height > 0 && P.depth > 0) {
+          it = { k: 'box', w: r1(P.width * Math.abs(sc.x)), h: r1(P.height * Math.abs(sc.y)), d: r1(P.depth * Math.abs(sc.z)) };
+        } else if (P && g.type === 'CylinderGeometry' && Math.abs((P.radiusTop || 0) - (P.radiusBottom || 0)) < 1e-6 && P.radiusTop > 0
+          && Math.abs(Math.abs(sc.x) - Math.abs(sc.z)) <= 0.02 * Math.abs(sc.x) && (P.thetaLength === undefined || P.thetaLength > 6.28)) {
+          it = { k: 'cyl', r: r1(P.radiusTop * Math.abs(sc.x)), h: r1(P.height * Math.abs(sc.y)) };
+        }
+        if (!it || [it.w, it.h, it.d, it.r].some((v) => v !== undefined && !(v > 0))) { other++; otherNames.add(name); return; }
+        const dims = it.k === 'box' ? [it.w, it.h, it.d].sort((a, b) => b - a).join('x') : it.r + 'x' + it.h;
+        const key = it.k + '|' + dims + '|' + name;
+        const gk = groups.get(key);
+        if (gk) gk.n++; else groups.set(key, Object.assign({ name, n: 1 }, it));
+      });
+    }
+  }
+  const pieces = [...groups.values()].sort((a, b) => (b.k === 'box' ? b.w * b.h * b.d : Math.PI * b.r * b.r * b.h) - (a.k === 'box' ? a.w * a.h * a.d : Math.PI * a.r * a.r * a.h)).slice(0, 60);
+  post({ t: 'nets', req: String(req || ''), data: JSON.stringify({ pieces, other, otherNames: [...otherNames].slice(0, 20) }) });
 }
 
 // ------------------------------------------------------------------ 🎞️ (4) the show as a video: what he sees, with the line said
