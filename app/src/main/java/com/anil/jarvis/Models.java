@@ -110,18 +110,27 @@ final class Models {
         }
     }
 
-    /** Venice's text models for his key; the uncensored ones first (his choice is still his: nothing is picked for him). */
+    /**
+     * Venice's text models for his key; the uncensored ones first (also "abliterated" / "heretic" ones), each with its privacy
+     * (Private / Anonymized) so he sees which work with a "Private models only" key. His choice is still his: nothing is picked.
+     */
     private static void venice(String key, List<Item> out) throws Exception {
         JSONObject res = Http.get(FreeBrain.BASE + "/models?type=text", "Authorization", "Bearer " + key.replaceAll("[^\\x21-\\x7E]", ""));
         JSONArray data = res.optJSONArray("data");
+        Usage.venicePrices(data); // (each model's own price, for the cost meter)
         for (int i = 0; data != null && i < data.length(); i++) {
             JSONObject o = data.getJSONObject(i);
             String id = o.optString("id");
             if (id.isEmpty()) continue;
             JSONObject spec = o.optJSONObject("model_spec");
             String name = spec == null ? "" : spec.optString("name");
-            boolean free = id.toLowerCase(Locale.ROOT).contains("uncensored") || name.toLowerCase(Locale.ROOT).contains("uncensored");
-            out.add(new Item(VENICE, id, free ? "🔓 " + name : name, (free ? 1_000_000 : 0) - i));
+            String all = o.toString().toLowerCase(Locale.ROOT);
+            boolean free = all.contains("uncensored") || all.contains("abliterat") || all.contains("heretic");
+            String privacy = spec == null ? "" : spec.optString("privacy", "");
+            boolean e2ee = id.toLowerCase(Locale.ROOT).startsWith("e2ee-");
+            String label = (free ? "🔓 " : "") + (name.isEmpty() ? id : name) + (privacy.isEmpty() ? "" : " · " + privacy)
+                    + (e2ee ? " · E2EE (ప్రత్యేక తాళం: Jarvis లో పనిచేయకపోవచ్చు)" : "");
+            out.add(new Item(VENICE, id, label, (free ? 1_000_000 : 0) - i));
         }
     }
 

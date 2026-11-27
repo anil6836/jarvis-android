@@ -100,7 +100,10 @@ final class FreeBrain {
             List<String> ids = models(k);
             if (!ids.contains(m)) {
                 StringBuilder un = new StringBuilder();
-                for (String id : ids) if (id.toLowerCase(Locale.ROOT).contains("uncensored")) { if (un.length() > 0) un.append(", "); un.append(id); }
+                for (String id : ids) {
+                    String low = id.toLowerCase(Locale.ROOT);
+                    if (low.contains("uncensored") || low.contains("abliterat") || low.contains("heretic")) { if (un.length() > 0) un.append(", "); un.append(id); }
+                }
                 return "\"" + m + "\" మోడల్ Venice లిస్ట్‌లో లేదు (పేరు మారి ఉండొచ్చు)."
                         + (un.length() > 0 ? " uncensored ఉన్నవి: " + un + "." : "") + " సెట్టింగ్స్‌లో ఒకటి ఎంచుకోండి. మామూలు మెదడుతోనే ఉన్నాను.";
             }
@@ -119,6 +122,7 @@ final class FreeBrain {
         JSONObject res = Http.get(BASE + "/models?type=text", "Authorization", "Bearer " + key);
         List<String> out = new ArrayList<>();
         JSONArray d = res.optJSONArray("data");
+        Usage.venicePrices(d); // (each model's own price, for the cost meter)
         for (int i = 0; d != null && i < d.length(); i++) {
             String id = d.optJSONObject(i) == null ? "" : d.optJSONObject(i).optString("id");
             if (!id.isEmpty()) out.add(id);

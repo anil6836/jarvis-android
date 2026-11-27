@@ -125,7 +125,11 @@ final class Usage {
             } else if (url.contains("api.venice.ai/api/v1/chat/completions")) { // 🔓 the free brain
                 JSONObject u = res.optJSONObject("usage");
                 if (u == null) return;
-                add(VENICE, res.optString("model"), u.optLong("prompt_tokens"), 0, u.optLong("completion_tokens"), 0);
+                String model = res.optString("model");
+                long in = u.optLong("prompt_tokens"), out = u.optLong("completion_tokens");
+                double[] vp = venicePrice(model);
+                if (vp != null) record(VENICE, in, out, (Math.max(0, in) * vp[0] + Math.max(0, out) * vp[1]) / 1e6); // (Venice's own price for it)
+                else add(VENICE, model, in, 0, out, 0);
             } else if (url.contains("api.openai.com/v1/chat/completions")) {
                 JSONObject u = res.optJSONObject("usage");
                 if (u == null) return;
@@ -143,6 +147,33 @@ final class Usage {
                 add(ANTHROPIC, model, in, cached, u.optLong("output_tokens"), searches * WEB_SEARCH);
             }
         } catch (Exception ignored) {}
+    }
+
+    /** 🔓 Venice's price for each of its models (USD per million tokens, from its model list), kept for the cost meter. */
+    static void venicePrices(JSONArray data) {
+        SharedPreferences sp = sp();
+        if (sp == null || data == null) return;
+        SharedPreferences.Editor e = sp.edit();
+        for (int i = 0; i < data.length(); i++) {
+            JSONObject o = data.optJSONObject(i);
+            JSONObject spec = o == null ? null : o.optJSONObject("model_spec");
+            JSONObject pr = spec == null ? null : spec.optJSONObject("pricing");
+            if (pr == null) continue;
+            JSONObject in = pr.optJSONObject("input"), out = pr.optJSONObject("output");
+            double a = in == null ? Double.NaN : in.optDouble("usd", Double.NaN), b = out == null ? Double.NaN : out.optDouble("usd", Double.NaN);
+            if (Double.isNaN(a) || Double.isNaN(b) || a < 0 || b < 0) continue;
+            e.putString("vp_" + o.optString("id"), a + "," + b);
+        }
+        e.apply();
+    }
+
+    private static double[] venicePrice(String model) {
+        SharedPreferences sp = sp();
+        if (sp == null || model == null || model.isEmpty()) return null;
+        String v = sp.getString("vp_" + model, "");
+        int c = v.indexOf(',');
+        if (c < 0) return null;
+        try { return new double[]{Double.parseDouble(v.substring(0, c)), Double.parseDouble(v.substring(c + 1))}; } catch (Exception ex) { return null; }
     }
 
     /** A Live (realtime) reply: text and audio tokens are priced differently. */
