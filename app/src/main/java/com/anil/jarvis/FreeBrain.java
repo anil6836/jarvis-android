@@ -51,6 +51,12 @@ final class FreeBrain {
 
     static void off() { on = false; }
 
+    /** How long until it goes back to the normal brain by itself (0: it is off). For the switch on the chat screen. */
+    static long leftMs(Context c) {
+        if (!on(c)) return 0;
+        return Math.max(0, IDLE_MS - (SystemClock.elapsedRealtime() - lastUse));
+    }
+
     /** "Google Gemini, gemini-3-flash-preview": his normal brain, by its exact name. */
     static String normalName(Prefs p) {
         String co = p.isGemini() ? "Google Gemini" : p.isOpenAi() ? "OpenAI" : "Anthropic Claude";

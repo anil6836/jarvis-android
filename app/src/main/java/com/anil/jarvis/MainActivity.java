@@ -376,6 +376,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         if (home != null || car != null) fullScreen();
         main.removeCallbacks(cancelIfAway);
         store.listener = this;
+        refreshBrainPill(); // (🔓 a Venice key saved / emptied in Settings: the switch comes / goes)
         // Opening Jarvis switches the wake word back on after "ఆపు" in the notification.
         if (prefs.wakePaused()) prefs.setWakePaused(false);
         Reminders.scheduleBriefing(this);
@@ -463,6 +464,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     @Override protected void onDestroy() {
         if (front == this) front = null;
+        main.removeCallbacks(brainTick);
         if (lookUi != null) lookUi.destroy();
         if (homeNow == this) homeNow = null;
         if (car != null) car.destroy(); // (🗺️ the car map's workers end with this screen)
@@ -957,6 +959,28 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
         attachRow.setVisibility(View.GONE);
         dock.addView(attachRow);
 
+        // 🔓 the brain switch (Anil, 28 Nov 2026: "వాయిస్ తో పాటు on off button"): only with a Venice key, phone only
+        brainPill = new LinearLayout(this);
+        brainPill.setGravity(Gravity.CENTER_VERTICAL);
+        brainPill.setPadding(0, 0, 0, dp(8));
+        LinearLayout seg = new LinearLayout(this);
+        seg.setBackground(Ui.round(this, 0x1AFFFFFF, 0x33FFFFFF, 999));
+        seg.setPadding(dp(3), dp(3), dp(3), dp(3));
+        brainNormal = brainSegment(seg, "🧠 మామూలు");
+        brainNormal.setContentDescription("సాధారణ మెదడుకి మారు");
+        brainNormal.setOnClickListener(v -> tapBrain(false));
+        brainFree = brainSegment(seg, "🔓 స్వేచ్ఛ");
+        brainFree.setContentDescription("స్వేచ్ఛ మెదడుకి మారు");
+        brainFree.setOnClickListener(v -> tapBrain(true));
+        brainPill.addView(seg, new LinearLayout.LayoutParams(-2, -2));
+        brainNote = Ui.text(this, "", 12.5f, Ui.FAINT);
+        brainNote.setSingleLine(true);
+        brainNote.setEllipsize(TextUtils.TruncateAt.END);
+        brainNote.setPadding(dp(10), 0, dp(4), 0);
+        brainPill.addView(brainNote, new LinearLayout.LayoutParams(0, -2, 1));
+        brainPill.setVisibility(View.GONE);
+        dock.addView(brainPill);
+
         // like ChatGPT: [+] message [mic] [blue Live button], all in one rounded box
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -1135,6 +1159,69 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
 
     private void addAction(LinearLayout chips, String emoji, String label, Runnable action) {
         chip(chips, emoji, label).setOnClickListener(v -> action.run());
+    }
+
+    // ================================================================ 🔓 the brain switch over the message box
+
+    private LinearLayout brainPill;   // 🧠 మామూలు | 🔓 స్వేచ్ఛ (only with a Venice key, phone only)
+    private TextView brainNormal, brainFree, brainNote;
+    private boolean brainSwitching;   // (the free side asks Venice once before it turns on)
+    private final Runnable brainTick = this::refreshBrainPill; // (back to the normal brain by itself after 30 min: the switch shows it)
+
+    private TextView brainSegment(LinearLayout seg, String label) {
+        TextView t = Ui.text(this, label, 13.5f, Ui.MUTED);
+        t.setSingleLine(true);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(dp(14), dp(6), dp(14), dp(6));
+        seg.addView(t, new LinearLayout.LayoutParams(-2, -2));
+        return t;
+    }
+
+    /** The switch shows the brain the next answer comes from (hidden without a Venice key, and on the tablet / car box). */
+    private void refreshBrainPill() {
+        if (brainPill == null) return;
+        main.removeCallbacks(brainTick);
+        boolean show = Workshop.here(this) && !FreeBrain.key(this).isEmpty();
+        brainPill.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (!show) return;
+        boolean freeOn = FreeBrain.on(this);
+        brainNormal.setBackground(freeOn ? null : Ui.grad(this, new int[]{Ui.alpha(Ui.C_BLUE, 0xCC), Ui.alpha(Ui.C_CYAN, 0x99)}, 999, null));
+        brainNormal.setTextColor(freeOn ? Ui.MUTED : 0xFFFFFFFF);
+        brainFree.setBackground(freeOn ? Ui.grad(this, new int[]{Ui.alpha(Ui.C_PINK, 0xCC), 0xAA8B5CF6 /* (a fixed violet: the theme's second colour can be gold) */}, 999, null) : null);
+        brainFree.setTextColor(freeOn ? 0xFFFFFFFF : Ui.MUTED);
+        if (brainSwitching) brainNote.setText("Venice చూస్తోంది…");
+        else if (freeOn) brainNote.setText(FreeBrain.model(this));
+        else brainNote.setText("");
+        if (freeOn) main.postDelayed(brainTick, FreeBrain.leftMs(this) + 1000);
+    }
+
+    /** A tap on the switch: the same switch as saying it (the same checks, the same lines), its line in the chat, not said aloud. */
+    private void tapBrain(boolean toFree) {
+        if (brainSwitching) return;
+        if (toFree == FreeBrain.on(this)) return; // (already there)
+        if (busy) {
+            Toast.makeText(this, "Jarvis ఇంకా జవాబిస్తున్నాడు. అయ్యాక మళ్లీ నొక్కండి.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        brainSwitching = true;
+        refreshBrainPill();
+        final android.content.Context app = getApplicationContext();
+        new Thread(() -> {
+            String said;
+            try {
+                said = FreeBrain.command(app, toFree ? FreeWords.TO_FREE : FreeWords.TO_NORMAL);
+            } catch (Exception e) {
+                said = "మెదడు మారలేదు (" + e.getClass().getSimpleName() + "). మళ్ళీ నొక్కండి.";
+            }
+            final String brainLine = said;
+            main.post(() -> {
+                brainSwitching = false;
+                if (isFinishing() || isDestroyed()) return;
+                store.addChat("assistant", brainLine, false);
+                addMessage("assistant", brainLine, System.currentTimeMillis(), null);
+                refreshBrainPill();
+            });
+        }, "brain-switch").start();
     }
 
     /** A question from outside (a notification, the features screen): into Live when it is running, else a normal turn. */
@@ -2878,6 +2965,7 @@ public class MainActivity extends Activity implements Tools.Host, VoiceIO.Listen
     private void onReply(int gen, String reply, String error, String early) {
         if (gen != generation) return; // Anil stopped this one
         busy = false;
+        refreshBrainPill(); // (🔓 a spoken switch, or the free brain's 30 minutes starting again)
         if (error == null && (reply == null || reply.trim().isEmpty())) error = Brain.EMPTY; // (never a silent, stuck turn)
         showHeldReply();
         // ⚡ E: the words wait for the voice (they come on the screen together; 2.5 s at most); ⚡ B: the voice already began
