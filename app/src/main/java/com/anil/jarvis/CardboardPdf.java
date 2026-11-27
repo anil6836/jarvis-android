@@ -26,7 +26,9 @@ final class CardboardPdf {
     static final float PT = 72f / 25.4f;              // points in a millimetre
     private static final int PW = 595, PH = 842;      // A4 portrait
     private static final float M = 28;                // page margin (pt)
-    private static final int MAX_PAGES = 40;
+    private static final int MAX_PAGES = 24;
+    /** A piece smaller than this (cm, its longest side) is too fiddly to cut from cardboard: left out (and counted). */
+    static final double TINY_CM = 1.5;
 
     /** One kind of piece from the stage, with how many and its sheet. */
     static final class Piece {
@@ -46,13 +48,13 @@ final class CardboardPdf {
             String size, kind;
             if ("box".equals(k)) {
                 double w = p.optDouble("w", 0), h = p.optDouble("h", 0), d = p.optDouble("d", 0);
-                if (!(w > 0 && h > 0 && d > 0) || Math.max(w, Math.max(h, d)) > 400) continue;
+                if (!(w > 0 && h > 0 && d > 0) || Math.max(w, Math.max(h, d)) > 400 || Math.max(w, Math.max(h, d)) < TINY_CM) continue;
                 plan = NetPlan.of("box", w, h, d);
                 size = NetPlan.cm(w * 10) + " × " + NetPlan.cm(h * 10) + " × " + NetPlan.cm(d * 10);
                 kind = plan != null && plan.tabs.isEmpty() ? "పలక" : "డబ్బా";
             } else if ("cyl".equals(k)) {
                 double r = p.optDouble("r", 0), h = p.optDouble("h", 0);
-                if (!(r > 0 && h > 0) || Math.max(r, h) > 400) continue;
+                if (!(r > 0 && h > 0) || Math.max(r, h) > 400 || Math.max(2 * r, h) < TINY_CM) continue;
                 plan = NetPlan.of("cyl", r, h, 0);
                 size = "⌀ " + NetPlan.cm(r * 20) + " × " + NetPlan.cm(h * 10);
                 kind = plan != null && plan.labels.size() == 1 ? "గుండ్రం" : "గొట్టం";
@@ -62,6 +64,14 @@ final class CardboardPdf {
             out.add(new Piece(name.isEmpty() ? "భాగం " + (out.size() + 1) : Workshop.cap(name, 40), kind, size, Math.max(1, Math.min(999, p.optInt("n", 1))), plan));
         }
         return out;
+    }
+
+    /** How many box / tube pieces the sheet leaves out: too small to cut (under TINY_CM), or past the page limit. Pure. */
+    static int leftOut(JSONObject data, int used) {
+        JSONArray ps = data == null ? null : data.optJSONArray("pieces");
+        int all = 0;
+        for (int i = 0; ps != null && i < ps.length(); i++) { JSONObject p = ps.optJSONObject(i); if (p != null) all += 1; }
+        return Math.max(0, all - used);
     }
 
     /** The scale a sheet is drawn at on a page (1 = its real size). */
@@ -115,6 +125,12 @@ final class CardboardPdf {
             y += 16;
         }
         if (rowsOnCover < ps.size()) { ink.setColor(0xFF4A5868); c.drawText("… ఇంకా " + (ps.size() - rowsOnCover) + " (తర్వాతి పేజీల్లో)", cx[1], y, ink); y += 16; }
+        int small = leftOut(data, ps.size());
+        if (small > 0) {
+            ink.setColor(0xFF4A5868);
+            y = wrap(c, ink, "✂️ ఇంకా " + small + " రకాల చిన్న ముక్కలు (1.5 సెం.మీ లోపు, లేదా " + MAX_PAGES + " పేజీల తర్వాతివి) పెట్టలేదు: అవి అట్టతో కాకుండా చేత్తో / స్ట్రాలతో చేయడం సులువు.",
+                    M, y + 6, PW - 2 * M, 13);
+        }
         int other = data.optInt("other", 0);
         if (other > 0) {
             JSONArray on = data.optJSONArray("otherNames");
