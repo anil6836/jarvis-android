@@ -192,6 +192,7 @@ public class Panel extends Activity {
             case "medical": title = "🩸 మెడికల్ కార్డ్"; break;
             case "focus": title = "🎯 ఫోకస్"; break;
             case "sleep": title = "😴 నిద్ర"; break;
+            case "laptop": title = "💻 ల్యాప్‌టాప్"; break;
             default: title = "📊 స్టేటస్";
         }
         TextView t = WUi.text(this, title, 15, Theme.accent, true);
@@ -216,6 +217,7 @@ public class Panel extends Activity {
                 case "medical": medical(); break;
                 case "focus": focus(); break;
                 case "sleep": sleep(); break;
+                case "laptop": laptop(); break;
                 default: status();
             }
         } catch (Exception e) {
@@ -660,6 +662,40 @@ public class Panel extends Activity {
         button("🏠 ఇంటికి", 0xFF0E3A4A, v -> { try { act(new JSONObject().put("what", "journey").put("on", true).put("place", "ఇల్లు")); } catch (Exception ignored) {} showToast("మొదలుపెడుతున్నాను…"); });
         button("🏍️ డ్యూటీకి", 0xFF0E3A4A, v -> { try { act(new JSONObject().put("what", "journey").put("on", true).put("place", "డ్యూటీ")); } catch (Exception ignored) {} showToast("మొదలుపెడుతున్నాను…"); });
         button("🎙️ చెప్పండి", 0xFF0B2230, v -> listen("journey"));
+    }
+
+    /** W83: Jarvis PC on his laptop, through the phone (the phone's link; the watch never holds the key). */
+    private void laptop() {
+        if (data == null) { waiting(); return; }
+        if (!data.optBoolean("paired")) { line("ల్యాప్‌టాప్ ఇంకా జత కాలేదు: ఫోన్‌లో ⚙️ → 💻 ల్యాప్‌టాప్ జత", WUi.MUTED); return; }
+        line("💻 " + data.optString("name"), WUi.TEXT);
+        StringBuilder st = new StringBuilder();
+        if (data.has("batt")) st.append("🔋 ").append(data.optInt("batt")).append('%').append(data.optBoolean("charging") ? " ⚡" : "");
+        if (data.has("vol")) st.append(st.length() > 0 ? " · " : "").append(data.optBoolean("muted") ? "🔇 " : "🔊 ").append(data.optInt("vol")).append('%');
+        if (st.length() > 0) line(st.toString(), WUi.MUTED);
+        row(new String[]{"📊 చూడు", "🔒 లాక్"}, new View.OnClickListener[]{v -> lap("status", null, false), v -> lap("lock", null, false)});
+        row(new String[]{"⏮", "⏯", "⏭"}, new View.OnClickListener[]{
+                v -> lap("media", kv("key", "previous"), false), v -> lap("media", kv("key", "play_pause"), false), v -> lap("media", kv("key", "next"), false)});
+        row(new String[]{"🔉", "🔊", "🔇"}, new View.OnClickListener[]{
+                v -> lap("volume", kv("step", -10), false), v -> lap("volume", kv("step", 10), false), v -> lap("volume", kv("mute", true), false)});
+        TextView nap = button("😴 నిద్రపుచ్చు", 0xFF3B2A0B, null);
+        nap.setOnClickListener(v -> { if (second("lap_sleep", nap, "😴 నిద్రకి మళ్లీ నొక్కండి")) lap("sleep", null, true); });
+        button("🎙️ ల్యాప్‌టాప్‌కి చెప్పండి", 0xFF0B2230, v -> listen("laptop"));
+        line("షట్‌డౌన్ / రీస్టార్ట్: 🎙️ తో చెప్పండి (అడిగాకే)", WUi.FAINT);
+    }
+
+    private static JSONObject kv(String k, Object v) {
+        try { return new JSONObject().put(k, v); } catch (Exception e) { return new JSONObject(); }
+    }
+
+    private void lap(String job, JSONObject args, boolean confirmed) {
+        try {
+            JSONObject o = new JSONObject().put("what", "laptop").put("job", job).put("args", args == null ? new JSONObject() : args);
+            if (confirmed) o.put("confirmed", true);
+            act(o);
+        } catch (Exception ignored) {}
+        Talk.buzz(this, 15);
+        showToast(Link.ok ? "💻 ల్యాప్‌టాప్‌కి పంపాను…" : "ఫోన్ అందడం లేదు (Bluetooth?)");
     }
 
     private void diary() {

@@ -18,7 +18,7 @@ import java.util.List;
  * do things (P_DO): the status (W22), the duty with its bag and handover notes (W24), habits and missions to tick (W34),
  * the home's lights and fans (W35, his saved Alexa routine links), the cooker count (W33) and the morning (W23).
  * A timer asked on the watch runs on the watch (P_TIMER). Everything here is quick and needs no AI. Phase 4: the body
- * scan (W25), today's walking (W31) and the breathing done (W30).
+ * scan (W25), today's walking (W31) and the breathing done (W30). W83 (28 Nov): 💻 the laptop's jobs through the phone.
  */
 final class WatchDo {
     private WatchDo() {}
@@ -57,6 +57,7 @@ final class WatchDo {
             case "duty": return duty(c);
             case "tasks": return tasks(c);
             case "home": return home(c);
+            case "laptop": return Laptop.panel(c); // W83: the laptop's name and its last battery / sound (no network)
             case "cooker": {
                 JSONObject k = Sounds.cookerStatus(c);
                 return new JSONObject().put("kind", "cooker").put("counting", Sounds.cookerActive(c))
@@ -139,6 +140,13 @@ final class WatchDo {
         String what = o.optString("what");
         switch (what) {
             case "sp_power": WorkshopShow.watchPower(o.optDouble("v", 0)); return; // ⌚ (I) the bezel turned: a showpiece's power
+            case "laptop": { // W83: a laptop job from the wrist (lock / music / volume / status; sleep only after his second tap there)
+                String job = o.optString("job");
+                JSONObject args = o.optJSONObject("args");
+                Laptop.Result r = Laptop.cmd(app, job, args == null ? new JSONObject() : args, o.optBoolean("confirmed", false));
+                WatchHub.send(app, P_PANEL, Laptop.panel(app).put("toast", r.line));
+                return;
+            }
             case "morning": {
                 WatchHub.state(app, "thinking", null, null, "☀️ ఈరోజు సంగతులు చూస్తున్నాను…"); // (the watch knows it is coming)
                 String t = Morning.text(app);

@@ -12,12 +12,17 @@ import android.graphics.Paint;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.InputType;
 import android.view.View;
 import android.view.WindowManager;
+import android.view.inputmethod.EditorInfo;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+
+import org.json.JSONObject;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -28,15 +33,18 @@ import java.util.concurrent.Executors;
 /**
  * 💻 ల్యాప్‌టాప్ జత: this phone ↔ Jarvis PC on his laptop. The laptop shows a QR (Jarvis PC → ⚙️ → 📱 ఫోన్ జత → QR
  * తయారుచేయి); this screen reads it with the phone's own QR reader (never an AI; screenshots blocked while the camera is on),
- * says hello and waits for "జత అయింది". Then: "is the laptop on?" and unpairing. Phone only; ₹0, no AI.
+ * says hello and waits for "జత అయింది". Then: "is the laptop on?" and unpairing. Phase 2 (28 Nov): 💻 ల్యాప్‌టాప్ పనులు:
+ * battery / sound, lock, music, volume, ⏻ sleep / shutdown / restart (asked here first) and "ల్యాప్‌టాప్‌కి చెప్పండి" (a free
+ * sentence for Jarvis PC's own brain). Phone only; this screen itself is ₹0, no AI (the laptop's brain is his PC's).
  */
 public class PcLinkActivity extends Activity {
     static final String EXTRA_CHECK = "check", EXTRA_JUST_SCANNED = "scanned";
     private static final int REQ_CAM = 83;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService work = Executors.newSingleThreadExecutor(), light = Executors.newSingleThreadExecutor();
-    private TextView msg, state, scanBtn;
-    private LinearLayout pairedRow, retryRow, camBox;
+    private TextView msg, state, scanBtn, stLine;
+    private LinearLayout pairedRow, retryRow, camBox, jobsCard;
+    private EditText sayBox;
     private CamView cam;
     private boolean scanning, busy, decoding;
 
@@ -74,6 +82,43 @@ public class PcLinkActivity extends Activity {
         retryRow.addView(button("🔁 మళ్లీ ప్రయత్నించు", v -> hello()));
         retryRow.addView(button("🗑️ ఈ QR వద్దు", v -> { Laptop.forget(this); say(""); refresh(); }));
 
+        // phase 2: jobs for the laptop
+        jobsCard = card(box, "💻 ల్యాప్‌టాప్ పనులు");
+        stLine = Ui.text(this, "", 14, Ui.TEXT);
+        jobsCard.addView(stLine);
+        LinearLayout j1 = row(jobsCard);
+        j1.addView(button("📊 బ్యాటరీ / సౌండ్", v -> job("status", null, false)));
+        j1.addView(button("🔒 లాక్", v -> job("lock", null, false)));
+        LinearLayout j2 = row(jobsCard);
+        j2.addView(button("⏮", v -> job("media", kv("key", "previous"), false)));
+        j2.addView(button("⏯", v -> job("media", kv("key", "play_pause"), false)));
+        j2.addView(button("⏭", v -> job("media", kv("key", "next"), false)));
+        j2.addView(button("⏻ పవర్", v -> askPower()));
+        LinearLayout j3 = row(jobsCard);
+        j3.addView(button("🔉 −10", v -> job("volume", kv("step", -10), false)));
+        j3.addView(button("🔊 +10", v -> job("volume", kv("step", 10), false)));
+        j3.addView(button("🔇", v -> job("volume", kv("mute", true), false)));
+        sayBox = new EditText(this);
+        sayBox.setHint("ల్యాప్‌టాప్‌కి చెప్పండి… (ఉదా: YouTube లో తెలుగు పాటలు పెట్టు)");
+        sayBox.setTextColor(0xFFFFFFFF);
+        sayBox.setHintTextColor(Ui.MUTED);
+        sayBox.setTextSize(15);
+        sayBox.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        sayBox.setImeOptions(EditorInfo.IME_ACTION_SEND);
+        sayBox.setOnEditorActionListener((v, id, ev) -> { if (id == EditorInfo.IME_ACTION_SEND) { sendAsk(); return true; } return false; });
+        sayBox.setBackground(Ui.round(this, 0x22000000, Ui.alpha(Ui.CYAN, 0x66), 10));
+        sayBox.setPadding(dp(12), dp(10), dp(12), dp(10));
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-1, -2);
+        sl.topMargin = dp(12);
+        jobsCard.addView(sayBox, sl);
+        LinearLayout j4 = row(jobsCard);
+        j4.addView(button("➤ పంపు", v -> sendAsk()));
+        TextView jn = Ui.text(this, "మాటతో కూడా: \"Jarvis, ల్యాప్‌టాప్ లాక్ చేయి\", \"ల్యాప్‌టాప్‌లో YouTube తెలుగు పాటలు పెట్టు\". వాచ్‌లో: ⌚ → 💻 ల్యాప్‌టాప్. "
+                + "నిద్ర / షట్‌డౌన్ / రీస్టార్ట్ మిమ్మల్ని అడిగాకే; షట్‌డౌన్ / రీస్టార్ట్ కి లాప్‌టాప్ Settings లో \"ఫోన్ నుంచి shutdown / restart\" ఆన్ ఉండాలి. "
+                + "బ్యాంక్ / పేమెంట్ యాప్‌లు, పాస్‌వర్డ్ / OTP లాప్‌టాప్ చేయదు.", 12.5f, Ui.MUTED);
+        jn.setPadding(0, dp(8), 0, 0);
+        jobsCard.addView(jn);
+
         // the QR
         LinearLayout qc = card(box, "📷 QR తో జత");
         qc.addView(Ui.text(this, "1) లాప్‌టాప్‌లో Jarvis PC తెరిచి ⚙️ Settings → 📱 ఫోన్ జత → \"🔲 QR తయారుచేయి\" నొక్కండి.\n"
@@ -92,8 +137,8 @@ public class PcLinkActivity extends Activity {
 
         // what it does
         LinearLayout wc = card(box, "ఇది ఏం చేస్తుంది");
-        wc.addView(Ui.text(this, "✅ ఇప్పుడు: జత చేయడం, \"ల్యాప్‌టాప్ ఆన్‌లో ఉందా?\" (మాటతో కూడా), జత తీసేయడం.\n"
-                + "🔜 త్వరలో (దశ 2): ఫోన్ / వాచ్ నుంచి లాప్‌టాప్ పనులు (లాక్ చేయి, యాప్ తెరువు…), మిమ్మల్ని అడిగాకే.\n"
+        wc.addView(Ui.text(this, "✅ దశ 1: జత చేయడం, \"ల్యాప్‌టాప్ ఆన్‌లో ఉందా?\" (మాటతో కూడా), జత తీసేయడం.\n"
+                + "✅ దశ 2: ఫోన్ / వాచ్ నుంచి లాప్‌టాప్ పనులు (లాక్, సౌండ్, పాటలు, యాప్ తెరువు, YouTube…); నిద్ర / షట్‌డౌన్ మిమ్మల్ని అడిగాకే.\n"
                 + "🔜 త్వరలో (దశ 3): నోట్స్ / జ్ఞాపకాలు రెండింట్లో ఒకేలా.", 13.5f, Ui.MUTED));
 
         sc.addView(box);
@@ -144,6 +189,9 @@ public class PcLinkActivity extends Activity {
             state.setTextColor(Ui.TEXT);
         }
         pairedRow.setVisibility(ok ? View.VISIBLE : View.GONE);
+        jobsCard.setVisibility(ok ? View.VISIBLE : View.GONE);
+        String sl = Laptop.statusLine(this);
+        stLine.setText(sl.isEmpty() ? "📊 నొక్కితే లాప్‌టాప్ బ్యాటరీ, సౌండ్ చూపిస్తుంది." : sl + "  (" + when(Laptop.sp(this).getLong("st_at", 0)) + ")");
         retryRow.setVisibility(key && !ok && !busy ? View.VISIBLE : View.GONE);
         scanBtn.setText(scanning ? "✖ స్కాన్ ఆపు" : ok ? "📷 కొత్త QR తో మళ్లీ జత చేయి" : "📷 QR స్కాన్ చేయి");
     }
@@ -246,6 +294,54 @@ public class PcLinkActivity extends Activity {
             Laptop.Result r = Laptop.ping(app);
             main.post(() -> { busy = false; say(r.line); refresh(); });
         });
+    }
+
+    // ================================================================ phase 2: jobs
+
+    private static JSONObject kv(String k, Object v) {
+        try { return new JSONObject().put(k, v); } catch (Exception e) { return new JSONObject(); }
+    }
+
+    private void job(String action, JSONObject args, boolean confirmed) {
+        if (busy) return;
+        busy = true;
+        say("⏳ " + Laptop.label(this) + " కి పంపాను…");
+        final Context app = getApplicationContext();
+        work.execute(() -> {
+            Laptop.Result r = Laptop.cmd(app, action, args, confirmed);
+            main.post(() -> { busy = false; say(r.line); refresh(); });
+        });
+    }
+
+    private void sendAsk() {
+        String t = sayBox.getText().toString().trim();
+        if (t.isEmpty() || busy) return;
+        busy = true;
+        sayBox.setText("");
+        say("⏳ \"" + PcLink.clean(t, 60) + "\" ల్యాప్‌టాప్‌కి చెప్పాను…");
+        final Context app = getApplicationContext();
+        work.execute(() -> {
+            Laptop.Result r = Laptop.ask(app, t);
+            main.post(() -> { busy = false; say(r.line); refresh(); });
+        });
+    }
+
+    /** ⏻: sleep / shutdown / restart (each asked again) or stop a shutdown. */
+    private void askPower() {
+        String[] items = {"😴 నిద్ర (sleep)", "⏻ షట్‌డౌన్", "🔁 రీస్టార్ట్", "❌ షట్‌డౌన్ ఆపు"};
+        String[] acts = {"sleep", "shutdown", "restart", "cancel_shutdown"};
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("⏻ " + Laptop.label(this))
+                .setItems(items, (d, w) -> {
+                    String a = acts[w];
+                    if (!Laptop.needsYes(a)) { job(a, null, false); return; }
+                    String q = a.equals("sleep") ? "ల్యాప్‌టాప్‌ని నిద్రపుచ్చనా?" : a.equals("shutdown") ? "ల్యాప్‌టాప్‌ని ఆపేయనా (shutdown)?" : "ల్యాప్‌టాప్‌ని రీస్టార్ట్ చేయనా?";
+                    String more = a.equals("sleep") ? "తెరిచి ఉన్న పనులు అలాగే ఉంటాయి." : "సేవ్ చేయని పనులు పోవచ్చు. లాప్‌టాప్‌లో 60 సెకన్లు ❌ రద్దు అవకాశం ఉంటుంది "
+                            + "(ఇక్కడ \"❌ షట్‌డౌన్ ఆపు\" కూడా). లాప్‌టాప్ Settings లో \"ఫోన్ నుంచి shutdown / restart\" ఆన్ ఉండాలి.";
+                    new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(q).setMessage(more)
+                            .setPositiveButton("అవును", (d2, w2) -> job(a, null, true)).setNegativeButton("వద్దు", null).show();
+                })
+                .setNegativeButton("వద్దు", null).show();
     }
 
     private void askUnpair() {

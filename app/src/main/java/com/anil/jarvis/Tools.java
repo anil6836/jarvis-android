@@ -472,12 +472,31 @@ final class Tools {
                         {"dry_only", "boolean", "For schedule: water only when the soil is dry (default true)"},
                         {"on", "boolean", "For schedule: false = remove that daily time"}}, "action")));
         DEFS.add(new Def("laptop",
-                "💻 Jarvis PC on his Windows laptop, paired with this phone by a QR (phone only; ₹0, no AI). Actions: check (default) = "
-                        + "ask the laptop if it is on (up to 20 s; for 'ల్యాప్‌టాప్ ఆన్‌లో ఉందా?', 'లాప్‌టాప్ ఆన్ ఉందా?', 'Jarvis PC పని చేస్తోందా?'); "
-                        + "status = paired or not, which laptop, when it last answered (no sending); open = the 💻 ల్యాప్‌టాప్ జత screen (to pair "
-                        + "with the laptop's QR or to unpair: unpairing is done there by his tap). Controlling the laptop (lock, open apps…) is "
-                        + "NOT built yet (phase 2): if he asks for that, say so honestly in one line.",
-                schema(new String[][]{{"action", "string", "check (default), status or open"}}, "action")));
+                "💻 Jarvis PC on his Windows laptop, paired with this phone by a QR (phone, and the watch through the phone; the link "
+                        + "is ₹0, the laptop thinks with its own brain). Actions: check = is the laptop on (up to 20 s; 'ల్యాప్‌టాప్ ఆన్‌లో ఉందా?'); "
+                        + "status = paired or not, which laptop, when it last answered (no sending); open = the 💻 ల్యాప్‌టాప్ జత screen (pair "
+                        + "by QR, unpair by his tap there); do = one laptop job (job + its fields): status (battery and sound), lock, sleep, "
+                        + "shutdown, restart, cancel_shutdown, volume (to 0-100 | step ±n | mute true/false), media (key play_pause | next | "
+                        + "previous | stop), open_app / close_app (name in English: chrome, notepad, vlc…), youtube (query: plays the first "
+                        + "video in the laptop's browser), open_site (site: youtube / gmail / maps or an address), say (text shown and spoken "
+                        + "on the laptop); ask = anything else in his own words for the laptop's own brain (text), e.g. 'ఈ స్క్రీన్‌లో ఏముంది?', "
+                        + "'Downloads లో నిన్నటి PDF తెరువు'. sleep / shutdown / restart: ALWAYS with do (never ask): FIRST ask him "
+                        + "('ల్యాప్‌టాప్‌ని నిద్రపుచ్చనా Sir?') and only after his clear yes in this talk call do with confirmed = true. If the "
+                        + "laptop's answer is any other question, ask him in Telugu and send his reply with ask, text = his EXACT words ('అవును', "
+                        + "'వద్దు'), never 'Anil said …', never a summary, never a 'ల్యాప్‌టాప్‌కి:' prefix. Never for passwords, OTPs, PINs, "
+                        + "banking or payment apps (the laptop refuses them too). Use only when he means the LAPTOP (ల్యాప్‌టాప్ / కంప్యూటర్ / PC); "
+                        + "'YouTube పెట్టు' alone is the phone.",
+                schema(new String[][]{{"action", "string", "check (default), status, open, do or ask"},
+                        {"job", "string", "For do: status | lock | sleep | shutdown | restart | cancel_shutdown | volume | media | open_app | close_app | youtube | open_site | say"},
+                        {"to", "integer", "For do volume: set to 0-100"},
+                        {"step", "integer", "For do volume: up / down by this much (e.g. 10 or -10)"},
+                        {"mute", "boolean", "For do volume: true = mute, false = unmute"},
+                        {"key", "string", "For do media: play_pause | next | previous | stop"},
+                        {"name", "string", "For do open_app / close_app: the app's English name"},
+                        {"query", "string", "For do youtube: what to search and play"},
+                        {"site", "string", "For do open_site: youtube / gmail / maps or an address"},
+                        {"text", "string", "For do say: the words for the laptop. For ask: his request in his own words (Telugu is fine)"},
+                        {"confirmed", "boolean", "For do sleep / shutdown / restart: true only after he clearly said yes"}}, "action")));
         DEFS.add(new Def("money_advisor",
                 "💰 His personal money advisor (phone only; ₹0 except his own AI talk): his month from bank / UPI / card SMS counted on the phone. "
                         + "overview (default: this month in / out / saved, today's allowance, what to do first; for 'నా డబ్బు ఎలా ఉంది?', 'ఈ నెల ఎంత ఖర్చు'); "
@@ -1974,6 +1993,50 @@ final class Tools {
             return ok().put("paired", true).put("laptop", Laptop.name(c)).put("jarvis_pc_version", Laptop.pcApp(c))
                     .put("last_answer_minutes_ago", seen > 0 ? (System.currentTimeMillis() / 1000 - seen) / 60 : -1)
                     .put("next", "Say in one short Telugu line which laptop is paired and when it last answered (not whether it is on now).").toString();
+        }
+        if (ac.equals("do") || ac.equals("ask")) {
+            Laptop.Result r;
+            String job = a.optString("job", "").trim().toLowerCase(Locale.ROOT);
+            if (ac.equals("ask")) r = Laptop.ask(c, PcLink.forLaptop(a.optString("text", ""))); // (his words as he said them)
+            else {
+                if (!Laptop.known(job)) return err("unknown_job", "job must be one of: " + String.join(", ", Laptop.ACTIONS) + ". For anything else use action ask with his words.");
+                boolean yes = a.optBoolean("confirmed", false);
+                if (Laptop.needsYes(job) && !yes)
+                    return err("ask_first", "Ask him first in one short Telugu line (e.g. '" + (job.equals("sleep") ? "ల్యాప్‌టాప్‌ని నిద్రపుచ్చనా Sir?" : job.equals("shutdown")
+                            ? "ల్యాప్‌టాప్‌ని ఆపేయనా Sir? సేవ్ చేయని పనులు పోవచ్చు." : "ల్యాప్‌టాప్‌ని రీస్టార్ట్ చేయనా Sir?") + "'); only after his clear yes call again with confirmed = true.");
+                JSONObject args = new JSONObject();
+                switch (job) {
+                    case "volume":
+                        if (a.has("to")) args.put("to", Math.max(0, Math.min(100, a.optInt("to"))));
+                        else if (a.has("mute")) args.put("mute", a.optBoolean("mute"));
+                        else args.put("step", Math.max(-100, Math.min(100, a.optInt("step", 10))));
+                        break;
+                    case "media": args.put("key", a.optString("key", "play_pause")); break;
+                    case "open_app": case "close_app": args.put("name", a.optString("name", "")); break;
+                    case "youtube": args.put("query", a.optString("query", a.optString("text", ""))); break;
+                    case "open_site": args.put("site", a.optString("site", "")); break;
+                    case "say": args.put("text", PcLink.clean(a.optString("text", ""), 200)); break;
+                    default:
+                }
+                r = Laptop.cmd(c, job, args, yes);
+            }
+            JSONObject o = ok().put("done", r.ok).put("laptop", Laptop.name(c)).put("laptop_said", r.line);
+            if (!r.code.isEmpty()) o.put("code", r.code);
+            if (r.data != null) o.put("data", r.data);
+            String next;
+            switch (r.code) {
+                case "no_answer": case "no_net": case "unpaired":
+                    next = "Say honestly in one or two short Telugu lines what laptop_said says (off / asleep / no internet / Jarvis PC closed); never guess which."; break;
+                case "need_confirm":
+                    next = "The laptop wants his yes first: ask him laptop_said's question in Telugu; after his clear yes call do with confirmed = true for sleep / shutdown / restart, "
+                            + "otherwise ask with his exact reply as text."; break;
+                case "not_allowed":
+                    next = "Say laptop_said in Telugu. If it was shutdown / restart, add that the laptop's Settings switch 'ఫోన్ నుంచి shutdown / restart' is off (he can turn it on there); never try another way."; break;
+                default:
+                    next = r.ok ? "Say what the laptop did in one short Telugu line (use laptop_said; for status say the battery % and sound)."
+                            : "Say laptop_said in Telugu, honestly, in one or two short lines. If the laptop asked a question, ask him and send his reply with ask.";
+            }
+            return o.put("next", next).toString();
         }
         Laptop.Result r = Laptop.ping(c);
         return ok().put("on", r.ok).put("laptop", Laptop.name(c)).put("said", r.line)

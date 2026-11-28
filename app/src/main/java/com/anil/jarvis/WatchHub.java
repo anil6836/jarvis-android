@@ -719,6 +719,8 @@ final class WatchHub {
         }
         if ("note".equals(why) || "handover".equals(why) || "translate".equals(why) || "diary".equals(why)) { quick(app, text, why); return; }
         if ("journey".equals(why) && !text.contains("నాతో ఉండు")) text = "నాతో ఉండు: " + text; // (W81: said on the journey screen)
+        if ("laptop".equals(why) && !text.contains("ల్యాప్‌టాప్") && !text.contains("లాప్‌టాప్") && !text.toLowerCase(java.util.Locale.ROOT).contains("laptop"))
+            text = "ల్యాప్‌టాప్‌కి: " + text; // (W83: said on the watch's 💻 screen: for the laptop)
         talk(true);
         state(app, "thinking", text, null, null);
         WatchTalkActivity a = WatchTalkActivity.current;

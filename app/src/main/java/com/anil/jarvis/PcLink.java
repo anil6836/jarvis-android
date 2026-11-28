@@ -20,7 +20,8 @@ import java.util.regex.Pattern;
  * 💻 The phone's side of the messenger to Jarvis PC (jarvis-pc src/main/link.js; spec: jarvis-pc-plan.md "Phone ↔ PC link"):
  * the laptop's QR gives the key, words to the laptop go to its topic on ntfy.sh, its words come back on the phone's topic,
  * all locked with {@link PcCrypto}. Inside: {"v":1,"id":"16 hex","t":unix s,"k":kind,…}; a message is taken only once, and
- * only within 5 minutes of when it was sent (a bye at any age). Phase 1 kinds: hello / hello_ok, ping / pong, bye. Pure Java.
+ * only within 5 minutes of when it was sent (a bye at any age). Phase 1 kinds: hello / hello_ok, ping / pong, bye; phase 2:
+ * cmd / ask → result (the whole words stay in Msg.json, read with org.json on the phone). Pure Java.
  */
 final class PcLink {
     static String base = "https://ntfy.sh";
@@ -64,6 +65,24 @@ final class PcLink {
         String n;
         try { n = java.net.URLEncoder.encode(name, "UTF-8").replace("+", "%20"); } catch (Exception e) { n = ""; }
         return "jarvispc:1:" + Base64.getUrlEncoder().withoutPadding().encodeToString(key) + ":" + n;
+    }
+
+    /**
+     * His words for the laptop as he said them: a leading "ల్యాప్‌టాప్‌కి:" (the watch's 💻 screen adds it for the phone's
+     * brain) or "laptop:" is taken off, so his "అవును" reaches Jarvis PC as "అవును" (its yes check takes only a short yes).
+     */
+    static String forLaptop(String text) {
+        if (text == null) return "";
+        String t = text.trim();
+        String[] heads = {"ల్యాప్‌టాప్‌కి:", "ల్యాప్‌టాప్ కి:", "ల్యాప్‌టాప్‌కి :", "లాప్‌టాప్‌కి:", "laptop:", "to laptop:", "to the laptop:"};
+        boolean again = true;
+        while (again) {
+            again = false;
+            for (String h : heads) {
+                if (t.toLowerCase(java.util.Locale.ROOT).startsWith(h)) { t = t.substring(h.length()).trim(); again = true; }
+            }
+        }
+        return t;
     }
 
     /** One line of plain text, at most max characters (no control characters). */
@@ -113,9 +132,9 @@ final class PcLink {
 
     /** One message from the laptop, taken. */
     static final class Msg {
-        final String kind, id, name, app;
+        final String kind, id, name, app, json;
         final long t;
-        Msg(String kind, String id, long t, String name, String app) { this.kind = kind; this.id = id; this.t = t; this.name = name; this.app = app; }
+        Msg(String kind, String id, long t, String name, String app, String json) { this.kind = kind; this.id = id; this.t = t; this.name = name; this.app = app; this.json = json; }
     }
 
     /**
@@ -143,7 +162,7 @@ final class PcLink {
                 it.remove();
             }
         }
-        return new Msg(kind, id, t, clean(PlantLink.str(s, "name"), 40), clean(PlantLink.str(s, "app"), 24));
+        return new Msg(kind, id, t, clean(PlantLink.str(s, "name"), 40), clean(PlantLink.str(s, "app"), 24), s);
     }
 
     // ================================================================ the relay

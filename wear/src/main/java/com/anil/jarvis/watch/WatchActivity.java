@@ -135,7 +135,8 @@ public class WatchActivity extends Activity implements Talk.Screen {
                 {"📷 కెమెరా", "camera"}, {"🎙️ రికార్డ్", "record"},
                 {"💧 నీళ్లు", "water"}, {"⚡ ప్రోటోకాల్", "protocols"}, {"🛡️ నాతో ఉండు", "journey"}, {"🎯 ఫోకస్", "focus"},
                 {"🏋️ రెప్స్", "reps"}, {"📔 డైరీ", "diary"}, {"💰 ఖర్చు", "money"}, {"😴 నిద్ర", "sleep"},
-                {"📱 ఫోన్ ఎక్కడ?", "find_phone"}, {"🩸 మెడికల్", "medical"}}; // (phase 5)
+                {"📱 ఫోన్ ఎక్కడ?", "find_phone"}, {"🩸 మెడికల్", "medical"}, // (phase 5)
+                {"💻 ల్యాప్‌టాప్", "laptop"}}; // (W83: Jarvis PC on his laptop, through the phone)
         LinearLayout mrow = null;
         for (int i = 0; i < menu.length; i++) {
             if (i % 2 == 0) {
