@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
  * 💻 The phone's side of the messenger to Jarvis PC (jarvis-pc src/main/link.js; spec: jarvis-pc-plan.md "Phone ↔ PC link"):
  * the laptop's QR gives the key, words to the laptop go to its topic on ntfy.sh, its words come back on the phone's topic,
  * all locked with {@link PcCrypto}. Inside: {"v":1,"id":"16 hex","t":unix s,"k":kind,…}; a message is taken only once, and
- * only within 5 minutes of when it was sent. Phase 1 kinds: hello / hello_ok, ping / pong, bye. Pure Java (desk tests).
+ * only within 5 minutes of when it was sent (a bye at any age). Phase 1 kinds: hello / hello_ok, ping / pong, bye. Pure Java.
  */
 final class PcLink {
     static String base = "https://ntfy.sh";
@@ -120,7 +120,7 @@ final class PcLink {
 
     /**
      * The opened words → a message, or null when it must be dropped: not v 1, a bad or already seen id (seen gets this id),
-     * or sent more than 5 minutes away from the relay's time or from now.
+     * or (except a bye) sent more than 5 minutes away from the relay's time or from now.
      */
     static Msg accept(String json, long relayTime, long now, Set<String> seen) {
         if (json == null) return null;
@@ -130,7 +130,10 @@ final class PcLink {
         String id = PlantLink.str(s, "id"), kind = PlantLink.str(s, "k");
         if (id == null || !ID.matcher(id).matches() || kind == null || kind.isEmpty()) return null;
         long t = PlantLink.num(s, "t");
-        if (t <= 0 || Math.abs(t - relayTime) > WINDOW_S || Math.abs(now - t) > WINDOW_S) return null;
+        if (t <= 0) return null;
+        // a bye counts at any age (agreed with the PC side 28 Nov: an unpair on the laptop read late still unpairs here);
+        // it is still locked and still taken only once
+        if (!kind.equals("bye") && (Math.abs(t - relayTime) > WINDOW_S || Math.abs(now - t) > WINDOW_S)) return null;
         if (seen != null) {
             if (seen.contains(id)) return null;
             seen.add(id);

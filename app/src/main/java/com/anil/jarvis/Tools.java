@@ -1967,7 +1967,7 @@ final class Tools {
         }
         if (!Laptop.paired(c)) {
             return err("not_paired", "No laptop is paired yet. Say in two short Telugu lines: on the laptop open Jarvis PC → ⚙️ → 📱 ఫోన్ జత → "
-                    + "QR తయారుచేయి, and on the phone ⚙️ → 💻 ల్యాప్‌టాప్ జత → 📷 QR స్కాన్ చేయి (or ask Jarvis to open it).");
+                    + "🔲 QR తయారుచేయి, and on the phone ⚙️ → 💻 ల్యాప్‌టాప్ జత → 📷 QR స్కాన్ చేయి (or ask Jarvis to open it).");
         }
         if (ac.equals("status")) {
             long seen = Laptop.lastSeen(c);

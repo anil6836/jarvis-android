@@ -76,7 +76,7 @@ public class PcLinkActivity extends Activity {
 
         // the QR
         LinearLayout qc = card(box, "📷 QR తో జత");
-        qc.addView(Ui.text(this, "1) లాప్‌టాప్‌లో Jarvis PC తెరిచి ⚙️ Settings → 📱 ఫోన్ జత → \"QR తయారుచేయి\" నొక్కండి.\n"
+        qc.addView(Ui.text(this, "1) లాప్‌టాప్‌లో Jarvis PC తెరిచి ⚙️ Settings → 📱 ఫోన్ జత → \"🔲 QR తయారుచేయి\" నొక్కండి.\n"
                 + "2) కింద \"📷 QR స్కాన్ చేయి\" నొక్కి, ఫోన్ కెమెరాని లాప్‌టాప్ స్క్రీన్ మీద QR కి చూపించండి.\n"
                 + "3) ఫోన్‌లో, లాప్‌టాప్‌లో రెండింట్లో \"జత అయింది\" వస్తుంది.\n"
                 + "⚠️ ఆ QR ఒక తాళం: దాని ఫోటో తీయకండి, ఎవరికీ పంపకండి.", 13.5f, Ui.MUTED));
@@ -204,7 +204,7 @@ public class PcLinkActivity extends Activity {
 
     private void seen(String code) {
         if (!PcLink.isQr(code)) { // (some other QR: not shown, it may be anything)
-            if (!code.equals(lastWrong)) { lastWrong = code; say("ఇది Jarvis PC QR కాదు. లాప్‌టాప్‌లో \"QR తయారుచేయి\" నొక్కి వచ్చిన QR చూపించండి."); }
+            if (!code.equals(lastWrong)) { lastWrong = code; say("ఇది Jarvis PC QR కాదు. లాప్‌టాప్‌లో \"🔲 QR తయారుచేయి\" నొక్కి వచ్చిన QR చూపించండి."); }
             return;
         }
         PcLink.Qr q = PcLink.parseQr(code);
