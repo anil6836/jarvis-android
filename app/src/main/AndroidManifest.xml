@@ -598,6 +598,29 @@
             android:label="360° మోడల్"
             android:taskAffinity="com.anil.jarvis.camera"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
+        <!-- 📐 (A) the real 3D scan (ARCore depth on the phone), its kept model, and 🖼️ (C) the 3D photo -->
+        <activity
+            android:name=".RealScanActivity"
+            android:exported="false"
+            android:label="నిజమైన 3D స్కాన్"
+            android:taskAffinity="com.anil.jarvis.camera"
+            android:screenOrientation="portrait"
+            android:hardwareAccelerated="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
+        <activity
+            android:name=".RealModelActivity"
+            android:exported="false"
+            android:label="3D స్కాన్"
+            android:taskAffinity="com.anil.jarvis.camera"
+            android:hardwareAccelerated="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
+        <activity
+            android:name=".Photo3DActivity"
+            android:exported="false"
+            android:label="3D ఫోటో"
+            android:taskAffinity="com.anil.jarvis.camera"
+            android:hardwareAccelerated="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
         <activity
             android:name=".TourActivity"
             android:exported="false"

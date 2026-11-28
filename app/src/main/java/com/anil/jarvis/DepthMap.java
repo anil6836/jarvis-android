@@ -158,6 +158,28 @@ final class DepthMap implements AutoCloseable {
         return g;
     }
 
+    int width() { return inW; }
+    int height() { return inH; }
+
+    /** 🖼️ (C) The whole map at the model's own size (width() × height()), 0..1, 1 = nearest (for the 3D photo). */
+    float[] runFull(Bitmap pic) {
+        Bitmap b = pic.getWidth() == inW && pic.getHeight() == inH ? pic : Bitmap.createScaledBitmap(pic, inW, inH, true);
+        b.getPixels(px, 0, inW, 0, 0, inW, inH);
+        if (b != pic) b.recycle();
+        input.rewind();
+        for (int p : px) {
+            input.putFloat((((p >> 16) & 0xFF) / 255f - MEAN[0]) / STD[0]);
+            input.putFloat((((p >> 8) & 0xFF) / 255f - MEAN[1]) / STD[1]);
+            input.putFloat(((p & 0xFF) / 255f - MEAN[2]) / STD[2]);
+        }
+        input.rewind();
+        output.rewind();
+        tfl.run(input, output);
+        output.rewind();
+        output.asFloatBuffer().get(raw);
+        return HudMath.normalizeDepth(raw);
+    }
+
     @Override public void close() {
         try { tfl.close(); } catch (Exception ignored) {}
     }

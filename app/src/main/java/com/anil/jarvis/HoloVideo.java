@@ -61,6 +61,20 @@ final class HoloVideo {
         drain(false);
     }
 
+    /** 🖼️ One frame drawn the right way up (from a Canvas, not read back from OpenGL). */
+    void frameUpright(Bitmap b) {
+        Canvas c = input.lockHardwareCanvas();
+        try {
+            Matrix m = new Matrix();
+            m.setScale(w / (float) b.getWidth(), h / (float) b.getHeight());
+            c.drawColor(0xFF02070F);
+            c.drawBitmap(b, m, paint);
+        } finally {
+            input.unlockCanvasAndPost(c);
+        }
+        drain(false);
+    }
+
     void finish() {
         try {
             codec.signalEndOfInputStream();

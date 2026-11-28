@@ -139,6 +139,9 @@ public class ObjectActivity extends Activity {
         TextView kase = chip("📁 కేస్‌కి", false);
         kase.setOnClickListener(v -> CaseActivity.addTo(this, "scan", id, data.optString("title"), ScanStore.cut(data.optString("say"), 160)));
         chips.addView(kase);
+        TextView ws = chip("🧱 వర్క్‌షాప్ బొమ్మగా", false); // (B) these same photos → a clean model, part by part
+        ws.setOnClickListener(v -> toWorkshop());
+        chips.addView(ws);
         hs.addView(chips);
         page.addView(hs);
         setContentView(page);
@@ -150,6 +153,32 @@ public class ObjectActivity extends Activity {
         setInfo(data.optString("say") + sizeLine() + (data.optBoolean("bottom_seen") ? "" : "\n⬇️ కింద భాగం ఫోటో లేదు: ఆకారం మోడల్‌లో అది అంచనా (గీతలతో)."));
         work.execute(() -> { spin.load(this, id); main.post(() -> { if (!isFinishing()) { spin.invalidate(); } }); });
         main.post(tick);
+    }
+
+    /** 🧱 (B) The photos of this 360° with their sides → the workshop (its cost sheet waits for 🔨). */
+    private void toWorkshop() {
+        final JSONArray views = data.optJSONArray("views");
+        if (views == null || views.length() == 0) { Toast.makeText(this, "ఫోటోలు లేవు", Toast.LENGTH_SHORT).show(); return; }
+        work.execute(() -> {
+            java.util.List<android.graphics.Bitmap> pics = new java.util.ArrayList<>();
+            java.util.List<Float> az = new java.util.ArrayList<>();
+            java.util.List<Integer> tilt = new java.util.ArrayList<>();
+            for (int i = 0; i < views.length() && pics.size() < 8; i++) {
+                JSONObject v = views.optJSONObject(i);
+                android.graphics.Bitmap b = v == null ? null : ScanStore.photo(this, id, v.optString("photo", "view" + i + ".jpg"), 1100);
+                if (b == null) continue;
+                pics.add(b);
+                az.add((float) v.optDouble("az", i * 45));
+                tilt.add(v.optInt("tilt", 0));
+            }
+            float[] a = new float[az.size()];
+            int[] t = new int[tilt.size()];
+            for (int i = 0; i < a.length; i++) { a[i] = az.get(i); t[i] = tilt.get(i); }
+            main.post(() -> {
+                if (!isFinishing()) ToWorkshop.open(this, pics, a, t, ToWorkshop.plainTitle(data.optString("title")), null);
+                for (android.graphics.Bitmap b : pics) b.recycle();
+            });
+        });
     }
 
     private String sizeLine() {

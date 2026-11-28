@@ -132,6 +132,9 @@ public class WorkshopActivity extends Activity {
     static final String EXTRA_SHOWPIECE = "showpiece", EXTRA_SHELF = "shelf";
     /** 🗂️ (28 Nov, I) open this saved model (its save time) from the studio shelf, ₹0. */
     static final String EXTRA_OPEN_AT = "open_at";
+    /** 🧱 (B) The camera's photos of one thing from several sides: a short-lived numbered picture in our cache (read once, deleted), the sides, the count, a title, the measured size; or "pick several from the gallery". */
+    static final String EXTRA_VIEWS_FILE = "views_file", EXTRA_VIEWS_NOTE = "views_note", EXTRA_VIEWS_SAY = "views_say", EXTRA_VIEWS_COUNT = "views_count",
+            EXTRA_VIEWS_TITLE = "views_title", EXTRA_VIEWS_SIZE = "views_size", EXTRA_PICK_VIEWS = "pick_views";
     private android.hardware.SensorManager sensors;
     private android.hardware.SensorEventListener tiltL;
     private float[] tilt0;
@@ -310,8 +313,8 @@ public class WorkshopActivity extends Activity {
         /** (A3) the long answer was asked; the part an answer is about; the part he had tapped. */
         boolean detail;
         String about, pickedId, pickedName;
-        /** (A4) a build from his photo (JPEG, base64; never saved) and what it is: a thing or a floor plan. */
-        String photo;
+        /** (A4) a build from his photo (JPEG, base64; never saved) and what it is: a thing or a floor plan; 🧱 (B) its sides and the measured size. */
+        String photo, photoViews, photoSize;
         int photoKind;
         final List<String> removed = new ArrayList<>();
         /** (E, F) "tour" / "guide" (null: a build or a change); asked by voice; no "thinking" lines spoken while it waits. */
@@ -378,6 +381,14 @@ public class WorkshopActivity extends Activity {
             said(talk.trim(), true);
             return;
         }
+        String views = i.getStringExtra(EXTRA_VIEWS_FILE);
+        if (views != null) { // 🧱 (B) from the camera: shown with its sides and the cost; nothing goes before 🔨
+            i.removeExtra(EXTRA_VIEWS_FILE);
+            viewsFromFile(new File(views), i.getStringExtra(EXTRA_VIEWS_NOTE), i.getStringExtra(EXTRA_VIEWS_SAY), i.getIntExtra(EXTRA_VIEWS_COUNT, 1),
+                    i.getStringExtra(EXTRA_VIEWS_TITLE), i.getStringExtra(EXTRA_VIEWS_SIZE));
+            return;
+        }
+        if (i.getBooleanExtra(EXTRA_PICK_VIEWS, false)) { i.removeExtra(EXTRA_PICK_VIEWS); photoKind = Workshop.PHOTO; ui.post(this::openGallery); return; }
         String what = i.getStringExtra(EXTRA_WHAT);
         if (what != null && !what.trim().isEmpty()) {
             final String w0 = what.trim(), h0 = i.getStringExtra(EXTRA_HEARD);
@@ -1623,7 +1634,9 @@ public class WorkshopActivity extends Activity {
 
     private void start(String what, String heard, boolean saidAlready) { start(what, heard, saidAlready, null, 0); }
 
-    private void start(String what, String heard, boolean saidAlready, String photo, int kind) {
+    private void start(String what, String heard, boolean saidAlready, String photo, int kind) { start(what, heard, saidAlready, photo, kind, null, null); }
+
+    private void start(String what, String heard, boolean saidAlready, String photo, int kind, String views, String sizeCm) {
         if (job != null) {
             String s = "ఒక బొమ్మ ఇంకా తయారవుతోంది Sir. అది అయ్యాక చెప్పండి, లేదా ⏹ ఆపు నొక్కండి.";
             setStatus(s);
@@ -1639,6 +1652,8 @@ public class WorkshopActivity extends Activity {
         Job j = new Job(what, heard, e);
         j.photo = photo;
         j.photoKind = kind;
+        j.photoViews = views;
+        j.photoSize = sizeCm;
         job = j;
         shown = null;
         if (show != null) { show.stop(); listLook(); }
@@ -1879,7 +1894,7 @@ public class WorkshopActivity extends Activity {
         });
         Workshop.Bill main = new Workshop.Bill();
         try {
-            Workshop.stream(j.engine, Workshop.SYSTEM, j.photo != null ? Workshop.photoMessage(j.heard, j.photoKind) : Workshop.buildMessage(j.what, j.heard),
+            Workshop.stream(j.engine, Workshop.SYSTEM, j.photo != null ? Workshop.photoMessage(j.heard, j.photoKind, j.photoViews, j.photoSize) : Workshop.buildMessage(j.what, j.heard),
                     j.photo, Workshop.MAX_OUT, new Workshop.Sink() {
                 @Override public void text(String s) { parser.feed(s); }
             }, main);
@@ -3345,7 +3360,8 @@ public class WorkshopActivity extends Activity {
 
     private void openGallery() {
         Intent i = new Intent(Intent.ACTION_GET_CONTENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE);
-        try { startActivityForResult(Intent.createChooser(i, "ఫోటో ఎంచుకోండి"), REQ_GAL); }
+        if (photoKind != Workshop.PLAN) i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true); // 🧱 (B) a thing: one photo, or up to 8 of its sides
+        try { startActivityForResult(Intent.createChooser(i, photoKind == Workshop.PLAN ? "ఫోటో ఎంచుకోండి" : "ఫోటో(లు) ఎంచుకోండి: ఒకటి, లేదా వస్తువు వేర్వేరు వైపులవి 8 వరకు"), REQ_GAL); }
         catch (Exception e) { Toast.makeText(this, "గ్యాలరీ తెరవలేకపోయాను", Toast.LENGTH_SHORT).show(); }
     }
 
@@ -3370,9 +3386,32 @@ public class WorkshopActivity extends Activity {
     @Override protected void onActivityResult(int req, int result, Intent data) {
         super.onActivityResult(req, result, data);
         if (result != RESULT_OK) return;
-        Uri u = req == REQ_CAM ? PhotoProvider.uri() : req == REQ_GAL && data != null ? data.getData() : null;
-        if (u == null) return;
         final int kind = photoKind;
+        if (req == REQ_GAL && data != null && data.getClipData() != null && data.getClipData().getItemCount() > 1 && kind != Workshop.PLAN) {
+            final android.content.ClipData cd = data.getClipData();
+            new Thread(() -> { // 🧱 (B) several sides from the gallery: one numbered picture (which side each is, the AI works out)
+                List<android.graphics.Bitmap> pics = new ArrayList<>();
+                for (int k = 0; k < cd.getItemCount() && pics.size() < 8; k++) {
+                    android.graphics.Bitmap bm = FacePhotos.upright(this, cd.getItemAt(k).getUri(), 1100);
+                    if (bm != null) pics.add(bm);
+                }
+                if (pics.isEmpty()) { ui.post(() -> setStatus("ఫోటోలు తెరవలేకపోయాను Sir.")); return; }
+                android.graphics.Bitmap g = ToWorkshop.grid(pics);
+                for (android.graphics.Bitmap b : pics) b.recycle();
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                g.compress(android.graphics.Bitmap.CompressFormat.JPEG, 84, out);
+                g.recycle();
+                final int n = Math.min(8, cd.getItemCount());
+                final String[] note = Pick3D.viewNote(null, null, n);
+                final byte[] bytes = out.toByteArray();
+                ui.post(() -> { if (!destroyed) viewsReady(bytes, note[0], note[1], n, "", ""); });
+            }, "jarvis-workshop-views").start();
+            if (cd.getItemCount() > 8) Toast.makeText(this, "మొదటి 8 ఫోటోలే తీసుకున్నాను", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Uri u = req == REQ_CAM ? PhotoProvider.uri() : req == REQ_GAL && data != null ? (data.getData() != null ? data.getData()
+                : data.getClipData() != null && data.getClipData().getItemCount() > 0 ? data.getClipData().getItemAt(0).getUri() : null) : null;
+        if (u == null) return;
         new Thread(() -> {
             android.graphics.Bitmap bm = FacePhotos.upright(this, u, 1280);
             if (bm == null) { ui.post(() -> setStatus("ఫోటో తెరవలేకపోయాను Sir.")); return; }
@@ -3385,6 +3424,52 @@ public class WorkshopActivity extends Activity {
                 PhotoProvider.file(this).delete(); } // (his photo is not kept here)
             ui.post(() -> { if (!destroyed) photoReady(b64, thumb, kind); });
         }, "jarvis-workshop-photo").start();
+    }
+
+    /** 🧱 (B) The camera's numbered picture: read once from our cache and deleted at once (never kept), then the sheet. */
+    private void viewsFromFile(File f, String note, String say, int count, String title, String size) {
+        byte[] bytes = null;
+        try { bytes = java.nio.file.Files.readAllBytes(f.toPath()); } catch (Exception ignored) {}
+        //noinspection ResultOfMethodCallIgnored
+        f.delete();
+        if (bytes == null || bytes.length == 0) { setStatus("ఫోటోలు అందలేదు Sir. కెమెరాలో మళ్ళీ ప్రయత్నించండి."); return; }
+        viewsReady(bytes, note, say, count, title, size);
+    }
+
+    /**
+     * 🧱 (B) Several sides of one thing: the picture, which sides (and which not), the measured size, his words, the cost,
+     * and his tap to build. Nothing goes to the AI before 🔨; the picture is not kept.
+     */
+    private void viewsReady(byte[] jpeg, String note, String say, int count, String title, String size) {
+        android.graphics.Bitmap thumb = android.graphics.BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length);
+        final String b64 = android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(16), dp(8), dp(16), dp(0));
+        if (thumb != null) {
+            android.widget.ImageView iv = new android.widget.ImageView(this);
+            iv.setImageBitmap(thumb);
+            iv.setAdjustViewBounds(true);
+            iv.setMaxHeight(dp(220));
+            box.addView(iv);
+        }
+        TextView sides = Ui.text(this, (say == null || say.isEmpty() ? count + " ఫోటోలు" : say) + (size == null || size.isEmpty() ? "" : "\n📏 ఫోన్ కొలిచిన సైజు: " + size.replace(" cm", " సెం.మీ").replaceAll(" \\(.*\\)$", "")), 13, Ui.TEXT);
+        sides.setPadding(0, dp(6), 0, 0);
+        box.addView(sides);
+        EditText words = new EditText(this);
+        words.setHint("ఏమైనా చెప్పాలా? ఉదా: ఇది నీళ్ల ట్యాంక్ స్టాండ్ (ఖాళీ అయినా సరే)");
+        if (title != null && !title.isEmpty()) words.setText(title);
+        box.addView(words);
+        TextView fee = Ui.text(this, "ఈ ఫోటోలు మీరు ఎంచుకున్న AI కి ఈ ఒక్క పనికే వెళ్తాయి; వర్క్‌షాప్ దాచదు. చూడని వైపు parts పేరు చివర \"(అంచనా)\" ఉంటుంది. మనుషులను 3D చేయను. ఖర్చు సుమారు ₹15–80.", 12.5f, Ui.MUTED);
+        fee.setPadding(0, dp(6), 0, 0);
+        box.addView(fee);
+        new AlertDialog.Builder(this).setTitle("🧱 " + count + " వైపుల నుంచి 3D బొమ్మ")
+                .setView(box)
+                .setPositiveButton("🔨 తయారు చెయ్", (d, w) -> {
+                    String said = words.getText().toString().trim();
+                    start(said.isEmpty() ? "ఫోటోల్లోని వస్తువు" : said, said, false, b64, Workshop.VIEWS, note, size == null || size.isEmpty() ? null : size);
+                })
+                .setNegativeButton("వద్దు", null).show();
     }
 
     /** The photo, his words (optional), and his tap to build: the photo goes to his AI with the request, and is not kept. */

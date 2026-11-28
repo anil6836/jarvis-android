@@ -37,15 +37,23 @@ final class Recon {
                 + (note == null || note.trim().isEmpty() ? "" : ". Anil says: \"" + note.trim() + "\"") + ". Work out what happened and answer in the JSON.";
     }
 
-    /** The photos as one numbered grid (2 across), each at most 640 px wide. */
+    /**
+     * The photos as one numbered grid. (D, 28 Nov) Each cell has the photos' own shape (a tall phone photo gets a tall cell,
+     * not a 221 × 480 strip inside a 640 × 480 one with black bars), the columns chosen so each gets the most pixels
+     * (GridPlan): the AI sees more, and its boxes fit the photo itself.
+     */
     static Bitmap grid(List<Bitmap> pics) {
         int n = pics.size();
-        return grid(pics, n == 1 ? 1 : n > 6 ? 3 : 2);
+        Bitmap f = pics.get(0);
+        int[] pl = GridPlan.plan(n, f.getWidth() / (float) Math.max(1, f.getHeight()), 1800, 1000);
+        return grid(pics, pl[0], pl[2], pl[3]);
     }
 
-    static Bitmap grid(List<Bitmap> pics, int cols) {
+    static Bitmap grid(List<Bitmap> pics, int cols) { return grid(pics, cols, 640, 480); }
+
+    static Bitmap grid(List<Bitmap> pics, int cols, int cw, int ch) {
         int n = pics.size(), rows = (n + cols - 1) / cols;
-        int cw = 640, ch = 480, gap = 10;
+        int gap = GridPlan.GAP;
         Bitmap out = Bitmap.createBitmap(cols * cw + (cols + 1) * gap, rows * ch + (rows + 1) * gap, Bitmap.Config.RGB_565);
         Canvas c = new Canvas(out);
         c.drawColor(0xFF202020);
@@ -205,7 +213,7 @@ final class Recon {
     }
 
     static String spacePrompt(int photos, String note) {
-        return "This picture is a grid of " + photos + " numbered photos (1, 2, 3… left to right, top to bottom), each 640×480 inside the grid, taken in order"
+        return "This picture is a grid of " + photos + " numbered photos (1, 2, 3… left to right, top to bottom), each in its own cell, taken in order"
                 + (note == null || note.trim().isEmpty() ? "" : "; Anil says: \"" + note.trim() + "\"") + ". Give one view per photo, with that photo's items and boxes.";
     }
 
@@ -258,7 +266,11 @@ final class Recon {
                 + "+x is to that camera's right; a photo whose heading is H degrees more than photo 1's was taken from a viewpoint moved H degrees clockwise (seen from above) round the object. "
                 + "Solids: cylinder/cone (r, r2 top radius for cone, h along axis), ring (r outer, r2 inner, h), "
                 + "box (s = full sizes), sphere (r); c = centre of each solid; axis x|y|z. Make the solids touch like the real thing (a cable drum = two big thin cylinders + a core cylinder + a centre hole as a ring). "
-                + "seen=false for a solid you did not actually see (an unphotographed bottom). Colours like the real material. People only as 'మనిషి', never who. No ID numbers, phone numbers or plates.";
+                + "seen=false for a solid you did not actually see (an unphotographed bottom). Colours like the real material. "
+                + "Scale: if a phone (about 16 cm long), a coin (₹1 about 2.2 cm, ₹10 about 2.7 cm), an A4 paper (29.7 × 21 cm), a hand, a door (about 200 cm) "
+                + "or a brick (about 23 × 11 cm) is in a photo, use it for the sizes and name it in dims_cm.note; otherwise say the sizes are rough. "
+                + "Name a shape part exactly like the view item it is (the same Telugu words), so they can be matched. "
+                + "People only as 'మనిషి', never who. No ID numbers, phone numbers or plates.";
     }
 
     /** photos: the numbered grid; where: per photo "around 45°" / "from above" / "from below". */
@@ -327,6 +339,63 @@ final class Recon {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /**
+     * (D) Each solid of the 360° shape in the colour its part really has: the middle of that part's box in a photo, where
+     * a view item has the same name (or one name holds the other). Solids with no such part keep the AI's colour.
+     */
+    static void paintFromPhotos(JSONObject o, List<Bitmap> pics) {
+        try {
+            JSONObject shape = o.optJSONObject("shape");
+            JSONArray parts = shape == null ? null : shape.optJSONArray("parts"), views = o.optJSONArray("views");
+            if (parts == null || views == null) return;
+            for (int i = 0; i < parts.length(); i++) {
+                JSONObject pt = parts.getJSONObject(i);
+                String name = pt.optString("name").trim();
+                if (name.isEmpty()) continue;
+                int got = 0;
+                for (int v = 0; v < views.length() && v < pics.size() && got == 0; v++) {
+                    JSONArray items = views.getJSONObject(v).optJSONArray("items");
+                    for (int k = 0; items != null && k < items.length(); k++) {
+                        JSONObject it = items.getJSONObject(k);
+                        if (!sameName(name, it.optString("name"))) continue;
+                        JSONArray bx = it.optJSONArray("box");
+                        int c = bx == null || bx.length() != 4 ? 0 : boxColour(pics.get(v), (float) bx.optDouble(0) / 1000f, (float) bx.optDouble(1) / 1000f, (float) bx.optDouble(2) / 1000f, (float) bx.optDouble(3) / 1000f);
+                        if (c != 0) { got = c; break; }
+                    }
+                }
+                if (got != 0) pt.put("color", String.format(java.util.Locale.ROOT, "#%06x", got & 0xFFFFFF)).put("color_from", "photo");
+            }
+        } catch (Exception ignored) {}
+    }
+
+    static boolean sameName(String a, String b) {
+        String x = a == null ? "" : a.trim().toLowerCase(java.util.Locale.ROOT), y = b == null ? "" : b.trim().toLowerCase(java.util.Locale.ROOT);
+        if (x.isEmpty() || y.isEmpty()) return false;
+        return x.equals(y) || (x.length() >= 3 && y.contains(x)) || (y.length() >= 3 && x.contains(y));
+    }
+
+    /** The average colour of the middle half of a box (fractions of the photo); 0 when the box is unusable. */
+    static int boxColour(Bitmap b, float x0, float y0, float x1, float y1) {
+        if (b == null || b.isRecycled() || !(x1 > x0) || !(y1 > y0)) return 0;
+        int w = b.getWidth(), h = b.getHeight();
+        float mx = (x1 - x0) / 4, my = (y1 - y0) / 4;
+        int a0 = Math.max(0, Math.round((x0 + mx) * w)), a1 = Math.min(w, Math.round((x1 - mx) * w));
+        int b0 = Math.max(0, Math.round((y0 + my) * h)), b1 = Math.min(h, Math.round((y1 - my) * h));
+        if (a1 - a0 < 2 || b1 - b0 < 2) return 0;
+        long r = 0, g = 0, bl = 0, n = 0;
+        int step = Math.max(1, Math.max(a1 - a0, b1 - b0) / 40);
+        for (int y = b0; y < b1; y += step)
+            for (int x = a0; x < a1; x += step) {
+                int c = b.getPixel(x, y);
+                r += (c >> 16) & 0xFF;
+                g += (c >> 8) & 0xFF;
+                bl += c & 0xFF;
+                n++;
+            }
+        if (n == 0) return 0;
+        return 0xFF000000 | (int) (r / n) << 16 | (int) (g / n) << 8 | (int) (bl / n);
     }
 
     // ================================================================ evidence: a thing from three sides

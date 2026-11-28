@@ -1068,8 +1068,11 @@ final class Tools {
                 "The Jarvis camera (a full-screen camera that sees and talks): he shows anything and asks; it answers there with captions, boxes on the "
                         + "parts, shop / reminder / contact / challan buttons, a 3D hologram of a PCB or engine and a Telugu PDF. Use it when he says 'కెమెరా ఓపెన్ చేయి', "
                         + "'Jarvis కెమెరా', 'స్కాన్ చేయి', 'కెమెరాలో చూసి చెప్పు'. action: open (default; with mode and his question if he asked one), scan3d (the "
-                        + "detailed 3D hologram scan), history (what he scanned before, searched by words, e.g. 'medicine', 'PCB'), obd (the car OBD scanner).",
-                schema(new String[][]{{"action", "string", "open, scan3d, history or obd"},
+                        + "detailed 3D hologram scan of a board / engine), choose3d (the 🧊 3D list when he just says '3D స్కాన్': hologram / real scan / workshop model / 3D photo / 360°), "
+                        + "real3d (📐 the REAL 3D scan: the phone measures the thing itself with ARCore depth while he walks round it, true cm sizes, ₹0; 'నిజమైన 3D స్కాన్', 'కొలతలతో 3D'), "
+                        + "model3d (🧱 the camera's photos of a thing → a workshop model), photo3d (🖼️ one photo made into a 3D photo, ₹0), "
+                        + "history (what he scanned before, searched by words, e.g. 'medicine', 'PCB'), obd (the car OBD scanner).",
+                schema(new String[][]{{"action", "string", "open, scan3d, choose3d, real3d, model3d, photo3d, history or obd"},
                         {"mode", "string", "auto, shop, med, plant, elec, repair, vehicle, doc, home, nature, study or inside"},
                         {"question", "string", "His question about what he will show, in his words (empty when none)"},
                         {"words", "string", "Words to find old scans (history)"}})));
@@ -8321,10 +8324,17 @@ final class Tools {
             start(new Intent(act(), ObdActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             return ok().put("opened", "OBD scanner").put("next", "Tell him to plug in the ELM327 adapter, turn the key ON and tap 'కనెక్ట్'.").toString();
         }
+        if (action.startsWith("real")) { // 📐 the real 3D scan opens straight (₹0, on the phone)
+            start(new Intent(act(), RealScanActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            return ok().put("opened", "real 3D scan").put("next", "Say one short line: put the ➕ on the thing, tap 🎯, then walk round it slowly.").toString();
+        }
         Intent i = new Intent(act(), JarvisCamera.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         if (!a.optString("mode").trim().isEmpty()) i.putExtra(JarvisCamera.EXTRA_MODE, a.optString("mode").trim().toLowerCase(Locale.ROOT));
         if (!a.optString("question").trim().isEmpty()) i.putExtra(JarvisCamera.EXTRA_ASK, a.optString("question").trim());
-        if (action.startsWith("scan3") || action.contains("3d") || action.contains("holo")) i.putExtra(JarvisCamera.EXTRA_DEEP, true);
+        if (action.startsWith("choose")) i.putExtra(JarvisCamera.EXTRA_ASK, "3D");          // 🧊 the list (or Jarvis's pick)
+        else if (action.startsWith("model")) i.putExtra(JarvisCamera.EXTRA_ASK, "వర్క్‌షాప్ బొమ్మ");
+        else if (action.startsWith("photo3")) i.putExtra(JarvisCamera.EXTRA_ASK, "3D ఫోటో");
+        else if (action.startsWith("scan3") || action.contains("3d") || action.contains("holo")) i.putExtra(JarvisCamera.EXTRA_DEEP, true);
         start(i);
         return ok().put("opened", "Jarvis camera").put("next", "The camera is open and listens there by itself. Say one short line only "
                 + "(e.g. 'చూపించండి, చూసి చెబుతాను'); the camera answers his question itself.").toString();

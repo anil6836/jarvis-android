@@ -325,6 +325,7 @@ public class HoloActivity extends Activity implements HoloView.Listener {
         addButton(tg, "🔍 దగ్గరగా", v -> closeUp());
         addButton(tg, "🔄 వెనక వైపు", v -> { startActivity(new Intent(this, JarvisCamera.class).putExtra(JarvisCamera.EXTRA_BACK_OF, id)); finish(); });
         addButton(tg, "📍 అసలు ఫోటో", v -> startActivity(new Intent(this, JarvisCamera.class).putExtra(JarvisCamera.EXTRA_SCAN, id)));
+        addButton(tg, "🧱 వర్క్‌షాప్ బొమ్మగా", v -> toWorkshop()); // (B) this scan's photo(s) → a clean model, part by part
         ts.addView(tg);
         bottom.addView(ts);
         root.addView(bottom, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
@@ -363,6 +364,23 @@ public class HoloActivity extends Activity implements HoloView.Listener {
         t.setOnClickListener(v -> { boolean now = !st.on(); f.set(now); lit(t, st.on()); });
         toggles.add(t);
         row.addView(t);
+    }
+
+    /** 🧱 (B) This scan's photo (or a 3D model's views) → the workshop; its cost sheet waits for 🔨. */
+    private void toWorkshop() {
+        work.execute(() -> {
+            List<Bitmap> pics = new ArrayList<>();
+            if ("space".equals(data.optString("kind"))) {
+                JSONArray ls = data.optJSONArray("layers");
+                for (int i = 0; ls != null && i < ls.length() && pics.size() < 8; i++) { Bitmap b = ScanStore.photo(this, id, "view" + i + ".jpg", 1100); if (b != null) pics.add(b); }
+            }
+            if (pics.isEmpty()) { Bitmap b = ScanStore.photo(this, id, "photo.jpg", 1400); if (b != null) pics.add(b); }
+            main.post(() -> {
+                if (pics.isEmpty()) { Toast.makeText(this, "ఫోటో దొరకలేదు", Toast.LENGTH_SHORT).show(); return; }
+                if (!isFinishing()) ToWorkshop.open(this, pics, null, null, ToWorkshop.plainTitle(data.optString("title")), null);
+                for (Bitmap b : pics) b.recycle();
+            });
+        });
     }
 
     private void addButton(LinearLayout row, String label, View.OnClickListener l) {

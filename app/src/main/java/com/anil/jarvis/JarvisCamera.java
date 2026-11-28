@@ -95,6 +95,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     private Bitmap shownPic;            // the picture the boxes on the screen belong to (a zoomed freeze: its part)
     private boolean frozen, fromImage;  // frozen: the screen shows the photo; fromImage: a gallery / app picture (fitted)
     private ScanBrain.Result last;
+    private long lastAt;                // when that answer came (🤖 3D pick: a board scanned just now)
     private String lastId;              // the saved scan of this picture
     private final ArrayDeque<String[]> turns = new ArrayDeque<>();
     private String guide = "", guideNext = "", guideBase = "", guideSteps = "";
@@ -205,6 +206,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             main.postDelayed(() -> { // the camera has a moment to start and focus
                 if (deep) deepScan();
                 else if (qq != null && is360(qq)) shotsStart("object");   // ("డ్రమ్‌ని 360 లో చూపించు" from anywhere)
+                else if (qq != null && Pick3D.voice(qq) != null) { String k3 = Pick3D.voice(qq); threeD(Pick3D.CHOOSE.equals(k3) ? null : k3); } // ("నిజమైన 3D స్కాన్" from anywhere)
                 else if (qq != null && Counter.parse(qq) != null) countAi(Counter.parse(qq)); // ("గేట్‌కి ఎన్ని రాడ్లు" from anywhere)
                 else if (qq != null && LockBrain.isLockAsk(qq)) lockAsk(qq); // ("ఆ కుక్కని జూమ్ చేయి" from anywhere: found, locked, zoomed)
                 else ask(qq);
@@ -342,17 +344,17 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         FrameLayout orbBox = new FrameLayout(this);
         orbBox.setBackground(Ui.round(this, 0x66061424, Ui.alpha(Ui.CYAN, 0xCC), 999));
         orb = new HoloOrb(this, 60);
-        orb.setContentDescription("చూడు (నొక్కి పట్టుకుంటే 3D స్కాన్)");
+        orb.setContentDescription("చూడు (నొక్కి పట్టుకుంటే 3D లిస్ట్)");
         orbBox.addView(orb, new FrameLayout.LayoutParams(-1, -1));
         orbBox.setOnClickListener(v -> scanTap());
-        orbBox.setOnLongClickListener(v -> { deepScan(); return true; });
+        orbBox.setOnLongClickListener(v -> { threeD(null); return true; }); // 🧊 the 3D list (or Jarvis's own pick)
         LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(dp(78), dp(78));
         olp.setMargins(dp(10), 0, dp(10), 0);
         ctl.addView(orbBox, olp);
         micBtn = roundBtn("🎙️", "వింటున్నా", v -> micTap());
         micBtn.setOnLongClickListener(v -> { toggleMicOff(); return true; });
         ctl.addView(micBtn, weight());
-        ctl.addView(roundBtn("🧊", "3D", v -> hologram()), weight());
+        ctl.addView(roundBtn("🧊", "3D", v -> threeD(null)), weight());
         bottom.addView(ctl);
         root.addView(bottom, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
         bottomPanel = bottom;
@@ -361,7 +363,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         bottom.addOnLayoutChangeListener(safe);
         setContentView(root);
         setMode(mode);
-        tell("📷 చూపించి ఏదైనా అడగండి: \"ఇది ఏంటి?\", \"దీని ధర ఎంత?\", \"ఈ మందు దేనికి?\". ◉ నొక్కితే చూసి చెబుతాను; నొక్కి పట్టుకుంటే 3D స్కాన్.", false);
+        tell("📷 చూపించి ఏదైనా అడగండి: \"ఇది ఏంటి?\", \"దీని ధర ఎంత?\", \"ఈ మందు దేనికి?\". ◉ నొక్కితే చూసి చెబుతాను; నొక్కి పట్టుకుంటే 🧊 3D (హోలోగ్రామ్, నిజమైన స్కాన్, బొమ్మ, 3D ఫోటో, 360°).", false);
     }
 
     private LinearLayout.LayoutParams weight() { return new LinearLayout.LayoutParams(0, -2, 1); }
@@ -549,6 +551,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         main.removeCallbacks(qrTick);
         main.removeCallbacks(arTick);
         main.removeCallbacks(relisten);
+        cancelPick(); // (🤖 3D: a pick waiting its 3 seconds does not start once he has left)
         livePause();
         voice.cancelListening();
         voice.stopSpeaking();
@@ -890,6 +893,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             if (shots != null && is(t, "తీసుకో", "తీయి", "ఫోటో తీయి", "ఫోటో", "క్లిక్", "take", "capture")) { shotTake(); return; }
             if (shots != null && is(t, "అయింది", "అయిపోయింది", "చాలు", "done", "పూర్తి")) {
                 if ("object".equals(shotsKind) && objPhase == 0) { if (shots.size() >= 3) objectExtras(); else tell("చుట్టూ కనీసం 3 ఫోటోలు కావాలి.", false); return; }
+                if ("model".equals(shotsKind)) { if (shots.size() >= 1) shotsDone(); else tell("కనీసం ఒక ఫోటో కావాలి.", false); return; }
                 if (shots.size() >= 2 || "evidence".equals(shotsKind)) shotsDone(); else tell("కనీసం 2 ఫోటోలు కావాలి.", false);
                 return;
             }
@@ -906,7 +910,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                 if (t.matches(".*(వద్దు|ఆపు|చాలు|no|stop).*")) { setCommentary(false, false); listenSoon(300); return; }
             }
             if (LockBrain.isUnlock(t)) { unlockLens(true); listenSoon(300); return; }
-            if (is(t, "హోలోగ్రామ్", "హోలోగ్రామ్ చూపించు", "త్రీడీ", "త్రీడీ చూపించు", "3d", "3d చూపించు", "3డి", "3డి చూపించు", "హోలో")) { hologram(); return; }
+            String k3 = Pick3D.voice(t); // 🧊 "3D" = the list (or Jarvis's pick); "హోలోగ్రామ్", "నిజమైన స్కాన్", "వర్క్‌షాప్ బొమ్మ", "3D ఫోటో", "ఫోటో స్పిన్" go straight
+            if (k3 != null) { threeD(Pick3D.CHOOSE.equals(k3) ? null : k3); return; }
             if (is(t, "pdf", "pdf చేయి", "పీడీఎఫ్", "పీడీఎఫ్ చేయి", "పిడిఎఫ్")) { pdf(); return; }
             if (pairKind != null && is(t, "పోల్చు", "పోల్చి చెప్పు", "రెండోది", "ఇప్పుడు చూడు", "కొత్తది")) { pairSecond(); return; }
             if (layersId != null && is(t, "పొర", "లేయర్", "layer", "తర్వాతి పొర", "పొర స్కాన్")) { layerShot(); return; }
@@ -1092,6 +1097,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             return;
         }
         last = r;
+        lastAt = System.currentTimeMillis();
         toWatch(r.say);
         turns.add(new String[]{"Anil", q});
         turns.add(new String[]{"Jarvis", r.say});
@@ -1374,6 +1380,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         if (data == null) { tell("ఆ స్కాన్ దొరకలేదు.", false); return; }
         if ("object".equals(data.optString("kind"))) { ObjectActivity.open(this, id); return; }
         if ("count".equals(data.optString("kind"))) { CountActivity.open(this, id); return; }
+        if ("real3d".equals(data.optString("kind"))) { RealModelActivity.open(this, id); return; }
+        if ("photo3d".equals(data.optString("kind"))) { Photo3DActivity.open(this, id); return; }
         if (data.optBoolean("board") && data.has("layers")) { HoloActivity.open(this, id); }
         Bitmap bm = ScanStore.photo(this, id, "photo.jpg", 1800);
         if (bm == null) { // (an OBD reading, a note): only its words
@@ -1573,7 +1581,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
 
     private void menu() {
         final String[] items = {
-                "🧊 3D హోలోగ్రామ్ (వివరమైన స్కాన్)", "📄 తెలుగు PDF (parts, డయాగ్రమ్, తయారీ)", "⚖️ రెండు పోల్చు", "🧰 టెక్నీషియన్ చెక్ (పాత / కొత్త part)",
+                "🧊 3D (హోలోగ్రామ్ / నిజమైన స్కాన్ / వర్క్‌షాప్ బొమ్మ / 3D ఫోటో / 360°)", "📄 తెలుగు PDF (parts, డయాగ్రమ్, తయారీ)", "⚖️ రెండు పోల్చు", "🧰 టెక్నీషియన్ చెక్ (పాత / కొత్త part)",
                 "🧅 తెరుస్తూ పొర పొరగా స్కాన్", "🎤 శబ్దం వినిపించు (ఏ part సమస్యో)", "✅ చెకప్ (కార్ / బైక్)", "🔌 OBD స్కానర్ (కార్)",
                 "🅿️ బండి ఇక్కడ పెట్టాను", "🔑 ఈ వస్తువు ఇక్కడ పెడుతున్నా", "🔍 భూతద్దం (చిన్న అక్షరాలు)", "📚 స్కాన్ చరిత్ర", "🧊 నా బోర్డులు / తెరిచినవి",
                 "⌨️ టైప్ చేసి అడుగు", "📡 AR పేర్లు: " + (arOn ? "ఆన్" : "ఆఫ్"), "📤 షేర్ (బొమ్మ + జవాబు)",
@@ -1587,7 +1595,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setItems(items, (dlg, w) -> {
                     switch (w) {
-                        case 0: hologram(); break;
+                        case 0: threeD(null); break;
                         case 1: pdf(); break;
                         case 2: pairStart("compare"); break;
                         case 3: pairStart("tech"); break;
@@ -1647,7 +1655,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                 {"cam_scene", "🔭 స్కాన్‌లో AI పెద్ద వస్తువులు (బిల్డింగ్, చెట్లు…; ఒక AI కాల్)", "1"},
                 {"cam_follow", "📹 ఫాలో-కామ్ (లాక్ అయినది మధ్యలో, ఒకే సైజులో)", "1"},
                 {"cam_steady", "📐 స్థిర జూమ్ (గైరోతో వణుకు తగ్గింపు)", "1"},
-                {"cam_saver", "🔋 పొదుపు మోడ్ (నెమ్మది రింగ్స్, చిన్న AI బొమ్మ; 20% కింద ఆటో)", "0"}};
+                {"cam_saver", "🔋 పొదుపు మోడ్ (నెమ్మది రింగ్స్, చిన్న AI బొమ్మ; 20% కింద ఆటో)", "0"},
+                {"cam_3d_auto", "🤖 3D: Jarvis నే ఎంచుకోనీ (◉ పట్టుకుంటే లిస్ట్ లేకుండా; 3 సెకన్లు 🔄 మార్చు)", "0"}};
         String[] names = new String[rows.length];
         boolean[] on = new boolean[rows.length];
         for (int i = 0; i < rows.length; i++) { names[i] = rows[i][1]; on[i] = "cam_mesh".equals(rows[i][0]) ? meshOn() : p.sp.getBoolean(rows[i][0], "1".equals(rows[i][2])); }
@@ -1941,7 +1950,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("d MMM, h:mm a", Locale.ENGLISH);
         for (int i = 0; i < all.size(); i++) {
             JSONObject o = all.get(i);
-            names[i] = (o.optBoolean("board") || "object".equals(o.optString("kind")) ? "🧊 " : "📷 ") + o.optString("title") + "\n   " + f.format(new java.util.Date(o.optLong("t")));
+            String kd = o.optString("kind");
+            names[i] = (o.optBoolean("board") || "object".equals(kd) ? "🧊 " : "real3d".equals(kd) || "photo3d".equals(kd) ? "" : "📷 ") + o.optString("title") + "\n   " + f.format(new java.util.Date(o.optLong("t")));
         }
         AlertDialog dlg = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle(boards ? "🧊 నా బోర్డులు (పట్టుకుంటే తీసేయి)" : "📚 స్కాన్ చరిత్ర (పట్టుకుంటే తీసేయి)")
@@ -1949,6 +1959,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                     JSONObject o = all.get(w);
                     if ("object".equals(o.optString("kind"))) ObjectActivity.open(this, o.optString("id"));
                     else if ("count".equals(o.optString("kind"))) CountActivity.open(this, o.optString("id"));
+                    else if ("real3d".equals(o.optString("kind"))) RealModelActivity.open(this, o.optString("id"));
+                    else if ("photo3d".equals(o.optString("kind"))) Photo3DActivity.open(this, o.optString("id"));
                     else if (o.optBoolean("board")) HoloActivity.open(this, o.optString("id"));
                     else openSaved(o.optString("id"));
                 })
@@ -2020,10 +2032,164 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         deepScan();
     }
 
-    /** The detailed scan: every part with its job; then the hologram opens. */
+    /** The detailed scan: every part with its job; then the hologram opens. The picture is checked on the phone first (D). */
     private void deepScan() {
         String q = "ఇది వివరంగా స్కాన్ చేయి: ప్రతి part / భాగం, దాని పని, సెక్షన్లు, కనెక్షన్లు, సమస్యలు.";
+        if (!frozen && !fromImage) {
+            int v = shotVerdict(cam.frameFast(240));
+            if (v != ShotCheck.OK) {
+                new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                        .setMessage("📸 బొమ్మ " + ShotCheck.words(v) + ". AI సరిగా చూడలేకపోవచ్చు." + (v == ShotCheck.DARK ? " 🔦 టార్చ్ వేయొచ్చు." : " ఫోన్ కదలకుండా పట్టుకోండి."))
+                        .setPositiveButton("అయినా పంపు", (d, w) -> ask(q, true, null))
+                        .setNegativeButton("🔁 మళ్ళీ చూస్తా", null).show();
+                return;
+            }
+        }
         ask(q, true, null);
+    }
+
+    /** ShotCheck on a small copy of the picture (OK when there is none). */
+    private static int shotVerdict(Bitmap b) {
+        if (b == null) return ShotCheck.OK;
+        try {
+            Bitmap s = b.getWidth() > 240 || b.getHeight() > 240 ? scaleTo(b, 240) : b;
+            int[] px = new int[s.getWidth() * s.getHeight()];
+            s.getPixels(px, 0, s.getWidth(), 0, 0, s.getWidth(), s.getHeight());
+            int v = ShotCheck.judge(px, s.getWidth(), s.getHeight());
+            if (s != b) s.recycle();
+            return v;
+        } catch (Exception e) {
+            return ShotCheck.OK;
+        }
+    }
+
+    // ================================================================ 🧊 the 3D list (28 Nov: A real scan · B workshop model · C 3D photo · D the old ones checked)
+
+    private Runnable pendingPick;
+
+    /** A 3D kind (Pick3D), or null: the list — or, when he switched "🤖 Jarvis నే ఎంచుకోనీ" on, Jarvis's own pick. */
+    private void threeD(String kind) {
+        if (kind == null) {
+            if (p.sp.getBoolean("cam_3d_auto", false)) autoPick(); else choose3d();
+            return;
+        }
+        cancelPick();
+        switch (kind) {
+            case Pick3D.HOLO: hologram(); break;
+            case Pick3D.REAL: RealScanActivity.open(this); break;
+            case Pick3D.MODEL: modelChoice(); break;
+            case Pick3D.PHOTO: photo3d(); break;
+            case Pick3D.SPIN: shotsStart("object"); break;
+            default: choose3d(); break;
+        }
+    }
+
+    /** What Jarvis would pick from what the camera sees now (null = not sure). */
+    private String autoKind() {
+        long now = System.currentTimeMillis();
+        List<Pick3D.Seen> seen = new ArrayList<>();
+        if (liveOn()) for (LiveTracker.Track t : tracker.shown(now)) seen.add(new Pick3D.Seen(t.en, (t.box[2] - t.box[0]) * (t.box[3] - t.box[1]), t.cx(), t.cy()));
+        return Pick3D.auto(last == null ? "" : last.kind, last == null ? -1 : now - lastAt, seen);
+    }
+
+    /** The list: 🤖 first (its pick shown), the five kinds, and "ఇకపై Jarvis నే" at the foot. */
+    private void choose3d() {
+        cancelPick();
+        final String sug = autoKind();
+        String[] rows = Pick3D.rows(sug);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(8), dp(4), dp(8), dp(4));
+        final AlertDialog[] dlg = new AlertDialog[1];
+        for (int i = 0; i < rows.length; i++) {
+            final int w = i;
+            TextView r = Ui.text(this, rows[i], i == 0 ? 15.5f : 15, 0xFFFFFFFF);
+            r.setPadding(dp(12), dp(10), dp(12), dp(10));
+            r.setLineSpacing(0, 1.15f);
+            if (i == 0 || Pick3D.kindOfRow(i).equals(sug)) r.setBackground(Ui.round(this, Ui.alpha(Ui.CYAN, 0x22), Ui.alpha(Ui.CYAN, 0x88), 12));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+            lp.setMargins(0, dp(3), 0, dp(3));
+            box.addView(r, lp);
+            r.setOnClickListener(v -> {
+                if (dlg[0] != null) dlg[0].dismiss();
+                if (w == 0) autoPick(); else threeD(Pick3D.kindOfRow(w));
+            });
+        }
+        android.widget.CheckBox always = new android.widget.CheckBox(this);
+        always.setText("ఇకపై Jarvis నే ఎంచుకోనీ (ఈ లిస్ట్ లేకుండా; 🎛️ HUD సెట్టింగ్స్‌లో ఆఫ్)");
+        always.setTextColor(0xFFDCEEF5);
+        always.setChecked(p.sp.getBoolean("cam_3d_auto", false));
+        always.setOnCheckedChangeListener((b, on) -> p.sp.edit().putBoolean("cam_3d_auto", on).apply());
+        box.addView(always);
+        ScrollView sv = new ScrollView(this);
+        sv.addView(box);
+        dlg[0] = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("🧊 ఏ 3D కావాలి?").setView(sv)
+                .setNegativeButton("వద్దు", null).show();
+    }
+
+    /** 🤖 Jarvis picks (₹0, from what it sees); 3 seconds of "🔄 మార్చు" before it starts. Not sure → the list. Never the paid workshop model. */
+    private void autoPick() {
+        String k = autoKind();
+        if (k == null) { tell("🤖 ఏది సరైనదో కచ్చితంగా తెలియలేదు: మీరే ఎంచుకోండి.", false); choose3d(); return; }
+        final String kind = k;
+        tell("🤖 " + Pick3D.name(kind) + " ఎంచుకున్నాను: " + Pick3D.why(kind) + ". మార్చాలంటే 3 సెకన్లలో 🔄 మార్చు.", false);
+        List<JSONObject> none = new ArrayList<>();
+        setActions(none);
+        TextView change = chip("🔄 మార్చు", true);
+        change.setOnClickListener(v -> { cancelPick(); choose3d(); });
+        actionRow.addView(change, 0);
+        actionScroll.setVisibility(View.VISIBLE);
+        cancelPick();
+        pendingPick = () -> { pendingPick = null; actionRow.removeView(change); if (!isFinishing()) threeD(kind); };
+        main.postDelayed(pendingPick, 3000);
+    }
+
+    private void cancelPick() {
+        if (pendingPick != null) { main.removeCallbacks(pendingPick); pendingPick = null; }
+    }
+
+    /** 🧱 (B) The workshop model: one photo now, photos all round, or from the gallery. The cost sheet waits in the workshop. */
+    private void modelChoice() {
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("🧱 వర్క్‌షాప్ బొమ్మ: ఎన్ని ఫోటోలు?")
+                .setItems(new String[]{"📸 ఒక్క ఫోటో (ఇప్పుడే)", "🔄 చుట్టూ తిరిగి (2–8 వైపులు; ఒక్కటి తర్వాత కూడా ఆపొచ్చు)", "🖼️ గ్యాలరీ నుంచి (8 వరకు)"}, (d, w) -> {
+                    if (w == 0) modelOne();
+                    else if (w == 1) shotsStart("model");
+                    else startActivity(new Intent(this, WorkshopActivity.class).putExtra(WorkshopActivity.EXTRA_PICK_VIEWS, true));
+                })
+                .setNegativeButton("వద్దు", null).show();
+    }
+
+    private String titleHint() { return last != null && !last.title.isEmpty() ? ToWorkshop.plainTitle(last.title) : ""; }
+
+    private void modelOne() {
+        Bitmap b = (frozen || fromImage) && photo != null ? photo.copy(Bitmap.Config.ARGB_8888, false) : cam.frame(1400);
+        if (b == null) { Toast.makeText(this, "కెమెరా బొమ్మ రాలేదు", Toast.LENGTH_SHORT).show(); return; }
+        int v = shotVerdict(b);
+        final Bitmap pic = b;
+        Runnable go = () -> {
+            List<Bitmap> one = new ArrayList<>();
+            one.add(pic);
+            ToWorkshop.open(this, one, Float.isNaN(heading) || fromImage ? null : new float[]{heading}, null, titleHint(), null);
+            pic.recycle();
+        };
+        if (v == ShotCheck.OK) { go.run(); return; }
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setMessage("📸 ఫోటో " + ShotCheck.words(v) + ". బొమ్మ సరిగా రాకపోవచ్చు.")
+                .setPositiveButton("అయినా పంపు", (d, w) -> go.run())
+                .setNegativeButton("🔁 మళ్ళీ తీస్తా", (d, w) -> pic.recycle()).show();
+    }
+
+    /** 🖼️ (C) The picture now (or the one on the screen) → the 3D photo screen, through a short-lived file in our cache. */
+    private void photo3d() {
+        Bitmap b = (frozen || fromImage) && photo != null ? photo : cam.frame(1600);
+        if (b == null) { Toast.makeText(this, "కెమెరా బొమ్మ రాలేదు", Toast.LENGTH_SHORT).show(); return; }
+        try {
+            java.io.File f = new java.io.File(getCacheDir(), "p3d_" + System.currentTimeMillis() + ".jpg");
+            try (java.io.FileOutputStream o = new java.io.FileOutputStream(f)) { b.compress(Bitmap.CompressFormat.JPEG, 90, o); }
+            if (b != photo) b.recycle();
+            Photo3DActivity.openPhoto(this, f);
+        } catch (Exception e) {
+            Toast.makeText(this, "3D ఫోటో మొదలవలేదు", Toast.LENGTH_SHORT).show();
+        }
     }
 
     @Override public void pdf() {
@@ -3404,7 +3570,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     // ---- 🕵️ "ఇక్కడ ఏం జరిగింది?" (2–6 photos) and 📦 the evidence card (front, side, top)
 
     private List<Bitmap> shots;
-    private String shotsKind; // "recon" / "evidence"
+    private String shotsKind; // "recon" / "evidence" / "room" / "space" / "object" / "model" (🧱 sides for the workshop)
     private static final String[] EVIDENCE_SIDES = {"ముందు వైపు", "పక్క వైపు", "పై నుంచి"};
 
     private void shotsStart(String kind) {
@@ -3418,7 +3584,12 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         else if ("space".equals(kind)) { shotHeads = new ArrayList<>(); say("🧊 గది అయితే మధ్యలో నిలబడి నెమ్మదిగా తిరగండి; బైక్ / యంత్రం అయితే దాని చుట్టూ నడవండి. నేనే ఫోటోలు తీసుకుంటాను (📸 తో కూడా తీయొచ్చు). అయ్యాక ✅."); roomHeading = heading; roomTurned = 0; main.postDelayed(roomTick, 600); }
         else if ("object".equals(kind)) {
             shotHeads = new ArrayList<>(); shotAz = new ArrayList<>(); shotTilt = new ArrayList<>(); objPhase = 0; objTiltNext = 0;
-            say("🧊 వస్తువును మధ్యలో ఉంచి దాని చుట్టూ నెమ్మదిగా నడవండి; ప్రతి 45 డిగ్రీలకి నేనే ఫోటో తీసుకుంటాను (📸 తో కూడా). ఒక చుట్టు అయ్యాక పై నుంచి, వీలైతే కింద నుంచి కూడా అడుగుతాను.");
+            say("🧊 వస్తువును మధ్యలో ఉంచి దాని చుట్టూ నెమ్మదిగా నడవండి; ప్రతి 45 డిగ్రీలకి నేనే ఫోటో తీసుకుంటాను (📸 తో కూడా). ఒక చుట్టు అయ్యాక పై నుంచి, వీలైతే కింద నుంచి కూడా అడుగుతాను. పక్కన ఫోన్ లేదా నాణెం పెడితే కొలతలు బాగా వస్తాయి.");
+            roomHeading = heading; roomTurned = 0; main.postDelayed(roomTick, 600);
+        }
+        else if ("model".equals(kind)) { // 🧱 (B) sides for the workshop: no AI here, nothing kept in the scan history
+            shotHeads = new ArrayList<>(); shotAz = new ArrayList<>(); shotTilt = new ArrayList<>(); objPhase = 0; objTiltNext = 0;
+            say("🧱 వస్తువును మధ్యలో ఉంచి దాని చుట్టూ నెమ్మదిగా నడవండి; ప్రతి 45 డిగ్రీలకి నేనే ఫోటో తీసుకుంటాను (8 వరకు, 📸 తో కూడా). ఒక్క ఫోటో చాలు అనుకుంటే ➡️ ఇంతే చాలు.");
             roomHeading = heading; roomTurned = 0; main.postDelayed(roomTick, 600);
         }
         else say("🕵️ జరిగిన చోటు / వస్తువు 2 నుంచి 6 ఫోటోలు తీయండి: ఒక్కోటి చూపించి 📸, అయ్యాక ✅.");
@@ -3435,9 +3606,10 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
     /** The room sweep: a photo every ~40° of turning (up to 9), done after a full turn or 40 s. */
     private final Runnable roomTick = new Runnable() {
         @Override public void run() {
-            if (shots == null || !("room".equals(shotsKind) || "space".equals(shotsKind) || "object".equals(shotsKind)) || !open) return;
+            if (shots == null || !("room".equals(shotsKind) || "space".equals(shotsKind) || "object".equals(shotsKind) || "model".equals(shotsKind)) || !open) return;
             if ("object".equals(shotsKind) && objPhase == 1) return; // (the extras are his taps)
-            boolean space = "space".equals(shotsKind) || "object".equals(shotsKind), obj = "object".equals(shotsKind);
+            boolean model = "model".equals(shotsKind);
+            boolean space = "space".equals(shotsKind) || "object".equals(shotsKind) || model, obj = "object".equals(shotsKind);
             if (roomStart == 0) roomStart = System.currentTimeMillis();
             main.postDelayed(this, 300);
             if (shots.isEmpty()) { Bitmap b = cam.frame(space ? 1200 : 1000); if (b != null) { shots.add(b); noteShot(0); roomHeading = heading; shotsGuide(); } return; }
@@ -3457,11 +3629,11 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
 
     private void shotsGuide() {
         if (shots == null) return;
-        boolean ev = "evidence".equals(shotsKind), room = "room".equals(shotsKind), space = "space".equals(shotsKind), obj = "object".equals(shotsKind);
+        boolean ev = "evidence".equals(shotsKind), room = "room".equals(shotsKind), space = "space".equals(shotsKind), obj = "object".equals(shotsKind), model = "model".equals(shotsKind);
         boolean extras = obj && objPhase == 1;
         boolean hasTop = shotTilt != null && shotTilt.contains(1), hasBottom = shotTilt != null && shotTilt.contains(-1);
         String text = ev ? "📦 " + EVIDENCE_SIDES[Math.min(2, shots.size())] + " చూపించండి (" + (shots.size() + 1) + "/3)" : room ? "🏠 నెమ్మదిగా తిరగండి… " + shots.size() + "/9 ఫోటోలు"
-                : extras ? "🧊 పై నుంచి / కింద నుంచి కూడా (వీలైతే)" : obj ? "🧊 చుట్టూ నడవండి… " + shots.size() + "/12"
+                : extras ? "🧊 పై నుంచి / కింద నుంచి కూడా (వీలైతే)" : obj ? "🧊 చుట్టూ నడవండి… " + shots.size() + "/12" : model ? "🧱 చుట్టూ నడవండి… " + shots.size() + "/8"
                 : space ? "🧊 తిరగండి / చుట్టూ నడవండి… " + shots.size() + "/8" : "🕵️ ఫోటో " + (shots.size() + 1) + " (2–6)";
         guideRow.removeAllViews();
         guideBar.setText(text);
@@ -3473,6 +3645,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         } else {
             if (!room) { TextView shot = chip("📸 తీసుకో", !space); shot.setOnClickListener(v -> shotTake()); guideRow.addView(shot); }
             if (obj && shots.size() >= 3) { TextView next = chip("➡️ చుట్టు అయింది", false); next.setOnClickListener(v -> objectExtras()); guideRow.addView(next); }
+            else if (model && shots.size() >= 1) { TextView enough = chip("➡️ ఇంతే చాలు", false); enough.setOnClickListener(v -> shotsDone()); guideRow.addView(enough); }
             else if (!ev && !obj && shots.size() >= 2) { TextView done = chip("✅ అయింది", room); done.setOnClickListener(v -> shotsDone()); guideRow.addView(done); }
         }
         TextView x = chip("✕", false);
@@ -3497,7 +3670,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
             shotsGuide();
             return;
         }
-        if ("space".equals(shotsKind)) { roomHeading = heading; if (shots.size() >= 8) { shotsDone(); return; } shotsGuide(); return; }
+        if ("space".equals(shotsKind) || "model".equals(shotsKind)) { roomHeading = heading; if (shots.size() >= 8) { shotsDone(); return; } shotsGuide(); return; }
         if (ev && shots.size() >= 3 || !ev && shots.size() >= 6) { shotsDone(); return; }
         if (ev) say(EVIDENCE_SIDES[shots.size()] + " చూపించి 📸.");
         else tell("📸 " + shots.size() + " తీశాను. ఇంకోటి, లేదా ✅.", false);
@@ -3509,6 +3682,52 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         if (shotHeads != null) shotHeads.add(HoloLens.direction(heading));
         if (shotAz != null) shotAz.add(Float.isNaN(heading) ? (shotAz.isEmpty() ? 0f : shotAz.get(shotAz.size() - 1) + 45f) : heading);
         if (shotTilt != null) shotTilt.add(tilt);
+    }
+
+    /**
+     * (D) Blurred or dark photos are left out before the AI sees them, when enough good ones stay (at least `keep`); the
+     * sides they were taken from go with them. Said on the screen.
+     */
+    private void dropBadShots(int keep) {
+        if (shots == null) return;
+        List<Integer> bad = new ArrayList<>();
+        for (int i = 0; i < shots.size(); i++) if (shotVerdict(shots.get(i)) != ShotCheck.OK) bad.add(i);
+        if (bad.isEmpty()) return;
+        if (shots.size() - bad.size() < keep) { tell("📸 కొన్ని ఫోటోలు బ్లర్ / చీకటిగా ఉన్నాయి: ఫలితం తక్కువగా రావచ్చు.", false); return; }
+        for (int k = bad.size() - 1; k >= 0; k--) {
+            int i = bad.get(k);
+            shots.remove(i).recycle();
+            if (shotHeads != null && i < shotHeads.size()) shotHeads.remove(i);
+            if (shotAz != null && i < shotAz.size()) shotAz.remove(i);
+            if (shotTilt != null && i < shotTilt.size()) shotTilt.remove(i);
+        }
+        tell("📸 " + bad.size() + " బ్లర్ / చీకటి ఫోటోలు వదిలేశాను; మిగతా " + shots.size() + " తో చేస్తున్నాను.", false);
+    }
+
+    /** 🧱 (B) The sides are taken: the good ones (blurred / dark left out when others stay) go to the workshop with their sides. */
+    private void modelDone() {
+        dropBadShots(1);
+        final List<Bitmap> pics = shots;
+        final List<Float> azs = shotAz;
+        final List<Integer> tilts = shotTilt;
+        shots = null;
+        shotHeads = null;
+        shotAz = null;
+        shotTilt = null;
+        objPhase = 0;
+        main.removeCallbacks(roomTick);
+        roomStart = 0;
+        guideRow.setVisibility(View.GONE);
+        boolean known = azs != null && azs.size() == pics.size();
+        for (Float a : known ? azs : new ArrayList<Float>()) if (a == null || Float.isNaN(a)) known = false;
+        if (Float.isNaN(heading)) known = false; // (no compass: the sides are not known; the AI works them out)
+        float[] az = null;
+        int[] tl = new int[pics.size()];
+        if (known) { az = new float[pics.size()]; for (int i = 0; i < az.length; i++) az[i] = azs.get(i); }
+        for (int i = 0; i < tl.length; i++) tl[i] = tilts != null && i < tilts.size() ? tilts.get(i) : 0;
+        tell("🧱 " + pics.size() + " ఫోటోలు వర్క్‌షాప్‌కి: అక్కడ ఖర్చు చూసి 🔨 నొక్కితేనే మొదలవుతుంది.", false);
+        ToWorkshop.open(this, pics, az, tl, titleHint(), null);
+        for (Bitmap b : pics) b.recycle();
     }
 
     /** 360°: the walk round is done; the top and the underside, if he can. */
@@ -3523,6 +3742,8 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
 
     private void shotsDone() {
         if (shots == null || shots.isEmpty() || busy) return;
+        if ("model".equals(shotsKind)) { modelDone(); return; }
+        if ("object".equals(shotsKind)) dropBadShots(3); // (a room's plain walls are not blurred photos: only a thing's photos are checked)
         final List<Bitmap> pics = shots;
         final String kind = shotsKind;
         shots = null;
@@ -3568,6 +3789,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                     grid.recycle();
                     JSONObject o = Recon.parseObject(reply, pics.size());
                     if (o == null) throw new IllegalStateException("no model");
+                    Recon.paintFromPhotos(o, pics); // (D) each solid in the colour its part really has in the photos
                     JSONArray views = o.optJSONArray("views");
                     for (int i = 0; views != null && i < views.length(); i++) {
                         JSONObject v = views.getJSONObject(i);
