@@ -1034,6 +1034,9 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                 if (QrPair.is(code)) { // the phone ↔ tablet key never goes to an AI: not its text, not the picture of it
                     code = null;
                     err = "🔒 ఇది ఫోన్ ↔ టాబ్లెట్ లింక్ QR (bot తాళం). దీన్ని AI కి పంపను.";
+                } else if (PcLink.isQr(code)) { // 💻 the laptop's pairing key: the same
+                    code = null;
+                    err = "🔒 ఇది ల్యాప్‌టాప్ జత QR (తాళం). దీన్ని AI కి పంపను. ⚙️ → 💻 ల్యాప్‌టాప్ జత → 📷 QR స్కాన్ చేయి తో జత చేయండి.";
                 } else {
                     String jpeg = jpeg(pic, deep ? 1800 : 1280, 82);
                     String sys = deep ? ScanBrain.deepSystem(p) : ScanBrain.system(p);
@@ -4047,6 +4050,7 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
                 String code = QrReader.read(b);
                 b.recycle();
                 if (QrPair.is(code)) { main.post(() -> paired(code)); return; } // (his phone's QR: the tablet joins his bot)
+                if (PcLink.isQr(code)) { main.post(() -> laptopQr(code)); return; } // (💻 the laptop's QR: never shown as a chip, never to an AI)
                 if (code == null || code.equals(shownCode)) return;
                 main.post(() -> codeSeen(code));
             });
@@ -4067,6 +4071,23 @@ public class JarvisCamera extends Activity implements VoiceIO.Listener, ScanActi
         String r = QrPair.apply(this, code);
         android.widget.Toast.makeText(this, r, android.widget.Toast.LENGTH_LONG).show();
         main.postDelayed(this::finish, 1800);
+    }
+
+    /** The laptop's pairing QR was seen here: on his phone it pairs (the 💻 screen says hello); never shown, never sent to an AI. */
+    private boolean laptopDone;
+
+    private void laptopQr(String code) {
+        if (laptopDone || isFinishing()) return;
+        laptopDone = true;
+        PcLink.Qr q = PcLink.parseQr(code);
+        if (!Workshop.here(this) || q == null) {
+            android.widget.Toast.makeText(this, q == null ? "ఈ ల్యాప్‌టాప్ QR ఈ Jarvis వెర్షన్‌కి సరిపోలేదు." : "💻 ల్యాప్‌టాప్ జత ఫోన్‌లో మాత్రమే.", android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        Laptop.adopt(this, q);
+        startActivity(new Intent(this, PcLinkActivity.class).putExtra(PcLinkActivity.EXTRA_JUST_SCANNED, true)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+        finish();
     }
 
     private void codeSeen(String code) {

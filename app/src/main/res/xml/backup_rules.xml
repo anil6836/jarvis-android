@@ -10,6 +10,7 @@
     <exclude domain="file" path="jarvis_trips.json.part" />
     <exclude domain="sharedpref" path="calls_private.xml" />
     <exclude domain="sharedpref" path="plant_private.xml" />
+    <exclude domain="sharedpref" path="pc_link_private.xml" /><!-- 💻 the laptop link key: on this phone only -->
     <exclude domain="file" path="amfi_nav.txt" /><!-- 💰 the public fund-NAV list: fetched again when needed -->
     <exclude domain="file" path="amfi_nav.txt.part" />
     <exclude domain="sharedpref" path="jarvis_photo_text_runs.xml" />

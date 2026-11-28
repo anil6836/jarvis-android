@@ -471,6 +471,13 @@ final class Tools {
                         {"time", "string", "For schedule: HH:MM in 24 hours (ఉదయం 7 = 07:00, సాయంత్రం 6 = 18:00)"},
                         {"dry_only", "boolean", "For schedule: water only when the soil is dry (default true)"},
                         {"on", "boolean", "For schedule: false = remove that daily time"}}, "action")));
+        DEFS.add(new Def("laptop",
+                "💻 Jarvis PC on his Windows laptop, paired with this phone by a QR (phone only; ₹0, no AI). Actions: check (default) = "
+                        + "ask the laptop if it is on (up to 20 s; for 'ల్యాప్‌టాప్ ఆన్‌లో ఉందా?', 'లాప్‌టాప్ ఆన్ ఉందా?', 'Jarvis PC పని చేస్తోందా?'); "
+                        + "status = paired or not, which laptop, when it last answered (no sending); open = the 💻 ల్యాప్‌టాప్ జత screen (to pair "
+                        + "with the laptop's QR or to unpair: unpairing is done there by his tap). Controlling the laptop (lock, open apps…) is "
+                        + "NOT built yet (phase 2): if he asks for that, say so honestly in one line.",
+                schema(new String[][]{{"action", "string", "check (default), status or open"}}, "action")));
         DEFS.add(new Def("money_advisor",
                 "💰 His personal money advisor (phone only; ₹0 except his own AI talk): his month from bank / UPI / card SMS counted on the phone. "
                         + "overview (default: this month in / out / saved, today's allowance, what to do first; for 'నా డబ్బు ఎలా ఉంది?', 'ఈ నెల ఎంత ఖర్చు'); "
@@ -1280,6 +1287,7 @@ final class Tools {
             case "room_measure": return "ఇంటి కొలతలు తెరుస్తున్నాను…";
             case "pcb_studio": return "🔌 PCB స్టూడియో తెరుస్తున్నాను…";
             case "plant": return "🌱 నీళ్ళ బోర్డ్‌ని అడుగుతున్నాను…";
+            case "laptop": return "💻 ల్యాప్‌టాప్‌ని అడుగుతున్నాను…";
             case "money_advisor": return "💰 లెక్కలు చూస్తున్నాను…";
             case "library": return "📚 లైబ్రరీ చూస్తున్నాను…";
             case "publish_website": return "ఆన్‌లైన్‌లో పెడుతున్నాను…";
@@ -1506,6 +1514,7 @@ final class Tools {
                 case "room_measure": return roomMeasure(a.optString("action", "open"));
                 case "pcb_studio": return pcbStudio(a.optString("action", "open"), a.optString("what", ""));
                 case "plant": return plantTool(a);
+                case "laptop": return laptopTool(a);
                 case "money_advisor": return moneyTool(a);
                 case "library": return library(a);
                 case "write_code": return writeCode(a.optString("filename", ""), a.optString("description", ""));
@@ -1946,6 +1955,33 @@ final class Tools {
      * 🌱 His plant board: status, water (asked first, then only after his own clear yes, heard after the question), stop,
      * schedule (a daily time he asks for), open. The board keeps its own safety; the orders go locked (Plant / PlantLink).
      */
+    /** 💻 Jarvis PC on his laptop (phase 1): is it on, is it paired, the pairing screen. ₹0, no AI; the key never leaves the phone. */
+    private String laptopTool(JSONObject a) throws Exception {
+        android.content.Context c = act();
+        if (!Workshop.here(c)) return err("phone_only", "The laptop link is on his phone only (not the home tablet or the car box). Say so in one line.");
+        String ac = a.optString("action", "check").trim().toLowerCase(Locale.ROOT);
+        if (ac.isEmpty()) ac = "check";
+        if (ac.equals("open")) {
+            startIn(new Intent(c, PcLinkActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+            return ok().put("next", "Say in one short Telugu line that the 💻 ల్యాప్‌టాప్ జత screen is open.").toString();
+        }
+        if (!Laptop.paired(c)) {
+            return err("not_paired", "No laptop is paired yet. Say in two short Telugu lines: on the laptop open Jarvis PC → ⚙️ → 📱 ఫోన్ జత → "
+                    + "QR తయారుచేయి, and on the phone ⚙️ → 💻 ల్యాప్‌టాప్ జత → 📷 QR స్కాన్ చేయి (or ask Jarvis to open it).");
+        }
+        if (ac.equals("status")) {
+            long seen = Laptop.lastSeen(c);
+            return ok().put("paired", true).put("laptop", Laptop.name(c)).put("jarvis_pc_version", Laptop.pcApp(c))
+                    .put("last_answer_minutes_ago", seen > 0 ? (System.currentTimeMillis() / 1000 - seen) / 60 : -1)
+                    .put("next", "Say in one short Telugu line which laptop is paired and when it last answered (not whether it is on now).").toString();
+        }
+        Laptop.Result r = Laptop.ping(c);
+        return ok().put("on", r.ok).put("laptop", Laptop.name(c)).put("said", r.line)
+                .put("next", r.ok ? "Say in one short Telugu line that the laptop is on (Jarvis PC answered)."
+                        : "Say honestly in one or two short Telugu lines that the laptop did not answer: it may be off, asleep, without internet, "
+                        + "or Jarvis PC is closed. Never guess which.").toString();
+    }
+
     private String plantTool(JSONObject a) throws Exception {
         android.content.Context c = act();
         if (!Workshop.here(c)) return err("phone_only", "The plant board is set up on his phone (not the home tablet or the car box). Say so in one line.");
@@ -4670,6 +4706,9 @@ final class Tools {
         if (bmp == null) return err("no_image", "Could not read the picture.");
         String text = QrReader.read(bmp);
         if (text == null) return err("no_qr", "No QR code or barcode found in the " + source + ". Hold it steady and closer, then ask again.");
+        if (PcLink.isQr(text) || QrPair.is(text)) // (a Jarvis pairing QR is a key: its text never goes to the AI)
+            return err("key_qr", "This is a Jarvis pairing QR (a key), so its text is not read out. Say in one line: it is a pairing key; "
+                    + (PcLink.isQr(text) ? "pair the laptop from ⚙️ → 💻 ల్యాప్‌టాప్ జత → 📷 QR స్కాన్ చేయి." : "use it from the tablet's 📷 ఫోన్ QR స్కాన్ చేయి."));
         JSONObject o = ok().put("source", source).put("qr", text);
         if (text.toLowerCase(Locale.ROOT).startsWith("upi:")) {
             Uri u = Uri.parse(text);

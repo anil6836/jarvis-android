@@ -647,6 +647,13 @@
             android:label="మొక్కలకి నీళ్ళు"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
 
+        <!-- 💻 this phone ↔ Jarvis PC on his laptop: QR pairing (read on the phone), "is the laptop on?", unpair. ₹0, no AI -->
+        <activity
+            android:name=".PcLinkActivity"
+            android:exported="false"
+            android:label="ల్యాప్‌టాప్ జత"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
+
         <!-- 🗂️ one shelf for everything he made in the studios (3D, apps, games, circuits, PCBs): read only, ₹0 -->
         <activity
             android:name=".StudioShelfActivity"

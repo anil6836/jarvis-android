@@ -143,6 +143,9 @@ final class SpeedGroups {
                 new String[]{"plant"},
                 new String[]{"మొక్క", "చెట్టు", "చెట్లు", "చెట్టుకి", "కుండీ", "మట్టి", "తేమ", "బకెట్", "పంప్", "పోయనా", "నీళ్ళు పోయ", "నీళ్లు పోయ",
                         "plant", "plants", "soil", "bucket", "pump", "watering", "water the"});
+        group("laptop", "Jarvis PC on his laptop (paired by QR): is the laptop on, which laptop is paired, the pairing screen",
+                new String[]{"laptop"},
+                new String[]{"ల్యాప్‌టాప్", "ల్యాప్ టాప్", "లాప్‌టాప్", "లాప్టాప్", "ల్యాప్టాప్", "లాప్ టాప్", "కంప్యూటర్", "పీసీ", "laptop", "jarvis pc", "computer", "pc"});
         group("coding", "making websites and apps, writing code, API usage",
                 new String[]{"make_website", "publish_website", "write_code", "make_app", "api_usage"},
                 new String[]{"కోడ్", "వెబ్‌సైట్", "వెబ్ సైట్", "యాప్ తయారు", "ప్రోగ్రామ్", "code", "website", "app", "program", "html", "github", "api"});

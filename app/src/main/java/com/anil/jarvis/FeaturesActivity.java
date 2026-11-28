@@ -616,6 +616,8 @@ public class FeaturesActivity extends Activity {
                     ask("🏠", "నా గదుల ప్లాన్లు", "దాచిన గదులు, కొలతలు, PDF · ఖర్చు లేదు", "ఇంటి కొలతలు దాచినవి చూపించు (room_measure saved)."),
                     ask("🔌", "PCB స్టూడియో", "నిజమైన PCB బోర్డ్‌లు: 6 రెడీ బోర్డ్‌లు, స్కీమాటిక్, 3D, ఫ్యాక్టరీ ఫైల్స్ · ఖర్చు లేదు", "PCB స్టూడియో తెరువు (pcb_studio open)."),
                     ask("🌱", "మొక్కలకి నీళ్ళు", "ఇంట్లో నీళ్ళ బోర్డ్: మట్టి తేమ, బకెట్, పోయి / ఆపు, రోజూ టైమ్ · ఖర్చు లేదు", "మొక్కల నీళ్ళ బోర్డ్ స్క్రీన్ తెరువు (plant open)."),
+                    act("💻", "ల్యాప్‌టాప్ జత", "లాప్‌టాప్‌లోని Jarvis PC తో QR జత, జత తీసేయి · ఖర్చు లేదు, AI లేదు", "laptop_link"),
+                    act("🟢", "ల్యాప్‌టాప్ ఆన్‌లో ఉందా?", "జత అయిన లాప్‌టాప్‌ని అడిగి చెబుతుంది (20 సెకన్ల వరకు) · ఖర్చు లేదు", "laptop_check"),
                     ask("🚨", "LED ఫ్లాషర్ PCB", "మొదటి PCB కి సరైనది: 555 టైమర్, 2 LED లు · ఖర్చు లేదు", "PCB స్టూడియోలో LED ఫ్లాషర్ బోర్డ్ తెరువు (pcb_studio project flasher)."),
                     ask("💡", "ఐడియాతో PCB", "మీ మాట / చేతి బొమ్మ ఫోటో నుంచి AI కొత్త బోర్డ్ · ఖర్చు ముందే చూపిస్తుంది", "PCB స్టూడియోలో 💡 ఐడియా కార్డ్ తెరువు (pcb_studio idea)."),
                     ask("⚡", "PCB నడిపించి చూడు", "ఆర్డర్ ముందే ఫోన్‌లో బోర్డ్ నడుస్తుంది: LED లు, వోల్టేజ్‌లు, తప్పులు · ఖర్చు లేదు", "PCB స్టూడియోలో ⚡ నడిపించు తెరువు (pcb_studio tab sim)."),
@@ -1505,6 +1507,11 @@ public class FeaturesActivity extends Activity {
         if (o.type == DO && tabletAction(o.payload)) return;
         if (o.type == DO && houseAction(o.payload)) return;
         if (o.type == DO && carAction(o.payload)) return;
+        if (o.type == DO && o.payload.startsWith("laptop_")) { // 💻 the laptop link opens straight from here (₹0, no AI)
+            if (!Workshop.here(this)) { android.widget.Toast.makeText(this, "💻 ల్యాప్‌టాప్ జత ఫోన్‌లో మాత్రమే.", android.widget.Toast.LENGTH_LONG).show(); return; }
+            PcLinkActivity.open(this, o.payload.equals("laptop_check"));
+            return;
+        }
         if (o.type == DO && o.payload.startsWith("duty_")) { // the duty calendar opens straight from here
             startActivity(new Intent(this, DutyActivity.class).putExtra(DutyActivity.EXTRA_SETUP, o.payload.equals("duty_setup")));
             return;

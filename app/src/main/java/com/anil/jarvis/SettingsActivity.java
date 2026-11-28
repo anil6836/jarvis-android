@@ -659,6 +659,15 @@ public class SettingsActivity extends Activity {
         plOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
         plOpen.setOnClickListener(v -> { autosave(); startActivity(new android.content.Intent(this, PlantActivity.class)); });
         box.addView(plOpen);
+        // 💻 this phone ↔ Jarvis PC on his laptop (P4 phase 1, 28 Nov): QR pairing read on the phone, "is the laptop on?", unpair
+        if (Workshop.here(this)) { // (phone only: not the home tablet or the car box)
+            note("💻 ల్యాప్‌టాప్ జత: మీ లాప్‌టాప్‌లోని Jarvis PC తో QR జత. \"ల్యాప్‌టాప్ ఆన్‌లో ఉందా?\" (మాటతో కూడా), జత తీసేయి. "
+                    + "మెసేజ్‌లు మన తాళంతో (ntfy.sh తాళం వేసిన అక్షరాలే చూస్తుంది); తాళం ఈ ఫోన్‌లో మాత్రమే, బ్యాకప్‌లోకి వెళ్లదు. ₹0, AI లేదు.");
+            TextView pcOpen = Ui.text(this, "💻 ల్యాప్‌టాప్ జత తెరువు →", 15, accent);
+            pcOpen.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
+            pcOpen.setOnClickListener(v -> { autosave(); PcLinkActivity.open(this, false); });
+            box.addView(pcOpen);
+        }
         // 💰 the money advisor (27 Nov: "నాకు పర్సనల్ గా ఫైనాన్షియల్ అడ్వైసర్ కావాలి"): bank SMS counted on the phone, waste, safety net, goals, investments, tax
         note("💰 డబ్బు సలహాదారు: బ్యాంక్ / UPI / కార్డ్ SMS ఫోన్‌లోనే లెక్కించి ఈ నెల ఖర్చు, ఈరోజు ఎంత ఖర్చు పెట్టొచ్చు, వృథా, సబ్‌స్క్రిప్షన్‌లు, రక్షణ (అత్యవసర నిధి, ఇన్సూరెన్స్), "
                 + "లక్ష్యాలు, మీ పెట్టుబడులు (ఫండ్ NAV, షేర్ ధర), నికర ఆస్తి, లోన్‌లు, లెక్కలు, పన్ను, కొనొచ్చా?, స్కీమ్ చెక్. ₹0; 🤖 AI సమీక్ష మీరు అడిగితేనే (మొత్తాలు మాత్రమే వెళ్తాయి). "
